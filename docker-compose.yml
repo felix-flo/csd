@@ -1,0 +1,30 @@
+# 라즈베리파이 운영용. traefik(proxy-net) 뒤에서 csd.gaonstack.dev 로 서비스.
+services:
+  csd:
+    build: .
+    image: csd-app:latest
+    container_name: csd
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DB_PATH: /app/data/csd.sqlite
+    volumes:
+      - ./data:/app/data          # SQLite 파일 → 컨테이너 재시작/재빌드에도 데이터 유지
+    networks:
+      - proxy-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.csd.rule=Host(`csd.gaonstack.dev`)"
+      - "traefik.http.routers.csd.entrypoints=web"
+      - "traefik.http.services.csd.loadbalancer.server.port=3000"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  proxy-net:
+    external: true

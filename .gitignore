@@ -1,0 +1,51 @@
+# ---- 비밀 / 환경 ----
+# 비밀키(JWT_SECRET, PIN_SECRET)가 들어 있음. .env.example 만 커밋한다.
+.env
+.env.*
+!.env.example
+# 인증서/키 파일
+*.pem
+*.key
+*.crt
+*.p12
+
+# ---- 데이터 (참가자 PIN 해시, 토큰, 게임 상태) ----
+data/*
+!data/.gitkeep
+data-local/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+*.db
+# DB 백업 (게임 당일 복사본)
+*.sqlite.bak
+backup/
+
+# ---- 의존성 / 빌드 산출물 ----
+node_modules/
+dist/
+*.tsbuildinfo
+.vite/
+.cache/
+coverage/
+
+# ---- 로그 / 임시 ----
+*.log
+npm-debug.log*
+logs/
+tmp/
+*.tmp
+
+# ---- OS / 에디터 ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+*~
+
+# ---- 도구 로컬 설정 ----
+.claude/settings.local.json

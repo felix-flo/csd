@@ -1,0 +1,23 @@
+{
+  "name": "csd",
+  "private": true,
+  "version": "0.1.0",
+  "description": "커뮤니티2: 보이지 않는 손 - 모티브 게임 진행 시스템",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,green \"npm run dev -w server\" \"npm run dev -w client\"",
+    "build": "npm run build -w client && npm run build -w server",
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w client",
+    "start": "node server/dist/index.js",
+    "seed": "npm run seed -w server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

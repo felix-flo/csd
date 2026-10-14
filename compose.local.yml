@@ -1,0 +1,17 @@
+# 로컬(Mac) 에서 traefik 없이 동작 확인용:
+#   docker compose -f compose.local.yml up --build
+#   → http://localhost:3000
+services:
+  csd:
+    build: .
+    image: csd-app:local
+    container_name: csd-local
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      JWT_SECRET: local-test-jwt-secret
+      PIN_SECRET: local-test-pin-secret
+      COOKIE_SECURE: "false"
+    volumes:
+      - ./data-local:/app/data

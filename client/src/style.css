@@ -1,0 +1,35 @@
+/* 러프 화면용 최소 스타일. UI 프레임워크는 룰 확정 후 결정 */
+:root {
+  font-family: system-ui, -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  color-scheme: light dark;
+  --bg: #f6f7f9;
+  --fg: #1c1e22;
+  --card: #ffffff;
+  --muted: #6b7280;
+  --accent: #2563eb;
+  --border: #e5e7eb;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #111318; --fg: #e5e7eb; --card: #1b1e26; --muted: #9ca3af; --border: #2b2f3a; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); }
+#app { min-height: 100vh; }
+.page { max-width: 720px; margin: 0 auto; padding: 16px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 12px; }
+.muted { color: var(--muted); font-size: 0.9em; }
+h1 { font-size: 1.4rem; margin: 0 0 12px; }
+h2 { font-size: 1.05rem; margin: 0 0 8px; }
+button { cursor: pointer; border: 1px solid var(--border); background: var(--accent); color: #fff; border-radius: 8px; padding: 8px 14px; font-size: 1rem; }
+button.secondary { background: var(--card); color: var(--fg); }
+button:disabled { opacity: 0.5; cursor: default; }
+input, select, textarea { font-size: 1rem; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--fg); }
+.topbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.8em; border: 1px solid var(--border); }
+.badge.on { background: #16a34a; color: #fff; border-color: transparent; }
+.badge.off { background: #dc2626; color: #fff; border-color: transparent; }
+.feed { list-style: none; padding: 0; margin: 0; }
+.feed li { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.feed li:last-child { border-bottom: none; }
+.error { color: #dc2626; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
