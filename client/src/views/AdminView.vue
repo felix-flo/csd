@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import TopBar from '../components/TopBar.vue'
 import EventFeed from '../components/EventFeed.vue'
+import UserAdmin from '../components/UserAdmin.vue'
 import { api } from '../lib/api'
 
 // 개발용: 실시간 파이프라인 확인용 공지 전송. 실제 관리자 기능(거래 승인, 재화 조정)은 룰 확정 후 구현
@@ -35,6 +36,7 @@ async function send() {
       <h2>관리 기능</h2>
       <p class="muted">그룹별 거래 승인 / 재화 수동 조정 등은 룰 확정 후 구현 예정.</p>
     </div>
+    <UserAdmin />
     <div class="card">
       <h2>테스트 공지 보내기 <span class="muted">(개발용)</span></h2>
       <form @submit.prevent="send" class="row">

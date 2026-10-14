@@ -1,9 +1,10 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { requireAuth, requireRole } from '../auth/middleware.js'
-import { findGroupById, findUserById, listGroupMembers } from '../db/users.js'
+import { findGroupById, findUserById, listAllUsers, listGroupMembers, setUsersActive } from '../db/users.js'
 import { insertEvent, listEventsForUser } from '../db/events.js'
-import { publishEvent } from '../realtime/index.js'
+import { disconnectUsers, publishEvent } from '../realtime/index.js'
+import { revokeUserRefreshTokens } from '../auth/tokens.js'
 import type { MeResponse } from '../../../shared/types.js'
 
 export const apiRouter = Router()
@@ -67,4 +68,33 @@ apiRouter.post('/admin/notice', requireRole('admin'), (req, res) => {
   })
   publishEvent(ev)
   res.status(201).json({ event: ev })
+})
+
+// ---- 관리자: 계정 활성/비활성 ----
+// 진행자(admin)/프레젠테이션(presenter) 계정은 PIN 을 그대로 쓰므로 토글 대상에서 제외한다.
+apiRouter.get('/admin/users', requireRole('admin'), (_req, res) => {
+  res.json({ users: listAllUsers() })
+})
+
+const activeSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1).max(200),
+  active: z.boolean(),
+})
+
+apiRouter.post('/admin/users/active', requireRole('admin'), (req, res) => {
+  const parsed = activeSchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ error: 'bad_request', issues: parsed.error.issues })
+    return
+  }
+  const { active } = parsed.data
+  const byId = new Map(listAllUsers().map((u) => [u.id, u]))
+  const ids = parsed.data.ids.filter((id) => byId.get(id)?.role === 'member')
+  const changed = setUsersActive(ids, active)
+  if (!active) {
+    // 비활성화: 재로그인 불가 + 이미 로그인된 세션도 즉시 종료
+    revokeUserRefreshTokens(ids)
+    disconnectUsers(ids)
+  }
+  res.json({ changed, users: listAllUsers() })
 })

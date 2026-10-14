@@ -10,6 +10,13 @@ export interface PublicUser {
   isLeader: boolean
 }
 
+/** 관리자 화면용 유저 정보 (비활성 계정 포함) */
+export interface AdminUser extends PublicUser {
+  active: boolean
+  groupCode: string | null
+  groupName: string | null
+}
+
 export interface GroupInfo {
   id: number
   code: string

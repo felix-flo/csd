@@ -55,6 +55,12 @@ export function initRealtime(httpServer: HttpServer): IO {
   return io
 }
 
+/** 해당 유저들의 소켓을 강제 종료 (계정 비활성화 시) */
+export function disconnectUsers(userIds: number[]) {
+  if (!io) return
+  for (const id of userIds) io.in(rooms.user(id)).disconnectSockets(true)
+}
+
 /** DB 에 기록된 이벤트를 대상 룸으로 전송 */
 export function publishEvent(ev: GameEvent) {
   if (!io) return

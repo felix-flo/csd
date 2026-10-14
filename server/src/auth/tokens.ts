@@ -80,6 +80,16 @@ export function revokeRefreshToken(token: string) {
   )
 }
 
+/** 특정 유저의 refresh 토큰 전부 폐기 (계정 비활성화 시) */
+export function revokeUserRefreshTokens(userIds: number[]) {
+  if (userIds.length === 0) return
+  const placeholders = userIds.map(() => '?').join(',')
+  db.prepare(
+    `UPDATE refresh_tokens SET revoked_at = datetime('now')
+     WHERE revoked_at IS NULL AND user_id IN (${placeholders})`,
+  ).run(...userIds)
+}
+
 /** 만료/폐기된 토큰 정리 (기동 시 1회) */
 export function pruneRefreshTokens() {
   db.prepare(
