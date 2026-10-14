@@ -41,11 +41,22 @@ export interface MeResponse {
   group: GroupInfo | null
 }
 
+/** 관리자가 작성하고 모든 역할이 읽는 마크다운 문서 (룰 등) */
+export interface DocumentInfo {
+  slug: string
+  title: string
+  markdown: string
+  /** 직전 버전이 보관되어 있어 되돌릴 수 있는지 */
+  hasPrevious: boolean
+  updatedBy: number | null
+  updatedAt: string
+}
+
 /** 이벤트 대상 범위: 전체 / 역할 / 그룹 / 개인 */
 export type EventScope = 'all' | 'role' | 'group' | 'user'
 
 /** 이벤트 종류. 룰 확정 후 거래/전쟁 요청 등을 추가한다. */
-export type EventType = 'notice' | 'system'
+export type EventType = 'notice' | 'system' | 'document.updated'
 
 export interface GameEvent {
   id: number

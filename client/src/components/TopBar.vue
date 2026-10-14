@@ -2,6 +2,7 @@
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useRealtimeStore } from '../stores/realtime'
+import DocumentBanner from './DocumentBanner.vue'
 
 defineProps<{ title: string }>()
 const auth = useAuthStore()
@@ -22,7 +23,9 @@ async function logout() {
     </div>
     <div class="row">
       <span class="badge" :class="rt.connected ? 'on' : 'off'">{{ rt.connected ? '실시간 연결됨' : '연결 끊김' }}</span>
+      <button class="secondary" @click="router.push('/rules')">룰</button>
       <button class="secondary" @click="logout">로그아웃</button>
     </div>
   </div>
+  <DocumentBanner />
 </template>

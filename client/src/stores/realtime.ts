@@ -7,6 +7,7 @@ import { defineStore } from 'pinia'
 import { io, type Socket } from 'socket.io-client'
 import type { ClientToServerEvents, GameEvent, ServerToClientEvents } from '../../../shared/types'
 import { useAuthStore } from './auth'
+import { useDocumentsStore } from './documents'
 
 type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>
 let socket: AppSocket | null = null
@@ -54,6 +55,9 @@ export const useRealtimeStore = defineStore('realtime', {
     push(ev: GameEvent) {
       if (this.events.some((e) => e.id === ev.id)) return
       this.events.push(ev)
+      if (ev.type === 'document.updated' && typeof ev.payload.slug === 'string') {
+        useDocumentsStore().onUpdated(ev.payload.slug)
+      }
       if (this.events.length > 200) this.events.splice(0, this.events.length - 200)
       if (ev.id > this.lastEventId) {
         this.lastEventId = ev.id
@@ -66,6 +70,7 @@ export const useRealtimeStore = defineStore('realtime', {
       socket = null
       this.connected = false
       this.events = []
+      useDocumentsStore().clear()
     },
   },
 })

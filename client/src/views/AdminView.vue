@@ -4,6 +4,7 @@ import TopBar from '../components/TopBar.vue'
 import EventFeed from '../components/EventFeed.vue'
 import RosterCard from '../components/RosterCard.vue'
 import UserAdmin from '../components/UserAdmin.vue'
+import RulesEditor from '../components/RulesEditor.vue'
 import { api } from '../lib/api'
 import type { AdminUser, GroupInfo } from '../../../shared/types'
 
@@ -46,6 +47,7 @@ async function send() {
 <template>
   <div class="page" style="max-width: 960px">
     <TopBar title="게임 진행자" />
+    <RulesEditor />
     <RosterCard :users="users" :groups="groups" @updated="onUpdated" />
     <UserAdmin :users="users" :groups="groups" @updated="onUpdated" />
     <div class="card">

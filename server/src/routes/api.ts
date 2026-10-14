@@ -14,6 +14,7 @@ import {
   updateUserName,
 } from '../db/users.js'
 import { applyRoster } from '../db/roster.js'
+import { getDocument, restoreDocument, updateDocument } from '../db/documents.js'
 import { insertEvent, listEventsForUser } from '../db/events.js'
 import { disconnectUsers, publishEvent } from '../realtime/index.js'
 import { revokeUserRefreshTokens } from '../auth/tokens.js'
@@ -176,4 +177,58 @@ apiRouter.post('/admin/users/:id/reset-pin', requireRole('admin'), (req, res) =>
   revokeUserRefreshTokens([user.id])
   disconnectUsers([user.id])
   res.json({ pin, users: listAllUsers() })
+})
+
+// ---- 문서 (룰 등): 조회는 모든 역할, 수정은 관리자 ----
+const slugSchema = z.string().regex(/^[a-z][a-z0-9-]{0,30}$/)
+const documentSchema = z.object({
+  title: z.string().trim().min(1).max(50),
+  markdown: z.string().max(50_000),
+})
+
+apiRouter.get('/documents/:slug', (req, res) => {
+  const slug = slugSchema.safeParse(req.params.slug)
+  const doc = slug.success ? getDocument(slug.data) : null
+  if (!doc) {
+    res.status(404).json({ error: 'not_found' })
+    return
+  }
+  res.json({ document: doc })
+})
+
+function announceDocument(doc: { slug: string; title: string }, userId: number) {
+  const ev = insertEvent({
+    type: 'document.updated',
+    scope: 'all',
+    payload: { slug: doc.slug, title: doc.title, message: `"${doc.title}" 이(가) 갱신되었습니다` },
+    createdBy: userId,
+  })
+  publishEvent(ev)
+}
+
+apiRouter.put('/admin/documents/:slug', requireRole('admin'), (req, res) => {
+  const slug = slugSchema.safeParse(req.params.slug)
+  const parsed = documentSchema.safeParse(req.body)
+  if (!slug.success || !parsed.success) {
+    res.status(400).json({ error: 'bad_request' })
+    return
+  }
+  const doc = updateDocument(slug.data, parsed.data, req.auth!.sub)
+  if (!doc) {
+    res.status(404).json({ error: 'not_found' })
+    return
+  }
+  announceDocument(doc, req.auth!.sub)
+  res.json({ document: doc })
+})
+
+apiRouter.post('/admin/documents/:slug/restore', requireRole('admin'), (req, res) => {
+  const slug = slugSchema.safeParse(req.params.slug)
+  const doc = slug.success ? restoreDocument(slug.data, req.auth!.sub) : null
+  if (!doc) {
+    res.status(404).json({ error: 'no_previous_version' })
+    return
+  }
+  announceDocument(doc, req.auth!.sub)
+  res.json({ document: doc })
 })

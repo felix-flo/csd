@@ -14,6 +14,7 @@ export const router = createRouter({
     { path: '/admin', component: () => import('../views/AdminView.vue'), meta: { roles: ['admin'] } },
     { path: '/present', component: () => import('../views/PresentView.vue'), meta: { roles: ['presenter', 'admin'] } },
     { path: '/group', component: () => import('../views/GroupView.vue'), meta: { roles: ['member'] } },
+    { path: '/rules', component: () => import('../views/RulesView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })
