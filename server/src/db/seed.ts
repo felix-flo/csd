@@ -36,17 +36,24 @@ export function seed() {
   const findGroup = db.prepare('SELECT id FROM groups WHERE code = ?')
   const userExists = db.prepare('SELECT 1 FROM users WHERE pin_hash = ?')
   const insertUser = db.prepare(
-    'INSERT INTO users (name, role, group_id, is_leader, pin_hash) VALUES (?, ?, ?, ?, ?)',
+    'INSERT INTO users (name, role, group_id, is_leader, pin, pin_hash, name_set) VALUES (?, ?, ?, ?, ?, ?, ?)',
   )
+  // 0002 마이그레이션 이전에 만들어진 시드 행: 평문 PIN 백필 (1회)
+  const backfill = db.prepare('UPDATE users SET pin = ?, name_set = ? WHERE pin_hash = ? AND pin IS NULL')
 
   let created = 0
   db.transaction(() => {
     for (const g of DEV_GROUPS) upsertGroup.run(g.code, g.name)
     for (const u of DEV_USERS) {
       const pinHash = hashPin(u.pin)
-      if (userExists.get(pinHash)) continue
+      // 시드 참가자는 name_set=0 으로 두어 첫 로그인 이름 입력 흐름을 테스트할 수 있게 한다
+      const nameSet = u.role === 'member' ? 0 : 1
+      if (userExists.get(pinHash)) {
+        backfill.run(u.pin, nameSet, pinHash)
+        continue
+      }
       const groupId = u.group ? (findGroup.get(u.group) as { id: number }).id : null
-      insertUser.run(u.name, u.role, groupId, u.leader ? 1 : 0, pinHash)
+      insertUser.run(u.name, u.role, groupId, u.leader ? 1 : 0, u.pin, pinHash, nameSet)
       created++
     }
   })()

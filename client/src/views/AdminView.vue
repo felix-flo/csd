@@ -1,9 +1,23 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import TopBar from '../components/TopBar.vue'
 import EventFeed from '../components/EventFeed.vue'
+import RosterCard from '../components/RosterCard.vue'
 import UserAdmin from '../components/UserAdmin.vue'
 import { api } from '../lib/api'
+import type { AdminUser, GroupInfo } from '../../../shared/types'
+
+const users = ref<AdminUser[]>([])
+const groups = ref<GroupInfo[]>([])
+onMounted(async () => {
+  const res = await api.get<{ users: AdminUser[]; groups: GroupInfo[] }>('/api/admin/users')
+  users.value = res.users
+  groups.value = res.groups
+})
+function onUpdated(u: AdminUser[], g?: GroupInfo[]) {
+  users.value = u
+  if (g) groups.value = g
+}
 
 // 개발용: 실시간 파이프라인 확인용 공지 전송. 실제 관리자 기능(거래 승인, 재화 조정)은 룰 확정 후 구현
 const scope = ref<'all' | 'role' | 'group' | 'user'>('all')
@@ -30,13 +44,14 @@ async function send() {
 </script>
 
 <template>
-  <div class="page">
+  <div class="page" style="max-width: 960px">
     <TopBar title="게임 진행자" />
+    <RosterCard :users="users" :groups="groups" @updated="onUpdated" />
+    <UserAdmin :users="users" :groups="groups" @updated="onUpdated" />
     <div class="card">
       <h2>관리 기능</h2>
       <p class="muted">그룹별 거래 승인 / 재화 수동 조정 등은 룰 확정 후 구현 예정.</p>
     </div>
-    <UserAdmin />
     <div class="card">
       <h2>테스트 공지 보내기 <span class="muted">(개발용)</span></h2>
       <form @submit.prevent="send" class="row">

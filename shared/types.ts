@@ -8,11 +8,15 @@ export interface PublicUser {
   role: Role
   groupId: number | null
   isLeader: boolean
+  /** 참가자가 첫 로그인 때 본인 이름을 입력했는지. false 면 이름 입력 화면을 먼저 보여준다 */
+  nameSet: boolean
 }
 
 /** 관리자 화면용 유저 정보 (비활성 계정 포함) */
 export interface AdminUser extends PublicUser {
   active: boolean
+  /** 평문 PIN (관리자 응답에만 포함) */
+  pin: string | null
   groupCode: string | null
   groupName: string | null
 }

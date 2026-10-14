@@ -1,7 +1,19 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { requireAuth, requireRole } from '../auth/middleware.js'
-import { findGroupById, findUserById, listAllUsers, listGroupMembers, setUsersActive } from '../db/users.js'
+import {
+  findGroupById,
+  findUserById,
+  generatePin,
+  listAllUsers,
+  listGroupMembers,
+  listGroups,
+  setOwnName,
+  setUserPin,
+  setUsersActive,
+  updateUserName,
+} from '../db/users.js'
+import { applyRoster } from '../db/roster.js'
 import { insertEvent, listEventsForUser } from '../db/events.js'
 import { disconnectUsers, publishEvent } from '../realtime/index.js'
 import { revokeUserRefreshTokens } from '../auth/tokens.js'
@@ -19,6 +31,22 @@ apiRouter.get('/me', (req, res) => {
   }
   const body: MeResponse = { user, group: user.groupId ? findGroupById(user.groupId) : null }
   res.json(body)
+})
+
+const nameSchema = z.object({ name: z.string().trim().min(1).max(20) })
+
+/** 첫 로그인 때 본인 이름 설정 (1회). 이후 변경은 관리자만 가능 */
+apiRouter.post('/me/name', (req, res) => {
+  const parsed = nameSchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ error: 'bad_request', issues: parsed.error.issues })
+    return
+  }
+  if (!setOwnName(req.auth!.sub, parsed.data.name)) {
+    res.status(409).json({ error: 'name_already_set' })
+    return
+  }
+  res.json({ user: findUserById(req.auth!.sub) })
 })
 
 /** 내 그룹 정보 (멤버 목록). 재화 등은 룰 확정 후 추가 */
@@ -73,7 +101,7 @@ apiRouter.post('/admin/notice', requireRole('admin'), (req, res) => {
 // ---- 관리자: 계정 활성/비활성 ----
 // 진행자(admin)/프레젠테이션(presenter) 계정은 PIN 을 그대로 쓰므로 토글 대상에서 제외한다.
 apiRouter.get('/admin/users', requireRole('admin'), (_req, res) => {
-  res.json({ users: listAllUsers() })
+  res.json({ users: listAllUsers(), groups: listGroups() })
 })
 
 const activeSchema = z.object({
@@ -97,4 +125,55 @@ apiRouter.post('/admin/users/active', requireRole('admin'), (req, res) => {
     disconnectUsers(ids)
   }
   res.json({ changed, users: listAllUsers() })
+})
+
+// ---- 관리자: 인원 구성 / 이름 / PIN ----
+const rosterSchema = z.object({
+  groups: z.number().int().min(1).max(26),
+  participants: z.number().int().min(0).max(200),
+  staff: z.number().int().min(1).max(20),
+})
+
+apiRouter.post('/admin/roster', requireRole('admin'), (req, res) => {
+  const parsed = rosterSchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ error: 'bad_request', issues: parsed.error.issues })
+    return
+  }
+  const result = applyRoster({ ...parsed.data, keepAdminId: req.auth!.sub })
+  res.json({ ...result, users: listAllUsers(), groups: listGroups() })
+})
+
+function targetUser(req: { params: Record<string, string | string[] | undefined> }) {
+  const id = Number(req.params.id)
+  return Number.isInteger(id) ? listAllUsers().find((u) => u.id === id) ?? null : null
+}
+
+apiRouter.post('/admin/users/:id/name', requireRole('admin'), (req, res) => {
+  const parsed = nameSchema.safeParse(req.body)
+  const user = targetUser(req)
+  if (!parsed.success || !user) {
+    res.status(parsed.success ? 404 : 400).json({ error: parsed.success ? 'not_found' : 'bad_request' })
+    return
+  }
+  updateUserName(user.id, parsed.data.name)
+  res.json({ users: listAllUsers() })
+})
+
+/** PIN 리셋: 새 랜덤 PIN 발급 + 기존 세션 종료. 본인과 프레젠테이션 계정은 제외 */
+apiRouter.post('/admin/users/:id/reset-pin', requireRole('admin'), (req, res) => {
+  const user = targetUser(req)
+  if (!user) {
+    res.status(404).json({ error: 'not_found' })
+    return
+  }
+  if (user.id === req.auth!.sub || user.role === 'presenter') {
+    res.status(403).json({ error: 'pin_fixed' })
+    return
+  }
+  const pin = generatePin()
+  setUserPin(user.id, pin)
+  revokeUserRefreshTokens([user.id])
+  disconnectUsers([user.id])
+  res.json({ pin, users: listAllUsers() })
 })

@@ -47,6 +47,11 @@ export const useAuthStore = defineStore('auth', {
         return true
       } catch { return false }
     },
+    /** 첫 로그인 때 본인 이름 설정 */
+    async setName(name: string) {
+      const res = await api.post<{ user: PublicUser }>('/api/me/name', { name })
+      this.user = res.user
+    },
     async logout() {
       try { await api.post('/api/auth/logout') } catch { /* ignore */ }
       this.clear()
