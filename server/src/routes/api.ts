@@ -15,10 +15,10 @@ import {
 } from '../db/users.js'
 import { applyRoster } from '../db/roster.js'
 import { getDocument, restoreDocument, updateDocument } from '../db/documents.js'
-import { insertEvent, listEventsForUser } from '../db/events.js'
+import { deleteEvents, insertEvent, listEventsForUser } from '../db/events.js'
 import { disconnectUsers, publishEvent } from '../realtime/index.js'
 import { revokeUserRefreshTokens } from '../auth/tokens.js'
-import type { MeResponse } from '../../../shared/types.js'
+import type { EventType, MeResponse } from '../../../shared/types.js'
 
 export const apiRouter = Router()
 
@@ -97,6 +97,32 @@ apiRouter.post('/admin/notice', requireRole('admin'), (req, res) => {
   })
   publishEvent(ev)
   res.status(201).json({ event: ev })
+})
+
+// ---- 관리자: 알림 기록 초기화 (기본 공지만) ----
+const clearEventsSchema = z.object({
+  types: z.array(z.enum(['notice', 'system', 'document.updated'])).min(1).max(10).optional(),
+  before: z.number().int().positive().nullable().optional(),
+})
+
+apiRouter.delete('/admin/events', requireRole('admin'), (req, res) => {
+  const parsed = clearEventsSchema.safeParse(req.body ?? {})
+  if (!parsed.success) {
+    res.status(400).json({ error: 'bad_request', issues: parsed.error.issues })
+    return
+  }
+  const types: EventType[] = parsed.data.types ?? ['notice']
+  const before = parsed.data.before ?? null
+  const deleted = deleteEvents(types, before)
+  // 접속 중인 화면이 피드를 비우도록 system 이벤트로 알린다 (이 이벤트 자체는 남는다)
+  const ev = insertEvent({
+    type: 'system',
+    scope: 'all',
+    payload: { kind: 'events.cleared', types, before, deleted, message: '공지 기록이 초기화되었습니다' },
+    createdBy: req.auth!.sub,
+  })
+  publishEvent(ev)
+  res.json({ deleted, event: ev })
 })
 
 // ---- 관리자: 계정 활성/비활성 ----

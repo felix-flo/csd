@@ -65,6 +65,8 @@ export interface GameEvent {
   targetId: number | null
   /** role scope 일 때 대상 역할 */
   targetRole: Role | null
+  /** group/user scope 일 때 대상의 현재 이름 (표시용, 서버가 조회해 채움) */
+  targetName: string | null
   payload: Record<string, unknown>
   createdBy: number | null
   createdAt: string

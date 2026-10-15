@@ -61,9 +61,11 @@ export function disconnectUsers(userIds: number[]) {
   for (const id of userIds) io.in(rooms.user(id)).disconnectSockets(true)
 }
 
-/** DB 에 기록된 이벤트를 대상 룸으로 전송 */
+/** DB 에 기록된 이벤트를 대상 룸으로 전송. 진행자(admin)는 범위와 무관하게 모든 이벤트를 받는다 */
 export function publishEvent(ev: GameEvent) {
   if (!io) return
+  const adminAlreadyIncluded = ev.scope === 'all' || (ev.scope === 'role' && ev.targetRole === 'admin')
+  if (!adminAlreadyIncluded) io.to(rooms.role('admin')).emit('event', ev)
   switch (ev.scope) {
     case 'all':
       io.to(rooms.all).emit('event', ev)

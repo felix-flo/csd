@@ -54,6 +54,12 @@ export const useRealtimeStore = defineStore('realtime', {
     },
     push(ev: GameEvent) {
       if (this.events.some((e) => e.id === ev.id)) return
+      // 관리자가 알림 기록을 초기화하면 화면 피드에서도 해당 종류를 제거
+      if (ev.type === 'system' && ev.payload.kind === 'events.cleared') {
+        const types = Array.isArray(ev.payload.types) ? (ev.payload.types as string[]) : ['notice']
+        const before = typeof ev.payload.before === 'number' ? ev.payload.before : Infinity
+        this.events = this.events.filter((e) => !(types.includes(e.type) && e.id < before))
+      }
       this.events.push(ev)
       if (ev.type === 'document.updated' && typeof ev.payload.slug === 'string') {
         useDocumentsStore().onUpdated(ev.payload.slug)
