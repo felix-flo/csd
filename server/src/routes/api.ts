@@ -15,7 +15,7 @@ import {
 } from '../db/users.js'
 import { applyRoster } from '../db/roster.js'
 import { getDocument, restoreDocument, updateDocument } from '../db/documents.js'
-import { deleteEvents, insertEvent, listEventsForUser } from '../db/events.js'
+import { deleteEvents, insertEvent, listEventsForUser, listRecentEventsForUser } from '../db/events.js'
 import { disconnectUsers, publishEvent } from '../realtime/index.js'
 import { revokeUserRefreshTokens } from '../auth/tokens.js'
 import type { EventType, MeResponse } from '../../../shared/types.js'
@@ -61,14 +61,23 @@ apiRouter.get('/group', requireRole('member'), (req, res) => {
   res.json({ group, members: listGroupMembers(group.id) })
 })
 
-/** 재접속 시 놓친 이벤트 replay (HTTP 버전; Socket 'replay' 와 동일) */
+/**
+ * 이벤트 조회.
+ * - ?recent=N : 최근 N건 (피드 초기 표시용, 최대 200)
+ * - ?after=ID : ID 이후 것 (재접속 replay 의 HTTP 버전; Socket 'replay' 와 동일)
+ */
 apiRouter.get('/events', (req, res) => {
-  const after = Number(req.query.after ?? 0)
   const user = findUserById(req.auth!.sub)
   if (!user) {
     res.status(401).json({ error: 'unauthorized' })
     return
   }
+  if (req.query.recent !== undefined) {
+    const n = Math.min(Math.max(Number(req.query.recent) || 50, 1), 200)
+    res.json({ events: listRecentEventsForUser(user, n) })
+    return
+  }
+  const after = Number(req.query.after ?? 0)
   res.json({ events: listEventsForUser(user, Number.isFinite(after) ? after : 0) })
 })
 

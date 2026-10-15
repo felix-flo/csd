@@ -9,6 +9,7 @@ import type { ClientToServerEvents, GameEvent, ServerToClientEvents } from '../.
 import { useAuthStore } from './auth'
 import { useDocumentsStore } from './documents'
 import { useToastStore } from './toasts'
+import { api } from '../lib/api'
 
 type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>
 let socket: AppSocket | null = null
@@ -43,8 +44,11 @@ export const useRealtimeStore = defineStore('realtime', {
         auth: (cb) => cb({ token: useAuthStore().accessToken }),
         reconnectionDelayMax: 5000,
       })
-      socket.on('connect', () => {
+      socket.on('connect', async () => {
         this.connected = true
+        // 1) 최근 기록으로 피드를 채운다 (팝업 없음). 새로고침·재로그인 후에도 지난 알림이 보이도록
+        await this.loadRecent()
+        // 2) 마지막으로 본 id 이후 것만 replay → 놓친 공지는 팝업
         this.replaying = true
         this.pendingToasts = []
         socket?.emit('replay', this.lastEventId)
@@ -65,28 +69,39 @@ export const useRealtimeStore = defineStore('realtime', {
       })
       socket.on('event', (ev) => this.push(ev))
     },
+    /** 최근 50건을 받아 피드에 넣는다. 토스트는 띄우지 않고 lastEventId 도 올리지 않는다 (replay 가 판단) */
+    async loadRecent() {
+      try {
+        const res = await api.get<{ events: GameEvent[] }>('/api/events?recent=50')
+        const known = new Set(this.events.map((e) => e.id))
+        const fresh = res.events.filter((e) => !known.has(e.id))
+        this.events = [...fresh, ...this.events].sort((a, b) => a.id - b.id)
+      } catch { /* 피드 기록은 보조 기능이라 실패해도 연결은 유지 */ }
+    },
     push(ev: GameEvent) {
-      if (this.events.some((e) => e.id === ev.id)) return
-      // 관리자가 알림 기록을 초기화하면 화면 피드에서도 해당 종류를 제거
-      if (ev.type === 'system' && ev.payload.kind === 'events.cleared') {
-        const types = Array.isArray(ev.payload.types) ? (ev.payload.types as string[]) : ['notice']
-        const before = typeof ev.payload.before === 'number' ? ev.payload.before : Infinity
-        this.events = this.events.filter((e) => !(types.includes(e.type) && e.id < before))
+      // 마지막으로 본 id 보다 크면 "처음 보는" 이벤트. 피드에 이미 있어도(loadRecent 로 채운 경우) 팝업·배너는 띄운다
+      const unseen = ev.id > this.lastEventId
+      if (!this.events.some((e) => e.id === ev.id)) {
+        // 관리자가 알림 기록을 초기화하면 화면 피드에서도 해당 종류를 제거
+        if (ev.type === 'system' && ev.payload.kind === 'events.cleared') {
+          const types = Array.isArray(ev.payload.types) ? (ev.payload.types as string[]) : ['notice']
+          const before = typeof ev.payload.before === 'number' ? ev.payload.before : Infinity
+          this.events = this.events.filter((e) => !(types.includes(e.type) && e.id < before))
+        }
+        this.events.push(ev)
+        if (this.events.length > 200) this.events.splice(0, this.events.length - 200)
       }
-      this.events.push(ev)
+      if (!unseen) return
       if (ev.type === 'document.updated' && typeof ev.payload.slug === 'string') {
         useDocumentsStore().onUpdated(ev.payload.slug)
       }
-      if (this.events.length > 200) this.events.splice(0, this.events.length - 200)
       if (this.shouldToast(ev)) {
         if (this.replaying) this.pendingToasts.push(ev)
         else useToastStore().show(ev)
       }
-      if (ev.id > this.lastEventId) {
-        this.lastEventId = ev.id
-        const uid = useAuthStore().user?.id
-        if (uid) saveLastId(uid, ev.id)
-      }
+      this.lastEventId = ev.id
+      const uid = useAuthStore().user?.id
+      if (uid) saveLastId(uid, ev.id)
     },
     /**
      * 플로팅 팝업을 띄울지. 서버가 본인 수신분만 보내므로 범위는 따로 거르지 않는다.
