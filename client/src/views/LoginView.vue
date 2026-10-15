@@ -11,11 +11,19 @@ const pin = ref('')
 const error = ref('')
 const busy = ref(false)
 
+/** 입력 즉시 대문자로 바꾸고 영문·숫자만 남긴다 (서버도 같은 정규화를 한 번 더 한다) */
+function onInput(e: Event) {
+  const el = e.target as HTMLInputElement
+  const v = el.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4)
+  pin.value = v
+  el.value = v
+}
+
 async function submit() {
   error.value = ''
-  const value = pin.value.trim().toLowerCase()
-  if (!/^[a-z]{4}$/.test(value)) {
-    error.value = '영문 소문자 4자리를 입력하세요.'
+  const value = pin.value.trim().toUpperCase()
+  if (!/^[A-Z0-9]{4}$/.test(value)) {
+    error.value = '영문 또는 숫자 4자리를 입력하세요.'
     return
   }
   busy.value = true
@@ -40,13 +48,15 @@ async function submit() {
       <p class="muted">배부받은 4자리 PIN 을 입력하세요</p>
       <form @submit.prevent="submit" class="row" style="justify-content: center">
         <input
-          v-model="pin"
+          :value="pin"
           maxlength="4"
           autocomplete="off"
-          autocapitalize="none"
+          autocapitalize="characters"
           spellcheck="false"
-          placeholder="abcd"
-          style="width: 6.5em; text-align: center; font-size: 1.8rem; letter-spacing: 0.3em; font-family: var(--font-mono)"
+          inputmode="text"
+          placeholder="AB12"
+          @input="onInput"
+          style="width: 6.5em; text-align: center; font-size: 1.8rem; letter-spacing: 0.3em; font-family: var(--font-mono); text-transform: uppercase"
           autofocus
         />
         <button type="submit" :disabled="busy">입장</button>

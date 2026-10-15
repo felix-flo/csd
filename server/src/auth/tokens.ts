@@ -11,11 +11,20 @@ export interface AccessClaims {
   isLeader: boolean
 }
 
-/** PIN 은 영문 소문자 4자리. DB 에는 HMAC 으로만 저장하고 평문은 남기지 않는다. */
-export const PIN_PATTERN = /^[a-z]{4}$/
+/**
+ * PIN 규약: 영문·숫자 4자리. 영문은 대소문자를 구분하지 않으며 **대문자로 정규화해서** 저장·비교한다.
+ * (클라이언트도 대문자로 바꿔 보내지만, 서버는 받은 값을 다시 정규화해 중복·검증을 보장한다)
+ */
+export const PIN_PATTERN = /^[A-Z0-9]{4}$/
 
+/** 공백 제거 + 대문자. 검증(PIN_PATTERN)은 이 결과에 대해 한다 */
+export function normalizePin(pin: string): string {
+  return pin.trim().toUpperCase()
+}
+
+/** HMAC-SHA256(PIN_SECRET, 정규화된 PIN). 어떤 표기로 들어와도 같은 해시가 나온다 */
 export function hashPin(pin: string): string {
-  return crypto.createHmac('sha256', config.pinSecret).update(pin).digest('hex')
+  return crypto.createHmac('sha256', config.pinSecret).update(normalizePin(pin)).digest('hex')
 }
 
 export function signAccessToken(user: PublicUser): string {

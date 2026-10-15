@@ -1,6 +1,6 @@
 /**
  * 개발용 시드 데이터.
- * - 고정 PIN 으로 관리자 / 프레젠테이션 / 그룹별 리더·테스트유저 로그인 가능
+ * - 고정 PIN 으로 관리자 / 프레젠테이션 / 그룹별 리더·테스트유저 로그인 가능 (대소문자 구분 없음)
  * - 이미 존재하는 pin_hash 는 건너뛴다 (멱등). 실제 운영 전에는 PIN 전체 교체 필요.
  * 단독 실행: npm run seed  (서버 기동 시 SEED_ON_START=true 면 자동 실행)
  */
@@ -23,11 +23,11 @@ export const DEV_GROUPS = [
 ]
 
 export const DEV_USERS: SeedUser[] = [
-  { name: '관리자', role: 'admin', pin: 'admn' },
-  { name: '프레젠테이션', role: 'presenter', pin: 'show' },
+  { name: '관리자', role: 'admin', pin: 'ADMN' },
+  { name: '프레젠테이션', role: 'presenter', pin: 'SHOW' },
   ...DEV_GROUPS.flatMap(({ code, name }) => [
-    { name: `${name} 리더`, role: 'member' as const, pin: `${code}ldr`, group: code, leader: true },
-    { name: `${name} 테스트유저`, role: 'member' as const, pin: `${code}mem`, group: code },
+    { name: `${name} 리더`, role: 'member' as const, pin: `${code.toUpperCase()}LDR`, group: code, leader: true },
+    { name: `${name} 테스트유저`, role: 'member' as const, pin: `${code.toUpperCase()}MEM`, group: code },
   ]),
 ]
 

@@ -7,12 +7,14 @@ import cookieParser from 'cookie-parser'
 import { config } from './config.js'
 import { runMigrations } from './db/index.js'
 import { seed } from './db/seed.js'
+import { rehashPins } from './db/users.js'
 import { pruneRefreshTokens } from './auth/tokens.js'
 import { authRouter } from './routes/auth.js'
 import { apiRouter } from './routes/api.js'
 import { initRealtime } from './realtime/index.js'
 
 runMigrations()
+rehashPins() // PIN 규약(대문자) 정규화 + PIN_SECRET 변경 시 해시 복구
 if (config.seedOnStart) seed()
 pruneRefreshTokens()
 

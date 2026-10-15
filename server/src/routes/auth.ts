@@ -7,6 +7,7 @@ import { requireAuth } from '../auth/middleware.js'
 import {
   PIN_PATTERN,
   hashPin,
+  normalizePin,
   issueRefreshToken,
   revokeRefreshToken,
   rotateRefreshToken,
@@ -25,7 +26,7 @@ const cookieOpts = {
   maxAge: config.refreshTokenTtlDays * 86_400_000,
 }
 
-// 4자리 소문자 PIN 은 경우의 수가 적으므로(26^4) 로그인 시도는 반드시 제한한다.
+// 4자리 영문·숫자 PIN 은 경우의 수가 적으므로(36^4 ≈ 168만) 로그인 시도는 반드시 제한한다.
 const loginLimiter = rateLimit({
   windowMs: 60_000,
   limit: 10,
@@ -39,7 +40,8 @@ const loginLimiter = rateLimit({
   message: { error: 'too_many_attempts' },
 })
 
-const loginSchema = z.object({ pin: z.string().regex(PIN_PATTERN) })
+// 대소문자 구분 없음: 먼저 대문자로 정규화한 뒤 형식을 검사한다
+const loginSchema = z.object({ pin: z.string().max(16).transform(normalizePin).pipe(z.string().regex(PIN_PATTERN)) })
 
 authRouter.post('/login', loginLimiter, (req, res) => {
   const parsed = loginSchema.safeParse(req.body)

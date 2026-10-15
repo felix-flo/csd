@@ -7,4 +7,4 @@
 - DB 파일 위치 / DataGrip 접속 / 알림 초기화: [docs/92.DB접속_운영.md](docs/92.DB접속_운영.md)
 - 로컬 개발: `npm install && npm run dev` → http://localhost:5173
 - 라즈베리파이 배포: `PI_HOST=pi@<host> ./deploy.sh`
-- 개발용 PIN: `admn`(관리자) `show`(프레젠테이션) `aldr`/`amem` … `dldr`/`dmem`(그룹 리더/테스트유저)
+- 개발용 PIN (대소문자 구분 없음): `ADMN`(관리자) `SHOW`(프레젠테이션) `ALDR`/`AMEM` … `DLDR`/`DMEM`(그룹 리더/테스트유저)

@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 import { db } from './index.js'
-import { hashPin } from '../auth/tokens.js'
+import { hashPin, normalizePin } from '../auth/tokens.js'
 import type { AdminUser, GroupInfo, PublicUser, Role } from '../../../shared/types.js'
 
 interface UserRow {
@@ -106,7 +106,32 @@ export function setOwnName(id: number, name: string): boolean {
 }
 
 export function setUserPin(id: number, pin: string) {
-  db.prepare('UPDATE users SET pin = ?, pin_hash = ? WHERE id = ?').run(pin, hashPin(pin), id)
+  const canonical = normalizePin(pin)
+  db.prepare('UPDATE users SET pin = ?, pin_hash = ? WHERE id = ?').run(canonical, hashPin(canonical), id)
+}
+
+/**
+ * 기동 시 1회: 평문 PIN 을 규약(대문자)에 맞게 정규화하고 pin_hash 를 다시 계산한다.
+ * - 소문자 시절 만든 계정을 새 규약으로 옮긴다
+ * - PIN_SECRET 을 바꿔도 평문이 남아 있으므로 해시를 복구할 수 있다
+ */
+export function rehashPins(): number {
+  const rows = db.prepare('SELECT id, pin, pin_hash FROM users WHERE pin IS NOT NULL').all() as {
+    id: number; pin: string; pin_hash: string
+  }[]
+  const update = db.prepare('UPDATE users SET pin = ?, pin_hash = ? WHERE id = ?')
+  let changed = 0
+  db.transaction(() => {
+    for (const r of rows) {
+      const canonical = normalizePin(r.pin)
+      const hash = hashPin(canonical)
+      if (canonical === r.pin && hash === r.pin_hash) continue
+      update.run(canonical, hash, r.id)
+      changed++
+    }
+  })()
+  if (changed) console.log(`[db] pin rehashed: ${changed}`)
+  return changed
 }
 
 export interface NewUser {
@@ -124,7 +149,7 @@ export function createUser(u: NewUser): number {
       `INSERT INTO users (name, role, group_id, is_leader, pin, pin_hash, name_set)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(u.name, u.role, u.groupId ?? null, u.isLeader ? 1 : 0, u.pin, hashPin(u.pin), u.nameSet === false ? 0 : 1)
+    .run(u.name, u.role, u.groupId ?? null, u.isLeader ? 1 : 0, normalizePin(u.pin), hashPin(u.pin), u.nameSet === false ? 0 : 1)
   return Number(info.lastInsertRowid)
 }
 
@@ -134,13 +159,18 @@ export function deleteUsers(ids: number[]): number {
   return db.prepare(`DELETE FROM users WHERE id IN (${placeholders})`).run(...ids).changes
 }
 
-/** 기존 PIN 과 겹치지 않는 영문 소문자 4자리 랜덤 PIN */
+/** 기존 PIN 과 겹치지 않는 영문 대문자·숫자 4자리 랜덤 PIN */
 export function generatePin(): string {
   const exists = db.prepare('SELECT 1 FROM users WHERE pin_hash = ?')
-  const letters = 'abcdefghijklmnopqrstuvwxyz'
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
   for (let attempt = 0; attempt < 1000; attempt++) {
-    const bytes = crypto.randomBytes(4)
-    const pin = Array.from(bytes, (b) => letters[b % 26]).join('')
+    // 36 은 256 을 나누지 못하므로 편향을 피하려고 범위를 넘는 바이트는 버린다
+    const pin = Array.from(crypto.randomBytes(16))
+      .filter((b) => b < 252)
+      .slice(0, 4)
+      .map((b) => alphabet[b % 36])
+      .join('')
+    if (pin.length !== 4) continue
     if (!exists.get(hashPin(pin))) return pin
   }
   throw new Error('PIN 생성 실패 (중복이 너무 많음)')
