@@ -4,11 +4,14 @@ import { config } from '../config.js'
 import { db } from '../db/index.js'
 import type { PublicUser, Role } from '../../../shared/types.js'
 
+/**
+ * access token 에는 식별자와 역할만 넣는다.
+ * 팀(groupId)·리더 여부는 토큰에 넣지 않고 매 요청마다 DB 에서 읽는다 (requireAuth, 소켓 replay).
+ * → 팀 이동 후에도 재로그인 없이 바로 새 팀 기준으로 동작한다.
+ */
 export interface AccessClaims {
   sub: number
   role: Role
-  groupId: number | null
-  isLeader: boolean
 }
 
 /**
@@ -28,12 +31,7 @@ export function hashPin(pin: string): string {
 }
 
 export function signAccessToken(user: PublicUser): string {
-  const claims: AccessClaims = {
-    sub: user.id,
-    role: user.role,
-    groupId: user.groupId,
-    isLeader: user.isLeader,
-  }
+  const claims: AccessClaims = { sub: user.id, role: user.role }
   return jwt.sign(claims, config.jwtSecret, {
     expiresIn: config.accessTokenTtl as jwt.SignOptions['expiresIn'],
   })
@@ -42,7 +40,7 @@ export function signAccessToken(user: PublicUser): string {
 export function verifyAccessToken(token: string): AccessClaims | null {
   try {
     const decoded = jwt.verify(token, config.jwtSecret) as jwt.JwtPayload & AccessClaims
-    return { sub: Number(decoded.sub), role: decoded.role, groupId: decoded.groupId, isLeader: decoded.isLeader }
+    return { sub: Number(decoded.sub), role: decoded.role }
   } catch {
     return null
   }

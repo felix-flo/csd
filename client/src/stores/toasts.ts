@@ -1,9 +1,9 @@
 /**
  * 플로팅 알림(토스트). 공지(notice) 이벤트가 도착하면 화면 상단에 잠시 띄운다.
  * - 최대 3개 쌓이고, 기본 5초(프레젠테이션 10초) 후 자동으로 닫힌다. 마우스를 올리면 멈춘다.
- * - 어떤 이벤트를 띄울지는 realtime 스토어가 결정한다 (본인이 만든 이벤트·룰 갱신·시스템 메시지는 제외).
+ * - 어떤 이벤트를 띄울지는 realtime 스토어가 결정한다 (공지와 팀 이동/탈락 알림만. 본인이 만든 이벤트·룰 갱신은 제외).
  * - 알림음(lib/chime.ts): 프레젠테이션·참가자(리더/팀원)만 듣고 관리자는 듣지 않는다.
- *   울리는 경우는 shouldChime() 이 정한다 — 전체 공지와 시스템 알림만. 그룹(거래 등)·개인 알림은 팝업만 뜨고 소리는 없다.
+ *   울리는 경우는 shouldChime() 이 정한다 — 전체 범위 공지·시스템 알림만. 팀(이동·탈락·거래 등)·개인 알림은 팝업만 뜨고 소리는 없다.
  *   기기별로 끌 수 있다(muted). replay 로 여러 개가 한꺼번에 뜨면 한 번만 울린다.
  */
 import { defineStore } from 'pinia'
@@ -25,14 +25,12 @@ const TICK = 100
 
 /**
  * 소리를 낼 이벤트인지.
- * - 전체 공지: scope 'all', 또는 역할 전체('role' — 참가자 전원 공지)
- * - 시스템 알림: type 'system'
- * - 그 외(그룹 공지·거래 알림, 개인 알림)는 팝업만. 전쟁 선포는 룰 확정 후 여기에 추가한다.
+ * - 전체 공지·전체 시스템 알림: scope 'all', 또는 역할 전체('role' — 참가자 전원 공지)
+ * - 그 외(팀 공지·팀 이동/탈락 알림·거래 알림, 개인 알림)는 팝업만. 전쟁 선포는 룰 확정 후 여기에 추가한다.
  */
 export function shouldChime(ev: GameEvent): boolean {
-  if (ev.type === 'system') return true
-  if (ev.type === 'notice') return ev.scope === 'all' || ev.scope === 'role'
-  return false
+  if (ev.type !== 'system' && ev.type !== 'notice') return false
+  return ev.scope === 'all' || ev.scope === 'role'
 }
 /** 이 간격 안에 연달아 뜨는 토스트는 소리를 한 번만 낸다 */
 const CHIME_GAP = 600

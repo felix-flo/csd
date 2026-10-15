@@ -83,5 +83,6 @@ authRouter.post('/logout', (req, res) => {
 
 // 토큰 검증 확인용
 authRouter.get('/check', requireAuth, (req, res) => {
-  res.json({ ok: true, auth: req.auth })
+  const { user, ...auth } = req.auth!
+  res.json({ ok: true, auth, user })
 })

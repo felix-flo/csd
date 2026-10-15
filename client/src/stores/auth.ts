@@ -54,6 +54,13 @@ export const useAuthStore = defineStore('auth', {
         return true
       } catch { return false }
     },
+    /** 서버 기준으로 내 정보(팀·리더 여부 등)를 다시 읽는다. 팀 이동 알림을 받았을 때 호출 */
+    async refreshMe() {
+      try {
+        const me = await api.get<{ user: PublicUser }>('/api/me')
+        this.user = me.user
+      } catch { /* 다음 요청 때 다시 시도 */ }
+    },
     /** 첫 로그인 때 본인 이름 설정 */
     async setName(name: string) {
       const res = await api.post<{ user: PublicUser }>('/api/me/name', { name })

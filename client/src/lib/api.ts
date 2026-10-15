@@ -6,8 +6,8 @@
 import { useAuthStore } from '../stores/auth'
 
 export class ApiError extends Error {
-  constructor(public status: number, public code: string) {
-    super(`${status} ${code}`)
+  constructor(public status: number, public code: string, public detail?: string) {
+    super(detail ? `${status} ${code} · ${detail}` : `${status} ${code}`)
   }
 }
 
@@ -31,8 +31,13 @@ async function request<T>(method: string, url: string, body?: unknown, retry = t
   }
   if (!res.ok) {
     let code = 'error'
-    try { code = (await res.json()).error ?? code } catch { /* ignore */ }
-    throw new ApiError(res.status, code)
+    let detail: string | undefined
+    try {
+      const body = (await res.json()) as { error?: string; detail?: string }
+      code = body.error ?? code
+      detail = body.detail
+    } catch { /* ignore */ }
+    throw new ApiError(res.status, code, detail)
   }
   if (res.status === 204) return undefined as T
   return (await res.json()) as T
@@ -42,5 +47,6 @@ export const api = {
   get: <T>(url: string) => request<T>('GET', url),
   post: <T>(url: string, body?: unknown) => request<T>('POST', url, body ?? {}),
   put: <T>(url: string, body?: unknown) => request<T>('PUT', url, body ?? {}),
+  patch: <T>(url: string, body?: unknown) => request<T>('PATCH', url, body ?? {}),
   delete: <T>(url: string, body?: unknown) => request<T>('DELETE', url, body ?? {}),
 }
