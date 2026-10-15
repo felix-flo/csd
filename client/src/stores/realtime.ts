@@ -8,6 +8,7 @@ import { io, type Socket } from 'socket.io-client'
 import type { ClientToServerEvents, GameEvent, ServerToClientEvents } from '../../../shared/types'
 import { useAuthStore } from './auth'
 import { useDocumentsStore } from './documents'
+import { useToastStore } from './toasts'
 
 type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>
 let socket: AppSocket | null = null
@@ -26,6 +27,9 @@ export const useRealtimeStore = defineStore('realtime', {
     connected: false,
     events: [] as GameEvent[],
     lastEventId: 0,
+    /** 재접속 replay 진행 중이면 토스트를 모아 두었다가 replay:done 에 최근 것만 띄운다 */
+    replaying: false,
+    pendingToasts: [] as GameEvent[],
   }),
   actions: {
     connect() {
@@ -33,6 +37,7 @@ export const useRealtimeStore = defineStore('realtime', {
       if (socket || !auth.accessToken || !auth.user) return
       this.lastEventId = loadLastId(auth.user.id)
       this.events = []
+      useToastStore().configure(auth.user.role)
 
       socket = io({
         auth: (cb) => cb({ token: useAuthStore().accessToken }),
@@ -40,7 +45,15 @@ export const useRealtimeStore = defineStore('realtime', {
       })
       socket.on('connect', () => {
         this.connected = true
+        this.replaying = true
+        this.pendingToasts = []
         socket?.emit('replay', this.lastEventId)
+      })
+      socket.on('replay:done', () => {
+        this.replaying = false
+        // 밀린 공지는 최근 3건만 팝업, 나머지는 피드에서 확인
+        for (const ev of this.pendingToasts.slice(-3)) useToastStore().show(ev)
+        this.pendingToasts = []
       })
       socket.on('disconnect', () => { this.connected = false })
       socket.on('connect_error', async (err) => {
@@ -65,17 +78,34 @@ export const useRealtimeStore = defineStore('realtime', {
         useDocumentsStore().onUpdated(ev.payload.slug)
       }
       if (this.events.length > 200) this.events.splice(0, this.events.length - 200)
+      if (this.shouldToast(ev)) {
+        if (this.replaying) this.pendingToasts.push(ev)
+        else useToastStore().show(ev)
+      }
       if (ev.id > this.lastEventId) {
         this.lastEventId = ev.id
         const uid = useAuthStore().user?.id
         if (uid) saveLastId(uid, ev.id)
       }
     },
+    /**
+     * 플로팅 팝업을 띄울지. 서버가 본인 수신분만 보내므로 범위는 따로 거르지 않는다.
+     * - 공지(notice)만. 룰 갱신은 배너가 있고, 시스템 메시지는 피드로 충분
+     * - 본인이 만든 이벤트(진행자가 직접 보낸 공지)는 제외
+     */
+    shouldToast(ev: GameEvent): boolean {
+      if (ev.type !== 'notice') return false
+      const me = useAuthStore().user?.id
+      return ev.createdBy == null || ev.createdBy !== me
+    },
     disconnect() {
       socket?.disconnect()
       socket = null
       this.connected = false
       this.events = []
+      this.replaying = false
+      this.pendingToasts = []
+      useToastStore().clear()
       useDocumentsStore().clear()
     },
   },
