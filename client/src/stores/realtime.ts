@@ -31,6 +31,10 @@ export const useRealtimeStore = defineStore('realtime', {
     /** 재접속 replay 진행 중이면 토스트를 모아 두었다가 replay:done 에 최근 것만 띄운다 */
     replaying: false,
     pendingToasts: [] as GameEvent[],
+    /** 서버가 서빙 중인 클라이언트 빌드와 내 번들이 다르면 true → "새 버전" 배너 */
+    outdated: false,
+    serverVersion: '' as string,
+    reloading: false,
   }),
   actions: {
     connect() {
@@ -46,6 +50,8 @@ export const useRealtimeStore = defineStore('realtime', {
       })
       socket.on('connect', async () => {
         this.connected = true
+        // 0) 배포로 서버가 재시작돼 재연결된 경우를 잡기 위해 버전 확인
+        this.checkVersion()
         // 1) 최근 기록으로 피드를 채운다 (팝업 없음). 새로고침·재로그인 후에도 지난 알림이 보이도록
         await this.loadRecent()
         // 2) 마지막으로 본 id 이후 것만 replay → 놓친 공지는 팝업
@@ -69,14 +75,46 @@ export const useRealtimeStore = defineStore('realtime', {
       })
       socket.on('event', (ev) => this.push(ev))
     },
-    /** 최근 50건을 받아 피드에 넣는다. 토스트는 띄우지 않고 lastEventId 도 올리지 않는다 (replay 가 판단) */
-    async loadRecent() {
+    /**
+     * 최근 50건을 받아 피드에 넣는다. 토스트는 띄우지 않고 lastEventId 도 올리지 않는다 (replay 가 판단).
+     * replace=true 면 피드를 서버 기준으로 통째로 교체한다 (수동 "다시 불러오기")
+     */
+    async loadRecent(replace = false): Promise<boolean> {
       try {
         const res = await api.get<{ events: GameEvent[] }>('/api/events?recent=50')
-        const known = new Set(this.events.map((e) => e.id))
-        const fresh = res.events.filter((e) => !known.has(e.id))
-        this.events = [...fresh, ...this.events].sort((a, b) => a.id - b.id)
-      } catch { /* 피드 기록은 보조 기능이라 실패해도 연결은 유지 */ }
+        if (replace) {
+          this.events = res.events
+        } else {
+          const known = new Set(this.events.map((e) => e.id))
+          const fresh = res.events.filter((e) => !known.has(e.id))
+          this.events = [...fresh, ...this.events].sort((a, b) => a.id - b.id)
+        }
+        return true
+      } catch { return false } // 피드 기록은 보조 기능이라 실패해도 연결은 유지
+    },
+    /** 소켓을 끊고 다시 연결 (연결 끊김 뱃지 클릭). access token 이 만료됐을 수 있어 먼저 refresh */
+    async reconnect() {
+      const auth = useAuthStore()
+      socket?.disconnect()
+      socket = null
+      this.connected = false
+      await auth.refresh()
+      this.connect()
+    },
+    /** 서버의 클라이언트 빌드 식별자와 내 번들을 비교. 다르면 배너 표시 (개발 서버는 둘 다 'dev') */
+    async checkVersion() {
+      if (__BUILD_ID__ === 'dev') return // vite 개발 서버: 서버에 dist 가 있어도 비교 대상이 아님
+      try {
+        const res = await fetch('/api/health', { cache: 'no-store' })
+        const body = (await res.json()) as { version?: string }
+        this.serverVersion = body.version ?? ''
+        this.outdated = !!body.version && body.version !== __BUILD_ID__
+      } catch { /* 네트워크 오류면 다음 재연결 때 다시 확인 */ }
+    },
+    /** 새 버전 적용: 캐시 무시 새로고침 */
+    reloadForUpdate() {
+      this.reloading = true
+      window.location.reload()
     },
     push(ev: GameEvent) {
       // 마지막으로 본 id 보다 크면 "처음 보는" 이벤트. 피드에 이미 있어도(loadRecent 로 채운 경우) 팝업·배너는 띄운다

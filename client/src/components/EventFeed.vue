@@ -1,16 +1,33 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRealtimeStore } from '../stores/realtime'
 import { eventMessage, scopeLabel } from '../lib/eventLabel'
 
 const rt = useRealtimeStore()
 const items = computed(() => [...rt.events].reverse())
+const busy = ref(false)
+const status = ref('')
+
+/** 서버 기준으로 피드를 다시 받는다 (브라우저 상태가 꼬였을 때 복구용) */
+async function reload() {
+  busy.value = true
+  status.value = ''
+  const ok = await rt.loadRecent(true)
+  status.value = ok ? `${rt.events.length}건 다시 불러옴` : '불러오기 실패'
+  busy.value = false
+}
 
 </script>
 
 <template>
   <div class="card">
-    <h2>알림 <span class="muted">(마지막 id: {{ rt.lastEventId }})</span></h2>
+    <div class="row" style="justify-content: space-between; margin-bottom: 8px">
+      <h2 style="margin: 0">알림 <span class="muted">(마지막 id: {{ rt.lastEventId }})</span></h2>
+      <span class="row">
+        <span class="muted">{{ status }}</span>
+        <button class="secondary small" :disabled="busy" @click="reload">다시 불러오기</button>
+      </span>
+    </div>
     <p v-if="items.length === 0" class="muted">받은 알림이 없습니다.</p>
     <ul v-else class="feed">
       <li v-for="ev in items" :key="ev.id">
@@ -23,6 +40,7 @@ const items = computed(() => [...rt.events].reverse())
 </template>
 
 <style scoped>
+button.small { padding: 4px 10px; font-size: 0.85rem; }
 .badge.group { background: var(--blue); color: #fff; border-color: var(--blue); }
 .badge.user { background: var(--black); color: var(--paper); border-color: var(--black); }
 </style>

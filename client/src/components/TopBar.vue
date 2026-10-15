@@ -22,10 +22,15 @@ async function logout() {
       <span class="muted">{{ auth.user?.name }} ({{ auth.user?.role }})</span>
     </div>
     <div class="row">
-      <span class="badge" :class="rt.connected ? 'on' : 'off'">{{ rt.connected ? '실시간 연결됨' : '연결 끊김' }}</span>
+      <span v-if="rt.connected" class="badge on">실시간 연결됨</span>
+      <button v-else class="badge off reconnect" type="button" title="눌러서 다시 연결" @click="rt.reconnect()">연결 끊김 · 재연결</button>
       <button class="secondary" @click="router.push('/rules')">룰</button>
       <button class="secondary" @click="logout">로그아웃</button>
     </div>
   </div>
   <DocumentBanner />
 </template>
+
+<style scoped>
+.reconnect { cursor: pointer; font-family: var(--font-mono); font-weight: 400; padding: 2px 7px; font-size: 0.7rem; }
+</style>

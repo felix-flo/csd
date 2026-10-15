@@ -24,7 +24,20 @@ app.use(helmet({ contentSecurityPolicy: false }))
 app.use(express.json({ limit: '100kb' }))
 app.use(cookieParser())
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }))
+/** 클라이언트 빌드 식별자. client/dist/version.json (vite 빌드가 생성). 없으면 'dev' */
+function readClientVersion(): string {
+  try {
+    const raw = fs.readFileSync(path.join(config.clientDist, 'version.json'), 'utf8')
+    return String((JSON.parse(raw) as { version?: string }).version ?? 'dev')
+  } catch {
+    return 'dev'
+  }
+}
+const clientVersion = readClientVersion()
+
+app.get('/api/health', (_req, res) =>
+  res.json({ ok: true, ts: new Date().toISOString(), version: clientVersion }),
+)
 app.use('/api/auth', authRouter)
 app.use('/api', apiRouter)
 
@@ -51,7 +64,7 @@ const server = http.createServer(app)
 initRealtime(server)
 
 server.listen(config.port, () => {
-  console.log(`[csd] ${config.nodeEnv} server listening on :${config.port} (db: ${config.dbPath})`)
+  console.log(`[csd] ${config.nodeEnv} server listening on :${config.port} (db: ${config.dbPath}, client: ${clientVersion})`)
 })
 
 // docker stop 시 정상 종료
