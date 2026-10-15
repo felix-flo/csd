@@ -36,7 +36,7 @@ async function submit() {
 <template>
   <div class="page" style="padding-top: 15vh">
     <div class="card" style="text-align: center">
-      <h1>CSD 접속</h1>
+      <h1 style="font-size: 3rem">CSD</h1>
       <p class="muted">배부받은 4자리 PIN 을 입력하세요</p>
       <form @submit.prevent="submit" class="row" style="justify-content: center">
         <input
@@ -46,7 +46,7 @@ async function submit() {
           autocapitalize="none"
           spellcheck="false"
           placeholder="abcd"
-          style="width: 8em; text-align: center; font-size: 1.6rem; letter-spacing: 0.3em"
+          style="width: 6.5em; text-align: center; font-size: 1.8rem; letter-spacing: 0.3em; font-family: var(--font-mono)"
           autofocus
         />
         <button type="submit" :disabled="busy">입장</button>

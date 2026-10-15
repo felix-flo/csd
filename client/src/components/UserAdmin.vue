@@ -156,12 +156,11 @@ function copyList() {
 
 <style scoped>
 .users { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
-.users th, .users td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
-.users th { color: var(--muted); font-weight: 500; }
-.users tr.group-head td { background: var(--bg); padding-top: 10px; }
+.users th, .users td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
+.users th { color: var(--muted); font-weight: 500; font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.08em; }
+.users tr.group-head td { background: var(--paper); padding-top: 10px; }
 .users tr.inactive td { opacity: 0.55; }
 .users a { color: inherit; text-decoration: underline dotted; }
-.pin { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.15em; }
-.badge.warn { background: #f59e0b; color: #fff; border-color: transparent; }
+.pin { font-family: var(--font-mono); letter-spacing: 0.15em; }
 button.small { padding: 4px 10px; font-size: 0.85rem; }
 </style>

@@ -8,6 +8,7 @@ export const useAuthStore = defineStore('auth', {
     accessToken: null as string | null,
     user: null as PublicUser | null,
     ready: false,
+    bootstrapping: null as Promise<void> | null,
   }),
   getters: {
     isLoggedIn: (s) => !!s.accessToken && !!s.user,
@@ -21,16 +22,22 @@ export const useAuthStore = defineStore('auth', {
     },
   },
   actions: {
-    /** 앱 시작 시 refresh cookie 가 살아있으면 조용히 재로그인 */
-    async bootstrap() {
-      try {
-        if (await this.refresh()) {
-          const me = await api.get<{ user: PublicUser }>('/api/me')
-          this.user = me.user
-          useRealtimeStore().connect()
-        }
-      } catch { this.clear() }
-      this.ready = true
+    /** 앱 시작 시 refresh cookie 가 살아있으면 조용히 재로그인. 여러 곳에서 불려도 1회만 실행 */
+    bootstrap(): Promise<void> {
+      if (this.ready) return Promise.resolve()
+      if (!this.bootstrapping) {
+        this.bootstrapping = (async () => {
+          try {
+            if (await this.refresh()) {
+              const me = await api.get<{ user: PublicUser }>('/api/me')
+              this.user = me.user
+              useRealtimeStore().connect()
+            }
+          } catch { this.clear() }
+          this.ready = true
+        })()
+      }
+      return this.bootstrapping
     },
     async login(pin: string) {
       const res = await api.post<LoginResponse>('/api/auth/login', { pin })

@@ -19,8 +19,10 @@ export const router = createRouter({
   ],
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const auth = useAuthStore()
+  // 새로고침 직후에는 refresh 쿠키로 재로그인이 끝날 때까지 기다린다 (안 기다리면 항상 /login 으로 튕김)
+  if (!auth.ready) await auth.bootstrap()
   if (to.meta.public) return auth.isLoggedIn ? auth.homePath : true
   if (!auth.isLoggedIn) return { path: '/login', query: { redirect: to.fullPath } }
   if (to.meta.roles && !to.meta.roles.includes(auth.user!.role)) return auth.homePath

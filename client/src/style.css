@@ -1,35 +1,185 @@
-/* 러프 화면용 최소 스타일. UI 프레임워크는 룰 확정 후 결정 */
+/*
+ * CSD 테마. "더 커뮤니티" 공식 사이트 톤(종이색 배경 + 블랙/블루/레드, 직각, 1px 실선)을 따른다.
+ * - 제목: Cafe24 PRO Slim (public/fonts, 눈누 배포본. 상업 이용·재배포 허용)
+ * - 라벨/숫자: IBM Plex Mono (Google Fonts)
+ * - 본문: 시스템 한글 폰트
+ * 밝은 테마 고정 (다크 모드 미사용).
+ */
+@font-face {
+  font-family: 'Cafe24ProSlim';
+  src: url('/fonts/Cafe24PROSlim-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
-  font-family: system-ui, -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
-  color-scheme: light dark;
-  --bg: #f6f7f9;
-  --fg: #1c1e22;
-  --card: #ffffff;
-  --muted: #6b7280;
-  --accent: #2563eb;
-  --border: #e5e7eb;
+  color-scheme: light;
+  --paper: #f0eee7;
+  --black: #080808;
+  --blue: #1646f5;
+  --red: #ef321f;
+  --yellow: #f2c230;
+  --white: #ffffff;
+  --muted: #6b6b66;
+  --line: #080808;
+  --line-soft: #cfcdc5;
+  --card: #f7f6f1;
+
+  /* 재화 색상 (순서: 보석=화이트, 골드=옐로우, 라이프=블루, 크레딧=레드) */
+  --res-gem-bg: #ffffff;   --res-gem-fg: #080808;
+  --res-gold-bg: #fbe7a1;  --res-gold-fg: #6a4b00;
+  --res-life-bg: #d9e1ff;  --res-life-fg: #1646f5;
+  --res-credit-bg: #fcd8d3; --res-credit-fg: #c0210f;
+
+  --font-display: 'Cafe24ProSlim', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-body: -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', system-ui, sans-serif;
+
+  font-family: var(--font-body);
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
 }
-@media (prefers-color-scheme: dark) {
-  :root { --bg: #111318; --fg: #e5e7eb; --card: #1b1e26; --muted: #9ca3af; --border: #2b2f3a; }
-}
+
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--fg); }
+html, body { margin: 0; }
+body { background: var(--paper); color: var(--black); word-break: keep-all; line-height: 1.5; }
+::selection { background: var(--red); color: #fff; }
 #app { min-height: 100vh; }
+
 .page { max-width: 720px; margin: 0 auto; padding: 16px; }
-.card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 12px; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 0;
+  padding: 18px 16px;
+  margin-bottom: 14px;
+}
+
+/* 타이포 */
+h1 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 2.2rem;
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+  margin: 0 0 12px;
+}
+h2 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 1.45rem;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  margin: 0 0 10px;
+}
+h2 .muted { font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.08em; vertical-align: middle; }
 .muted { color: var(--muted); font-size: 0.9em; }
-h1 { font-size: 1.4rem; margin: 0 0 12px; }
-h2 { font-size: 1.05rem; margin: 0 0 8px; }
-button { cursor: pointer; border: 1px solid var(--border); background: var(--accent); color: #fff; border-radius: 8px; padding: 8px 14px; font-size: 1rem; }
-button.secondary { background: var(--card); color: var(--fg); }
-button:disabled { opacity: 0.5; cursor: default; }
-input, select, textarea { font-size: 1rem; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--fg); }
-.topbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; }
-.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.8em; border: 1px solid var(--border); }
-.badge.on { background: #16a34a; color: #fff; border-color: transparent; }
-.badge.off { background: #dc2626; color: #fff; border-color: transparent; }
+.mono { font-family: var(--font-mono); }
+.label {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.error { color: var(--red); }
+
+/* 컨트롤 */
+button {
+  cursor: pointer;
+  border: 1px solid var(--black);
+  background: var(--blue);
+  color: #fff;
+  border-color: var(--blue);
+  border-radius: 0;
+  padding: 9px 16px;
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.2;
+  transition: background 0.15s, color 0.15s;
+}
+button:hover { background: #0f36c7; border-color: #0f36c7; }
+button.secondary { background: transparent; color: var(--black); border-color: var(--black); }
+button.secondary:hover { background: var(--black); color: var(--paper); }
+button.danger { background: var(--red); border-color: var(--red); }
+button:disabled { opacity: 0.4; cursor: default; }
+button:disabled:hover { background: var(--blue); border-color: var(--blue); }
+button.secondary:disabled:hover { background: transparent; color: var(--black); }
+
+input, select, textarea {
+  font-family: var(--font-body);
+  font-size: 1rem;
+  padding: 9px 10px;
+  border: 1px solid var(--black);
+  border-radius: 0;
+  background: #fff;
+  color: var(--black);
+}
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--blue); outline-offset: -1px; }
+input[type='number'] { font-family: var(--font-mono); }
+a { color: var(--blue); }
+
+/* 상단바 */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-bottom: 10px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--black);
+}
+.topbar h1 { margin: 0; }
+.topbar .muted { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.06em; }
+
+/* 뱃지 */
+.badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border: 1px solid var(--black);
+  border-radius: 0;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  vertical-align: middle;
+}
+.badge.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+.badge.off { background: var(--red); color: #fff; border-color: var(--red); }
+.badge + .badge, a + .badge { margin-left: 5px; }
+.badge.warn { background: var(--yellow); color: var(--black); border-color: var(--yellow); }
+
+/* 알림 피드 */
 .feed { list-style: none; padding: 0; margin: 0; }
-.feed li { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.feed li { padding: 10px 0; border-bottom: 1px solid var(--line-soft); }
 .feed li:last-child { border-bottom: none; }
-.error { color: #dc2626; }
+.feed .muted { font-family: var(--font-mono); font-size: 0.72rem; }
+
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* 재화 칩: 이모지 + 수량. 색은 재화별 토큰으로 고정해 기기별 이모지 색 차이를 보정한다 */
+.res {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 6px;
+  border: 1px solid var(--line);
+  background: var(--res-bg, #fff);
+  color: var(--res-fg, var(--black));
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1;
+}
+.res .res-emoji { font-size: 1.2em; line-height: 1; font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; }
+.res.gem { --res-bg: var(--res-gem-bg); --res-fg: var(--res-gem-fg); }
+.res.gem .res-emoji { filter: grayscale(1) brightness(1.15); }
+.res.gold { --res-bg: var(--res-gold-bg); --res-fg: var(--res-gold-fg); }
+.res.life { --res-bg: var(--res-life-bg); --res-fg: var(--res-life-fg); }
+.res.credit { --res-bg: var(--res-credit-bg); --res-fg: var(--res-credit-fg); }
+.res.lg { font-size: 1.5rem; padding: 8px 16px 8px 10px; gap: 10px; }
+.res .res-label { font-family: var(--font-body); font-weight: 500; font-size: 0.85em; opacity: 0.85; }

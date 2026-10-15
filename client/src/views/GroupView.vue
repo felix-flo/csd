@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import TopBar from '../components/TopBar.vue'
 import EventFeed from '../components/EventFeed.vue'
 import NameSetup from '../components/NameSetup.vue'
+import ResourceRow from '../components/ResourceRow.vue'
 import { useAuthStore } from '../stores/auth'
 import { api } from '../lib/api'
 import type { GroupInfo, PublicUser } from '../../../shared/types'
@@ -25,7 +26,8 @@ onMounted(async () => {
     <template v-else>
     <div class="card">
       <h2>그룹 재화</h2>
-      <p class="muted">그룹 내부에서만 보이는 재화 정보 영역. 룰 확정 후 구현 예정.</p>
+      <ResourceRow show-label />
+      <p class="muted" style="margin: 10px 0 0">그룹 내부에서만 보이는 재화. 수량은 룰 확정 후 연결 예정 (현재는 표시 미리보기).</p>
     </div>
     <div class="card">
       <h2>그룹원</h2>

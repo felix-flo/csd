@@ -94,6 +94,6 @@ async function restore() {
 .editor { display: grid; gap: 12px; }
 .editor.split { grid-template-columns: 1fr 1fr; }
 @media (max-width: 800px) { .editor.split { grid-template-columns: 1fr; } }
-textarea { width: 100%; min-height: 360px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92rem; line-height: 1.5; resize: vertical; }
-.preview { border: 1px solid var(--border); border-radius: 8px; padding: 12px; min-height: 360px; overflow: auto; }
+textarea { width: 100%; min-height: 360px; font-family: var(--font-mono); font-size: 0.92rem; line-height: 1.5; resize: vertical; }
+.preview { border: 1px solid var(--line-soft); background: #fff; padding: 12px; min-height: 360px; overflow: auto; }
 </style>
