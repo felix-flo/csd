@@ -8,6 +8,7 @@ import { io, type Socket } from 'socket.io-client'
 import type { ClientToServerEvents, GameEvent, ServerToClientEvents } from '../../../shared/types'
 import { useAuthStore } from './auth'
 import { useDocumentsStore } from './documents'
+import { useTeamsStore } from './teams'
 import { useToastStore } from './toasts'
 import { api } from '../lib/api'
 
@@ -31,6 +32,8 @@ export const useRealtimeStore = defineStore('realtime', {
     /** 재접속 replay 진행 중이면 토스트를 모아 두었다가 replay:done 에 최근 것만 띄운다 */
     replaying: false,
     pendingToasts: [] as GameEvent[],
+    /** 팀원 구성이 바뀌었을 때(팀 이동·탈락·복귀) 올라가는 카운터. 팀 화면이 보고 팀원 목록을 다시 받는다 */
+    groupVersion: 0,
     /** 서버가 서빙 중인 클라이언트 빌드와 내 번들이 다르면 true → "새 버전" 배너 */
     outdated: false,
     serverVersion: '' as string,
@@ -54,6 +57,7 @@ export const useRealtimeStore = defineStore('realtime', {
         this.checkVersion()
         // 1) 최근 기록으로 피드를 채운다 (팝업 없음). 새로고침·재로그인 후에도 지난 알림이 보이도록
         await this.loadRecent()
+        void useTeamsStore().load()
         // 2) 마지막으로 본 id 이후 것만 replay → 놓친 공지는 팝업
         this.replaying = true
         this.pendingToasts = []
@@ -126,6 +130,7 @@ export const useRealtimeStore = defineStore('realtime', {
           const before = typeof ev.payload.before === 'number' ? ev.payload.before : Infinity
           this.events = this.events.filter((e) => !(types.includes(e.type) && e.id < before))
         }
+        if (ev.type === 'system') this.onSystem(ev)
         this.events.push(ev)
         if (this.events.length > 200) this.events.splice(0, this.events.length - 200)
       }
@@ -141,13 +146,26 @@ export const useRealtimeStore = defineStore('realtime', {
       const uid = useAuthStore().user?.id
       if (uid) saveLastId(uid, ev.id)
     },
+    /** 처음 받는 system 이벤트의 부수효과: 팀 목록 갱신, 팀원 구성 변경, 내 팀 이동 */
+    onSystem(ev: GameEvent) {
+      const kind = ev.payload.kind
+      if (kind === 'teams.updated') void useTeamsStore().load()
+      if (kind === 'member.moved' || kind === 'members.active') {
+        this.groupVersion++
+        // 내가 이동한 경우: 토큰은 그대로 두고 /api/me 로 팀 정보만 다시 받는다 (재로그인 불필요)
+        if (kind === 'member.moved' && ev.payload.userId === useAuthStore().user?.id) void useAuthStore().refreshMe()
+      }
+    },
     /**
      * 플로팅 팝업을 띄울지. 서버가 본인 수신분만 보내므로 범위는 따로 거르지 않는다.
-     * - 공지(notice)만. 룰 갱신은 배너가 있고, 시스템 메시지는 피드로 충분
-     * - 본인이 만든 이벤트(진행자가 직접 보낸 공지)는 제외
+     * - 공지(notice), 그리고 팀 이동·탈락/복귀 시스템 알림. 룰 갱신은 배너가 있고, 그 외 시스템 메시지는 피드로 충분
+     * - 본인이 만든 이벤트(진행자가 직접 보낸 공지·처리)는 제외
      */
     shouldToast(ev: GameEvent): boolean {
-      if (ev.type !== 'notice') return false
+      const popup =
+        ev.type === 'notice' ||
+        (ev.type === 'system' && (ev.payload.kind === 'member.moved' || ev.payload.kind === 'members.active'))
+      if (!popup) return false
       const me = useAuthStore().user?.id
       return ev.createdBy == null || ev.createdBy !== me
     },
@@ -160,6 +178,7 @@ export const useRealtimeStore = defineStore('realtime', {
       this.pendingToasts = []
       useToastStore().clear()
       useDocumentsStore().clear()
+      useTeamsStore().clear()
     },
   },
 })

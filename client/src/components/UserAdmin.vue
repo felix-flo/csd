@@ -1,13 +1,15 @@
 <script setup lang="ts">
 /**
- * 계정 관리: 이름 수정, PIN 열람/리셋, 활성/비활성.
+ * 계정 관리: 이름 수정, PIN 열람/리셋, 탈락(비활성)/복귀, 팀 이동.
+ * - 참가자 삭제는 없다. 게임에서 빠지면 "탈락 처리" → 로그인 차단 + 세션 종료 + 팀 재화·알림 수신 불가.
+ * - 팀 이동은 재로그인 없이 즉시 반영되고, 이전 팀·새 팀 팀원에게 알림이 간다.
  * - PIN 리셋은 본인과 프레젠테이션 계정 제외. 리셋하면 해당 유저의 세션이 즉시 끊긴다.
- * - 활성/비활성은 member 만. admin/presenter 는 항상 활성.
  */
 import { computed, ref } from 'vue'
 import type { AdminUser, GroupInfo } from '../../../shared/types'
 import { api } from '../lib/api'
 import { useAuthStore } from '../stores/auth'
+import TeamMark from './TeamMark.vue'
 
 const props = defineProps<{ users: AdminUser[]; groups: GroupInfo[] }>()
 const emit = defineEmits<{ updated: [users: AdminUser[]] }>()
@@ -21,13 +23,12 @@ const showPins = ref(false)
 
 const members = computed(() => props.users.filter((u) => u.role === 'member'))
 const staff = computed(() => props.users.filter((u) => u.role !== 'member'))
-const groups = computed(() => {
-  const m = new Map<string, AdminUser[]>(props.groups.map((g) => [g.name, []]))
-  for (const u of members.value) {
-    const key = u.groupName ?? '(그룹 없음)'
-    m.set(key, [...(m.get(key) ?? []), u])
-  }
-  return [...m.entries()]
+/** 팀 순서대로 [팀, 소속 참가자]. 팀 없는 참가자는 맨 뒤 */
+const byTeam = computed(() => {
+  const entries: [GroupInfo | null, AdminUser[]][] = props.groups.map((g) => [g, members.value.filter((u) => u.groupId === g.id)])
+  const orphans = members.value.filter((u) => u.groupId == null || !props.groups.some((g) => g.id === u.groupId))
+  if (orphans.length) entries.push([null, orphans])
+  return entries
 })
 
 async function run(label: string, fn: () => Promise<{ users: AdminUser[] } & Record<string, unknown>>) {
@@ -45,11 +46,17 @@ async function run(label: string, fn: () => Promise<{ users: AdminUser[] } & Rec
   }
 }
 
-function setActive(ids: number[], active: boolean) {
+function setActive(ids: number[], active: boolean, label?: string) {
   if (ids.length === 0) return
-  return run(`${active ? '활성화' : '비활성화'}됨`, () =>
-    api.post('/api/admin/users/active', { ids, active }),
-  )
+  if (!active && ids.length > 1 && !confirm(`${label ?? '선택한 참가자'} ${ids.length}명을 탈락 처리할까요? 접속 중이면 즉시 끊깁니다.`)) return
+  return run(active ? '복귀 처리됨' : '탈락 처리됨', () => api.post('/api/admin/users/active', { ids, active }))
+}
+
+function moveTeam(u: AdminUser, e: Event) {
+  const teamId = Number((e.target as HTMLSelectElement).value)
+  const team = props.groups.find((g) => g.id === teamId)
+  if (!team || teamId === u.groupId) return
+  return run(`${u.name} → ${team.name}`, () => api.post(`/api/admin/users/${u.id}/team`, { teamId }))
 }
 
 function startEdit(u: AdminUser) {
@@ -88,19 +95,20 @@ function copyList() {
     <h2>계정 관리</h2>
     <p class="muted">
       이름을 클릭하면 수정할 수 있습니다. PIN 은 참가자에게 배부할 때만 표시하세요.
+      탈락 처리된 참가자는 로그인할 수 없고 팀 재화·알림을 받지 못합니다. 팀을 바꾸면 재로그인 없이 바로 반영됩니다.
     </p>
 
     <div class="row" style="margin-bottom: 12px">
       <button class="secondary" @click="showPins = !showPins">{{ showPins ? 'PIN 숨기기' : 'PIN 보기' }}</button>
       <button class="secondary" @click="copyList">이름/PIN 목록 복사</button>
-      <button :disabled="busy" class="secondary" @click="setActive(members.map((u) => u.id), true)">그룹원 전체 활성화</button>
-      <button :disabled="busy" class="secondary" @click="setActive(members.map((u) => u.id), false)">그룹원 전체 비활성화</button>
+      <button :disabled="busy" class="secondary" @click="setActive(members.map((u) => u.id), true)">참가자 전체 복귀</button>
+      <button :disabled="busy" class="secondary" @click="setActive(members.map((u) => u.id), false, '참가자 전체')">참가자 전체 탈락</button>
     </div>
     <p class="muted" style="min-height: 1.2em">{{ status }}</p>
 
     <table class="users">
       <thead>
-        <tr><th>#</th><th>이름</th><th>역할</th><th>PIN</th><th>상태</th><th></th></tr>
+        <tr><th>#</th><th>이름</th><th>역할 / 팀</th><th>PIN</th><th>상태</th><th></th></tr>
       </thead>
       <tbody>
         <tr v-for="u in staff" :key="u.id">
@@ -118,12 +126,16 @@ function copyList() {
           <td><button v-if="canResetPin(u)" :disabled="busy" class="secondary small" @click="resetPin(u)">PIN 리셋</button></td>
         </tr>
       </tbody>
-      <tbody v-for="[groupName, list] in groups" :key="groupName">
+      <tbody v-for="[team, list] in byTeam" :key="team?.id ?? 'none'">
         <tr class="group-head">
-          <td colspan="4"><strong>{{ groupName }}</strong> <span class="muted">{{ list.length }}명</span></td>
+          <td colspan="4">
+            <TeamMark v-if="team" :color="team.color" />
+            <strong>{{ team?.name ?? '(팀 없음)' }}</strong>
+            <span class="muted">{{ list.filter((u) => u.active).length }}명 참가 중<template v-if="list.some((u) => !u.active)"> · 탈락 {{ list.filter((u) => !u.active).length }}명</template></span>
+          </td>
           <td colspan="2" class="row" style="justify-content: flex-end">
-            <button :disabled="busy" class="secondary small" @click="setActive(list.map((u) => u.id), true)">전체 활성</button>
-            <button :disabled="busy" class="secondary small" @click="setActive(list.map((u) => u.id), false)">전체 비활성</button>
+            <button :disabled="busy" class="secondary small" @click="setActive(list.map((u) => u.id), true)">전체 복귀</button>
+            <button :disabled="busy" class="secondary small" @click="setActive(list.map((u) => u.id), false, team?.name)">전체 탈락</button>
           </td>
         </tr>
         <tr v-for="u in list" :key="u.id" :class="{ inactive: !u.active }">
@@ -139,13 +151,18 @@ function copyList() {
               <span v-if="!u.nameSet" class="badge warn">이름 미입력</span>
             </template>
           </td>
-          <td>{{ u.role }}</td>
+          <td>
+            <select :value="u.groupId ?? ''" :disabled="busy" class="team-select" title="팀 이동" @change="moveTeam(u, $event)">
+              <option v-if="u.groupId == null" value="" disabled>팀 없음</option>
+              <option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}</option>
+            </select>
+          </td>
           <td class="pin">{{ showPins ? u.pin : '••••' }}</td>
-          <td><span class="badge" :class="u.active ? 'on' : 'off'">{{ u.active ? '활성' : '비활성' }}</span></td>
+          <td><span class="badge" :class="u.active ? 'on' : 'off'">{{ u.active ? '참가 중' : '탈락' }}</span></td>
           <td class="row">
             <button :disabled="busy" class="secondary small" @click="resetPin(u)">PIN 리셋</button>
-            <button :disabled="busy" class="secondary small" @click="setActive([u.id], !u.active)">
-              {{ u.active ? '비활성화' : '활성화' }}
+            <button :disabled="busy" class="secondary small" :class="{ danger: u.active }" @click="setActive([u.id], !u.active)">
+              {{ u.active ? '탈락 처리' : '복귀' }}
             </button>
           </td>
         </tr>
@@ -162,5 +179,7 @@ function copyList() {
 .users tr.inactive td { opacity: 0.55; }
 .users a { color: inherit; text-decoration: underline dotted; }
 .pin { font-family: var(--font-mono); letter-spacing: 0.15em; }
+.team-select { padding: 3px 6px; font-size: 0.85rem; }
 button.small { padding: 4px 10px; font-size: 0.85rem; }
+button.small.danger { background: var(--surface); color: var(--red); border-color: var(--line); }
 </style>

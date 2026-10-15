@@ -45,14 +45,15 @@ export function isUserActive(id: number): boolean {
 }
 
 export function findGroupById(id: number): GroupInfo | null {
-  const row = db.prepare('SELECT id, code, name FROM groups WHERE id = ?').get(id) as
+  const row = db.prepare('SELECT id, code, name, team_color AS color FROM groups WHERE id = ?').get(id) as
     | GroupInfo
     | undefined
   return row ?? null
 }
 
+/** 팀 목록. 생성 순서(id) 로 정렬해 기본 4팀(화이트/옐로우/블루/레드)이 앞에 온다 */
 export function listGroups(): GroupInfo[] {
-  return db.prepare('SELECT id, code, name FROM groups ORDER BY code').all() as GroupInfo[]
+  return db.prepare('SELECT id, code, name, team_color AS color FROM groups ORDER BY id').all() as GroupInfo[]
 }
 
 export function listGroupMembers(groupId: number): PublicUser[] {
@@ -68,17 +69,21 @@ export function listGroupMembers(groupId: number): PublicUser[] {
 export function listAllUsers(): AdminUser[] {
   const rows = db
     .prepare(
-      `SELECT u.${selectCols.split(', ').join(', u.')}, u.pin, g.code AS group_code, g.name AS group_name
+      `SELECT u.${selectCols.split(', ').join(', u.')}, u.pin,
+              g.code AS group_code, g.name AS group_name, g.team_color AS group_color
        FROM users u LEFT JOIN groups g ON g.id = u.group_id
-       ORDER BY CASE u.role WHEN 'admin' THEN 0 WHEN 'presenter' THEN 1 ELSE 2 END, g.code, u.is_leader DESC, u.id`,
+       ORDER BY CASE u.role WHEN 'admin' THEN 0 WHEN 'presenter' THEN 1 ELSE 2 END, g.id, u.is_leader DESC, u.id`,
     )
-    .all() as (UserRow & { pin: string | null; group_code: string | null; group_name: string | null })[]
+    .all() as (UserRow & {
+      pin: string | null; group_code: string | null; group_name: string | null; group_color: string | null
+    })[]
   return rows.map((r) => ({
     ...toPublic(r),
     active: r.active === 1,
     pin: r.pin,
     groupCode: r.group_code,
     groupName: r.group_name,
+    groupColor: r.group_color,
   }))
 }
 

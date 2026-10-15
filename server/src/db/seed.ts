@@ -6,6 +6,7 @@
  */
 import { db, runMigrations } from './index.js'
 import { hashPin } from '../auth/tokens.js'
+import { DEFAULT_TEAMS } from '../../../shared/teams.js'
 
 export interface SeedUser {
   name: string
@@ -15,24 +16,20 @@ export interface SeedUser {
   leader?: boolean
 }
 
-export const DEV_GROUPS = [
-  { code: 'a', name: 'A 그룹' },
-  { code: 'b', name: 'B 그룹' },
-  { code: 'c', name: 'C 그룹' },
-  { code: 'd', name: 'D 그룹' },
-]
+/** 기본 4팀 (shared/teams.ts). 시드 PIN 접두어는 팀 코드 첫 글자: W / Y / B / R */
+export const DEV_GROUPS = DEFAULT_TEAMS
 
 export const DEV_USERS: SeedUser[] = [
   { name: '관리자', role: 'admin', pin: 'ADMN' },
   { name: '프레젠테이션', role: 'presenter', pin: 'SHOW' },
   ...DEV_GROUPS.flatMap(({ code, name }) => [
-    { name: `${name} 리더`, role: 'member' as const, pin: `${code.toUpperCase()}LDR`, group: code, leader: true },
-    { name: `${name} 테스트유저`, role: 'member' as const, pin: `${code.toUpperCase()}MEM`, group: code },
+    { name: `${name} 리더`, role: 'member' as const, pin: `${code[0]!.toUpperCase()}LDR`, group: code, leader: true },
+    { name: `${name} 테스트유저`, role: 'member' as const, pin: `${code[0]!.toUpperCase()}MEM`, group: code },
   ]),
 ]
 
 export function seed() {
-  const upsertGroup = db.prepare('INSERT OR IGNORE INTO groups (code, name) VALUES (?, ?)')
+  const upsertGroup = db.prepare('INSERT OR IGNORE INTO groups (code, name, team_color) VALUES (?, ?, ?)')
   const findGroup = db.prepare('SELECT id FROM groups WHERE code = ?')
   const userExists = db.prepare('SELECT 1 FROM users WHERE pin_hash = ?')
   const insertUser = db.prepare(
@@ -43,7 +40,7 @@ export function seed() {
 
   let created = 0
   db.transaction(() => {
-    for (const g of DEV_GROUPS) upsertGroup.run(g.code, g.name)
+    for (const g of DEV_GROUPS) upsertGroup.run(g.code, g.name, g.color)
     for (const u of DEV_USERS) {
       const pinHash = hashPin(u.pin)
       // 시드 참가자는 name_set=0 으로 두어 첫 로그인 이름 입력 흐름을 테스트할 수 있게 한다

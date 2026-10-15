@@ -19,12 +19,15 @@ export interface AdminUser extends PublicUser {
   pin: string | null
   groupCode: string | null
   groupName: string | null
+  groupColor: string | null
 }
 
 export interface GroupInfo {
   id: number
   code: string
   name: string
+  /** 팀 색 '#rrggbb' (groups.team_color). 이름 앞 색 점에 쓴다 */
+  color: string
 }
 
 export interface LoginResponse {
@@ -57,6 +60,15 @@ export type EventScope = 'all' | 'role' | 'group' | 'user'
 
 /** 이벤트 종류. 룰 확정 후 거래/전쟁 요청 등을 추가한다. */
 export type EventType = 'notice' | 'system' | 'document.updated'
+
+/**
+ * system 이벤트의 payload.kind.
+ * - events.cleared   : 공지 기록 초기화 (scope=all)
+ * - teams.updated    : 팀 추가/수정/삭제 → 클라이언트는 팀 목록 재조회 (scope=all)
+ * - member.moved     : 참가자 팀 이동. 이전 팀과 새 팀에 각각 scope=group 으로 1건씩 (이동한 본인은 새 팀 것만 받는다)
+ * - members.active   : 탈락(비활성)/복귀 처리. 영향 받은 팀마다 scope=group 1건
+ */
+export type SystemKind = 'events.cleared' | 'teams.updated' | 'member.moved' | 'members.active'
 
 export interface GameEvent {
   id: number

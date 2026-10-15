@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRealtimeStore } from '../stores/realtime'
+import { useTeamsStore } from '../stores/teams'
 import { eventMessage, scopeLabel } from '../lib/eventLabel'
 
 const rt = useRealtimeStore()
+const teams = useTeamsStore()
 const items = computed(() => [...rt.events].reverse())
 const busy = ref(false)
 const status = ref('')
@@ -31,7 +33,7 @@ async function reload() {
     <p v-if="items.length === 0" class="muted">받은 알림이 없습니다.</p>
     <ul v-else class="feed">
       <li v-for="ev in items" :key="ev.id">
-        <span class="badge" :class="ev.scope">{{ scopeLabel(ev) }}</span>
+        <span class="badge" :class="ev.scope" :style="ev.scope === 'group' ? { '--team': teams.colorOf(ev.targetId) } : undefined">{{ scopeLabel(ev) }}</span>
         <span class="muted"> #{{ ev.id }} · {{ ev.type }} · {{ ev.createdAt }}</span>
         <div>{{ eventMessage(ev) }}</div>
       </li>
@@ -41,5 +43,5 @@ async function reload() {
 
 <style scoped>
 button.small { padding: 4px 10px; font-size: 0.85rem; }
-/* 범위 뱃지의 색 점은 style.css .badge.group / .badge.user 에서 정의 */
+/* 범위 뱃지의 색 점은 style.css .badge.group / .badge.user 에서 정의. 팀 범위는 --team 으로 팀 색을 넣는다 */
 </style>
