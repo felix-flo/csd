@@ -177,7 +177,8 @@ a { color: var(--blue); }
 }
 .res .res-emoji { font-size: 1.2em; line-height: 1; font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; }
 .res.gem { --res-bg: var(--res-gem-bg); --res-fg: var(--res-gem-fg); }
-.res.gem .res-emoji { filter: grayscale(1) brightness(1.15); }
+/* 💎 는 모든 플랫폼에서 파란색 → 흑백 + 밝기로 흰 보석처럼 */
+.res.gem .res-emoji { filter: grayscale(1) brightness(1.45) contrast(0.85); }
 .res.gold { --res-bg: var(--res-gold-bg); --res-fg: var(--res-gold-fg); }
 .res.life { --res-bg: var(--res-life-bg); --res-fg: var(--res-life-fg); }
 .res.credit { --res-bg: var(--res-credit-bg); --res-fg: var(--res-credit-fg); }
