@@ -1,6 +1,6 @@
 # CSD
 
-"커뮤니티2: 보이지 않는 손" 모티브 오프라인 게임 진행 시스템 (Vue 3 + Express 5 + SQLite + Socket.IO).
+오프라인 게임 진행 시스템 (Vue 3 + Express 5 + SQLite + Socket.IO).
 
 - 설계/배포 문서: [docs/90.개발환경초안.md](docs/90.개발환경초안.md)
 - 로컬 개발: `npm install && npm run dev` → http://localhost:5173
