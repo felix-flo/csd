@@ -1,8 +1,10 @@
 /*
- * CSD 테마. "더 커뮤니티" 공식 사이트 톤(종이색 배경 + 블랙/블루/레드, 직각, 1px 실선)을 따른다.
+ * CSD 테마. Vercel Geist 톤: 거의 흰 배경 + 거의 검정 글자, 구조는 1px 헤어라인, 색은 상태 표시에만 작게.
  * - 제목: Cafe24 PRO Slim (public/fonts, 눈누 배포본. 상업 이용·재배포 허용)
  * - 라벨/숫자: IBM Plex Mono (Google Fonts)
  * - 본문: 시스템 한글 폰트
+ * - 포인트 색은 파랑(--blue) 하나. 빨강은 오류·끊김·위험 행동에만, 호박색은 주의 뱃지에만.
+ * - 주요 버튼은 검정, 보조 버튼은 흰 바탕 + 헤어라인. 그림자는 토스트에만.
  * 밝은 테마 고정 (다크 모드 미사용).
  */
 @font-face {
@@ -15,22 +17,38 @@
 
 :root {
   color-scheme: light;
-  --paper: #f0eee7;
-  --black: #080808;
-  --blue: #1646f5;
-  --red: #ef321f;
-  --yellow: #f2c230;
+  /* 면 */
+  --bg: #fafafa;          /* 캔버스 */
+  --surface: #ffffff;     /* 카드·입력·팝업 */
+  --bg-soft: #f2f2f2;     /* 표 머리글·코드 */
+  /* 글자 */
+  --ink: #171717;
+  --muted: #666666;
+  /* 선: 구분선/카드(옅음) < 입력·보조 버튼(기본) < 호버(진함) */
+  --line-soft: #ebebeb;
+  --line: #e0e0e0;
+  --line-strong: #b5b5b5;
+  /* 포인트 */
+  --blue: #006bff;
+  --blue-bg: #f0f7ff;
+  --red: #e5484d;
+  --red-bg: #fff0f0;
+  --amber: #a35200;
+  --amber-bg: #fff6e0;
   --white: #ffffff;
-  --muted: #6b6b66;
-  --line: #080808;
-  --line-soft: #cfcdc5;
-  --card: #f7f6f1;
+  --radius: 6px;
 
-  /* 재화 색상 (순서: 보석=화이트, 골드=옐로우, 라이프=블루, 크레딧=레드) */
-  --res-gem-bg: #ffffff;   --res-gem-fg: #080808;
-  --res-gold-bg: #fbe7a1;  --res-gold-fg: #6a4b00;
-  --res-life-bg: #d9e1ff;  --res-life-fg: #1646f5;
-  --res-credit-bg: #fcd8d3; --res-credit-fg: #c0210f;
+  /* 이전 이름 호환 (컴포넌트 scoped 스타일에서 사용) */
+  --paper: var(--bg);
+  --black: var(--ink);
+  --card: var(--surface);
+  --yellow: var(--amber);
+
+  /* 재화: 색은 이모지가 담당하고 칩은 흰 바탕 + 헤어라인. 숫자 색만 재화별로 살짝 */
+  --res-gem-fg: #171717;
+  --res-gold-fg: #8a5a00;
+  --res-life-fg: #006bff;
+  --res-credit-fg: #c52b30;
 
   --font-display: 'Cafe24ProSlim', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -43,16 +61,16 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; }
-body { background: var(--paper); color: var(--black); word-break: keep-all; line-height: 1.5; }
-::selection { background: var(--red); color: #fff; }
+body { background: var(--bg); color: var(--ink); word-break: keep-all; line-height: 1.5; }
+::selection { background: var(--blue-bg); color: var(--ink); }
 #app { min-height: 100vh; }
 
 .page { max-width: 720px; margin: 0 auto; padding: 16px; }
 
 .card {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 0;
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
   padding: 18px 16px;
   margin-bottom: 14px;
 }
@@ -86,39 +104,44 @@ h2 .muted { font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.
 }
 .error { color: var(--red); }
 
-/* 컨트롤 */
+/* 컨트롤: 주요 = 검정, 보조 = 흰 바탕 + 선, 위험 = 빨강 */
 button {
   cursor: pointer;
-  border: 1px solid var(--black);
-  background: var(--blue);
+  border: 1px solid var(--ink);
+  background: var(--ink);
   color: #fff;
-  border-color: var(--blue);
-  border-radius: 0;
-  padding: 9px 16px;
+  border-radius: var(--radius);
+  padding: 8px 14px;
   font-family: var(--font-body);
-  font-size: 0.95rem;
-  font-weight: 700;
+  font-size: 0.92rem;
+  font-weight: 500;
   line-height: 1.2;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
-button:hover { background: #0f36c7; border-color: #0f36c7; }
-button.secondary { background: transparent; color: var(--black); border-color: var(--black); }
-button.secondary:hover { background: var(--black); color: var(--paper); }
-button.danger { background: var(--red); border-color: var(--red); }
+button:hover { background: #383838; border-color: #383838; }
+button.secondary { background: var(--surface); color: var(--ink); border-color: var(--line); }
+button.secondary:hover { background: var(--bg-soft); border-color: var(--line-strong); }
+button.danger { background: var(--red); border-color: var(--red); color: #fff; }
+button.danger:hover { background: #c93a3f; border-color: #c93a3f; }
 button:disabled { opacity: 0.4; cursor: default; }
-button:disabled:hover { background: var(--blue); border-color: var(--blue); }
-button.secondary:disabled:hover { background: transparent; color: var(--black); }
+button:disabled:hover { background: var(--ink); border-color: var(--ink); }
+button.secondary:disabled:hover { background: var(--surface); color: var(--ink); border-color: var(--line); }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--blue);
+}
 
 input, select, textarea {
   font-family: var(--font-body);
   font-size: 1rem;
-  padding: 9px 10px;
-  border: 1px solid var(--black);
-  border-radius: 0;
-  background: #fff;
-  color: var(--black);
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
 }
-input:focus, select:focus, textarea:focus { outline: 2px solid var(--blue); outline-offset: -1px; }
+input:hover, select:hover, textarea:hover { border-color: var(--line-strong); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(0, 107, 255, 0.18); }
 input[type='number'] { font-family: var(--font-mono); }
 a { color: var(--blue); }
 
@@ -131,27 +154,44 @@ a { color: var(--blue); }
   flex-wrap: wrap;
   padding-bottom: 10px;
   margin-bottom: 14px;
-  border-bottom: 1px solid var(--black);
+  border-bottom: 1px solid var(--line-soft);
 }
 .topbar h1 { margin: 0; }
 .topbar .muted { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.06em; }
 
-/* 뱃지 */
+/* 뱃지: 흰 바탕 + 헤어라인, 상태는 작은 색 점으로 */
 .badge {
-  display: inline-block;
-  padding: 2px 7px;
-  border: 1px solid var(--black);
-  border-radius: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
   font-family: var(--font-mono);
   font-size: 0.7rem;
-  letter-spacing: 0.08em;
-  line-height: 1.4;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
   vertical-align: middle;
 }
-.badge.on { background: var(--blue); color: #fff; border-color: var(--blue); }
-.badge.off { background: var(--red); color: #fff; border-color: var(--red); }
+.badge.on::before, .badge.off::before, .badge.warn::before,
+.badge.group::before, .badge.user::before, .badge.role::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--muted);
+}
+.badge.on::before { background: var(--blue); }
+.badge.off { color: var(--red); border-color: #f5c2c4; background: var(--red-bg); }
+.badge.off::before { background: var(--red); }
+.badge.warn { color: var(--amber); border-color: #f0d9a8; background: var(--amber-bg); }
+.badge.warn::before { background: var(--amber); }
+.badge.group::before { background: var(--blue); }
+.badge.user::before { background: var(--ink); }
 .badge + .badge, a + .badge { margin-left: 5px; }
-.badge.warn { background: var(--yellow); color: var(--black); border-color: var(--yellow); }
 
 /* 알림 피드 */
 .feed { list-style: none; padding: 0; margin: 0; }
@@ -161,26 +201,27 @@ a { color: var(--blue); }
 
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
-/* 재화 칩: 이모지 + 수량. 색은 재화별 토큰으로 고정해 기기별 이모지 색 차이를 보정한다 */
+/* 재화 칩: 이모지 + 수량. 칩은 흰 바탕 + 헤어라인, 색은 이모지와 숫자만 */
 .res {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 4px 10px 4px 6px;
   border: 1px solid var(--line);
-  background: var(--res-bg, #fff);
-  color: var(--res-fg, var(--black));
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--res-fg, var(--ink));
   font-family: var(--font-mono);
   font-weight: 600;
   font-size: 0.95rem;
   line-height: 1;
 }
 .res .res-emoji { font-size: 1.2em; line-height: 1; font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; }
-.res.gem { --res-bg: var(--res-gem-bg); --res-fg: var(--res-gem-fg); }
+.res.gem { --res-fg: var(--res-gem-fg); }
 /* 💎 는 모든 플랫폼에서 파란색 → 흑백 + 밝기로 흰 보석처럼 */
 .res.gem .res-emoji { filter: grayscale(1) brightness(1.45) contrast(0.85); }
-.res.gold { --res-bg: var(--res-gold-bg); --res-fg: var(--res-gold-fg); }
-.res.life { --res-bg: var(--res-life-bg); --res-fg: var(--res-life-fg); }
-.res.credit { --res-bg: var(--res-credit-bg); --res-fg: var(--res-credit-fg); }
+.res.gold { --res-fg: var(--res-gold-fg); }
+.res.life { --res-fg: var(--res-life-fg); }
+.res.credit { --res-fg: var(--res-credit-fg); }
 .res.lg { font-size: 1.5rem; padding: 8px 16px 8px 10px; gap: 10px; }
-.res .res-label { font-family: var(--font-body); font-weight: 500; font-size: 0.85em; opacity: 0.85; }
+.res .res-label { font-family: var(--font-body); font-weight: 500; font-size: 0.85em; color: var(--muted); }

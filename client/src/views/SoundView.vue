@@ -97,7 +97,7 @@ function testToast() {
   border-top: 1px solid var(--line-soft);
   flex-wrap: wrap;
 }
-.chimes li.selected { background: rgba(22, 70, 245, 0.06); margin: 0 -12px; padding-left: 12px; padding-right: 12px; }
+.chimes li.selected { background: var(--blue-bg); margin: 0 -12px; padding-left: 12px; padding-right: 12px; }
 .info { flex: 1 1 260px; }
 .info strong { margin-right: 6px; }
 </style>

@@ -45,27 +45,29 @@ const large = computed(() => auth.user?.role === 'presenter')
   pointer-events: auto;
   position: relative;
   overflow: hidden;
-  background: var(--black);
-  color: var(--paper);
-  border-left: 6px solid var(--red);
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--blue);
+  border-radius: var(--radius);
   padding: 10px 12px 12px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
 }
 .toast-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; }
-.toast .label { color: #cfcdc5; }
+.toast .label { color: var(--muted); font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.04em; }
 .toast-body { font-size: 1.05rem; line-height: 1.4; word-break: keep-all; overflow-wrap: anywhere; }
 .large .toast-body { font-size: 1.8rem; }
 .large .label { font-size: 0.9rem; }
 .close {
   background: transparent;
-  border: 1px solid #555;
-  color: var(--paper);
+  border: 1px solid var(--line);
+  color: var(--muted);
   padding: 2px 8px;
   font-size: 0.85rem;
   line-height: 1.2;
 }
-.close:hover { background: var(--paper); color: var(--black); border-color: var(--paper); }
-.bar { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--red); transition: width 0.1s linear; }
+.close:hover { background: var(--bg-soft); color: var(--ink); border-color: var(--line-strong); }
+.bar { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--blue); transition: width 0.1s linear; }
 .toast-enter-from, .toast-leave-to { opacity: 0; transform: translateY(-8px); }
 .toast-enter-active, .toast-leave-active { transition: opacity 0.2s, transform 0.2s; }
 </style>

@@ -22,9 +22,7 @@ function open(slug: string) {
 </template>
 
 <style scoped>
-.banner { background: var(--black); color: var(--paper); border-left: 6px solid var(--red); padding: 10px 12px; margin-bottom: 14px; }
-.banner strong { color: #fff; }
-.banner button { background: var(--paper); color: var(--black); border-color: var(--paper); }
-.banner button.secondary { background: transparent; color: var(--paper); border-color: var(--paper); }
+.banner { background: var(--surface); color: var(--ink); border: 1px solid var(--line-soft); border-left: 3px solid var(--blue); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 14px; }
+.banner strong { color: var(--ink); }
 button.small { padding: 4px 10px; font-size: 0.85rem; }
 </style>

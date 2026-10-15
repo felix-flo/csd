@@ -41,6 +41,5 @@ async function reload() {
 
 <style scoped>
 button.small { padding: 4px 10px; font-size: 0.85rem; }
-.badge.group { background: var(--blue); color: #fff; border-color: var(--blue); }
-.badge.user { background: var(--black); color: var(--paper); border-color: var(--black); }
+/* 범위 뱃지의 색 점은 style.css .badge.group / .badge.user 에서 정의 */
 </style>

@@ -29,7 +29,7 @@ onMounted(async () => {
 
 <style scoped>
 .qr { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
-.qr-box { width: min(280px, 60vw); background: #fff; padding: 8px; border: 1px solid var(--black); }
+.qr-box { width: min(280px, 60vw); background: #fff; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius); }
 .qr-box :deep(svg) { display: block; width: 100%; height: auto; }
 .qr-url { font-family: var(--font-mono); font-size: 1.3rem; font-weight: 600; letter-spacing: 0.02em; word-break: break-all; }
 </style>

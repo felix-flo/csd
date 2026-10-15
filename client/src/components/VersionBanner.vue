@@ -18,10 +18,12 @@ const rt = useRealtimeStore()
   top: 0;
   z-index: 900;
   justify-content: space-between;
-  background: var(--blue);
-  color: #fff;
+  background: var(--blue-bg);
+  color: var(--ink);
+  border-bottom: 1px solid #cfe2ff;
   padding: 8px 16px;
 }
-.version-banner button { background: #fff; color: var(--blue); border-color: #fff; }
+.version-banner button { background: var(--blue); border-color: var(--blue); color: #fff; }
+.version-banner button:hover { background: #0059ec; border-color: #0059ec; }
 button.small { padding: 4px 10px; font-size: 0.85rem; }
 </style>
