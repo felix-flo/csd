@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import TopBar from '../components/TopBar.vue'
 import EventFeed from '../components/EventFeed.vue'
 import RosterCard from '../components/RosterCard.vue'
 import UserAdmin from '../components/UserAdmin.vue'
 import RulesEditor from '../components/RulesEditor.vue'
+import TeamMark from '../components/TeamMark.vue'
 import { api } from '../lib/api'
 import type { AdminUser, GroupInfo } from '../../../shared/types'
 
@@ -23,6 +24,7 @@ function onUpdated(u: AdminUser[], g?: GroupInfo[]) {
 // 개발용: 실시간 파이프라인 확인용 공지 전송. 실제 관리자 기능(거래 승인, 재화 조정)은 룰 확정 후 구현
 const scope = ref<'all' | 'role' | 'group' | 'user'>('all')
 const targetId = ref<number | null>(null)
+const targetTeam = computed(() => groups.value.find((g) => g.id === targetId.value))
 watch(scope, () => { targetId.value = null })
 const targetRole = ref<'admin' | 'presenter' | 'member'>('member')
 const message = ref('')
@@ -64,7 +66,7 @@ async function send() {
     <UserAdmin :users="users" :groups="groups" @updated="onUpdated" />
     <div class="card">
       <h2>관리 기능</h2>
-      <p class="muted">그룹별 거래 승인 / 재화 수동 조정 등은 룰 확정 후 구현 예정.</p>
+      <p class="muted">팀별 거래 승인 / 재화 수동 조정 등은 룰 확정 후 구현 예정.</p>
     </div>
     <div class="card">
       <h2>테스트 공지 보내기 <span class="muted">(개발용)</span></h2>
@@ -72,7 +74,7 @@ async function send() {
         <select v-model="scope">
           <option value="all">전체</option>
           <option value="role">역할</option>
-          <option value="group">그룹</option>
+          <option value="group">팀</option>
           <option value="user">개인</option>
         </select>
         <select v-if="scope === 'role'" v-model="targetRole">
@@ -80,10 +82,13 @@ async function send() {
           <option value="presenter">프레젠테이션</option>
           <option value="admin">진행자</option>
         </select>
-        <select v-if="scope === 'group'" v-model="targetId" required>
-          <option :value="null" disabled>그룹 선택</option>
-          <option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}</option>
-        </select>
+        <template v-if="scope === 'group'">
+          <TeamMark v-if="targetTeam" :color="targetTeam.color" />
+          <select v-model="targetId" required>
+            <option :value="null" disabled>팀 선택</option>
+            <option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}</option>
+          </select>
+        </template>
         <select v-if="scope === 'user'" v-model="targetId" required>
           <option :value="null" disabled>참가자 선택</option>
           <option v-for="u in users" :key="u.id" :value="u.id">

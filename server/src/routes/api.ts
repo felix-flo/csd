@@ -13,25 +13,28 @@ import {
   setUsersActive,
   updateUserName,
 } from '../db/users.js'
-import { applyRoster } from '../db/roster.js'
+import { applyRoster, RosterError } from '../db/roster.js'
+import { createTeam, deleteTeam, ensureLeader, moveMember, teamNameExists, updateTeam } from '../db/teams.js'
 import { getDocument, restoreDocument, updateDocument } from '../db/documents.js'
 import { deleteEvents, insertEvent, listEventsForUser, listRecentEventsForUser } from '../db/events.js'
-import { disconnectUsers, publishEvent } from '../realtime/index.js'
+import { disconnectUsers, moveUserRooms, publishEvent } from '../realtime/index.js'
 import { revokeUserRefreshTokens } from '../auth/tokens.js'
-import type { EventType, MeResponse } from '../../../shared/types.js'
+import { HEX_COLOR, isPaletteColor } from '../../../shared/teams.js'
+import type { EventType, GroupInfo, MeResponse } from '../../../shared/types.js'
 
 export const apiRouter = Router()
 
 apiRouter.use(requireAuth)
 
 apiRouter.get('/me', (req, res) => {
-  const user = findUserById(req.auth!.sub)
-  if (!user) {
-    res.status(401).json({ error: 'unauthorized' })
-    return
-  }
+  const user = req.auth!.user
   const body: MeResponse = { user, group: user.groupId ? findGroupById(user.groupId) : null }
   res.json(body)
+})
+
+/** 팀 목록 (id, code, name, color). 모든 역할. 알림 피드·거래 화면에서 상대 팀 이름·색 표시용 */
+apiRouter.get('/teams', (_req, res) => {
+  res.json({ teams: listGroups() })
 })
 
 const nameSchema = z.object({ name: z.string().trim().min(1).max(20) })
@@ -153,20 +156,113 @@ apiRouter.post('/admin/users/active', requireRole('admin'), (req, res) => {
   }
   const { active } = parsed.data
   const byId = new Map(listAllUsers().map((u) => [u.id, u]))
-  const ids = parsed.data.ids.filter((id) => byId.get(id)?.role === 'member')
+  // 실제로 상태가 바뀌는 참가자만 (이미 같은 상태면 알림도 보내지 않는다)
+  const targets = parsed.data.ids
+    .map((id) => byId.get(id))
+    .filter((u): u is NonNullable<typeof u> => !!u && u.role === 'member' && u.active !== active)
+  const ids = targets.map((u) => u.id)
   const changed = setUsersActive(ids, active)
   if (!active) {
-    // 비활성화: 재로그인 불가 + 이미 로그인된 세션도 즉시 종료
+    // 탈락: 재로그인 불가 + 이미 로그인된 세션도 즉시 종료 → 팀 재화·알림을 받지 못한다
     revokeUserRefreshTokens(ids)
     disconnectUsers(ids)
+  }
+  // 팀별로 묶어 리더 승계 + 팀원들에게 알림 1건
+  const byTeam = new Map<number, typeof targets>()
+  for (const u of targets) {
+    if (u.groupId == null) continue
+    byTeam.set(u.groupId, [...(byTeam.get(u.groupId) ?? []), u])
+  }
+  for (const [teamId, list] of byTeam) {
+    ensureLeader(teamId)
+    const names = list.map((u) => u.name)
+    const ev = insertEvent({
+      type: 'system',
+      scope: 'group',
+      targetId: teamId,
+      payload: {
+        kind: 'members.active',
+        active,
+        userIds: list.map((u) => u.id),
+        names,
+        message: `${names.join(', ')} 님이 ${active ? '복귀했습니다' : '탈락했습니다'}`,
+      },
+      createdBy: req.auth!.sub,
+    })
+    publishEvent(ev)
   }
   res.json({ changed, users: listAllUsers() })
 })
 
+// ---- 관리자: 팀 추가 / 수정 / 삭제 ----
+const teamColor = z.string().regex(HEX_COLOR).refine(isPaletteColor, { message: 'not_in_palette' })
+const teamCreateSchema = z.object({ name: z.string().trim().min(1).max(20), color: teamColor })
+const teamPatchSchema = z.object({ name: z.string().trim().min(1).max(20).optional(), color: teamColor.optional() })
+
+function announceTeams(userId: number, action: 'created' | 'updated' | 'deleted', team: GroupInfo) {
+  const ev = insertEvent({
+    type: 'system',
+    scope: 'all',
+    payload: { kind: 'teams.updated', action, teamId: team.id, name: team.name, message: `팀 목록이 변경되었습니다 (${team.name})` },
+    createdBy: userId,
+  })
+  publishEvent(ev)
+}
+
+apiRouter.post('/admin/teams', requireRole('admin'), (req, res) => {
+  const parsed = teamCreateSchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ error: 'bad_request', issues: parsed.error.issues })
+    return
+  }
+  if (teamNameExists(parsed.data.name)) {
+    res.status(409).json({ error: 'team_name_taken' })
+    return
+  }
+  const team = createTeam(parsed.data)
+  announceTeams(req.auth!.sub, 'created', team)
+  res.status(201).json({ team, teams: listGroups(), users: listAllUsers() })
+})
+
+apiRouter.patch('/admin/teams/:id', requireRole('admin'), (req, res) => {
+  const id = Number(req.params.id)
+  const parsed = teamPatchSchema.safeParse(req.body)
+  const team = Number.isInteger(id) ? findGroupById(id) : null
+  if (!parsed.success || !team) {
+    res.status(parsed.success ? 404 : 400).json({ error: parsed.success ? 'not_found' : 'bad_request' })
+    return
+  }
+  if (parsed.data.name && teamNameExists(parsed.data.name, team.id)) {
+    res.status(409).json({ error: 'team_name_taken' })
+    return
+  }
+  updateTeam(team.id, parsed.data)
+  const updated = findGroupById(team.id)!
+  announceTeams(req.auth!.sub, 'updated', updated)
+  res.json({ team: updated, teams: listGroups(), users: listAllUsers() })
+})
+
+/** 소속 참가자(활성·비활성 포함)가 0명인 팀만 삭제할 수 있다 */
+apiRouter.delete('/admin/teams/:id', requireRole('admin'), (req, res) => {
+  const id = Number(req.params.id)
+  const team = Number.isInteger(id) ? findGroupById(id) : null
+  if (!team) {
+    res.status(404).json({ error: 'not_found' })
+    return
+  }
+  const result = deleteTeam(team.id)
+  if (result !== 'ok') {
+    res.status(result === 'not_empty' ? 409 : 404).json({ error: result === 'not_empty' ? 'team_not_empty' : 'not_found' })
+    return
+  }
+  announceTeams(req.auth!.sub, 'deleted', team)
+  res.json({ teams: listGroups(), users: listAllUsers() })
+})
+
 // ---- 관리자: 인원 구성 / 이름 / PIN ----
+// 인원은 늘리기만 한다 (참가자 삭제 없음). 현재보다 작은 값은 400 cannot_shrink
 const rosterSchema = z.object({
-  groups: z.number().int().min(1).max(26),
-  participants: z.number().int().min(0).max(200),
+  teams: z.record(z.string().regex(/^\d+$/), z.number().int().min(1).max(50)),
   staff: z.number().int().min(1).max(20),
 })
 
@@ -176,8 +272,61 @@ apiRouter.post('/admin/roster', requireRole('admin'), (req, res) => {
     res.status(400).json({ error: 'bad_request', issues: parsed.error.issues })
     return
   }
-  const result = applyRoster({ ...parsed.data, keepAdminId: req.auth!.sub })
-  res.json({ ...result, users: listAllUsers(), groups: listGroups() })
+  try {
+    const result = applyRoster(parsed.data)
+    res.json({ ...result, users: listAllUsers(), groups: listGroups() })
+  } catch (e) {
+    if (e instanceof RosterError) {
+      res.status(400).json({ error: e.code, detail: e.detail })
+      return
+    }
+    throw e
+  }
+})
+
+/**
+ * 참가자 팀 이동. 재로그인 없이 즉시 반영된다 (팀은 토큰이 아니라 DB 기준).
+ * 소켓 룸을 먼저 옮긴 뒤 이전 팀·새 팀에 알림을 1건씩 보내므로 이동한 본인은 새 팀 알림만 받는다.
+ */
+const moveSchema = z.object({ teamId: z.number().int().positive() })
+
+apiRouter.post('/admin/users/:id/team', requireRole('admin'), (req, res) => {
+  const parsed = moveSchema.safeParse(req.body)
+  const user = targetUser(req)
+  if (!parsed.success || !user) {
+    res.status(parsed.success ? 404 : 400).json({ error: parsed.success ? 'not_found' : 'bad_request' })
+    return
+  }
+  if (user.role !== 'member') {
+    res.status(403).json({ error: 'not_member' })
+    return
+  }
+  const moved = moveMember(user.id, parsed.data.teamId)
+  if (moved === 'not_found') {
+    res.status(404).json({ error: 'not_found' })
+    return
+  }
+  if (moved === 'same_team') {
+    res.json({ users: listAllUsers() })
+    return
+  }
+  const { from, to } = moved
+  moveUserRooms(user.id, from?.id ?? null, to.id)
+  const payload = {
+    kind: 'member.moved',
+    userId: user.id,
+    userName: user.name,
+    fromTeamId: from?.id ?? null,
+    fromTeamName: from?.name ?? null,
+    toTeamId: to.id,
+    toTeamName: to.name,
+    message: `${user.name} 님이 팀을 이동했습니다 (${from?.name ?? '팀 없음'} → ${to.name})`,
+  }
+  for (const teamId of [from?.id, to.id]) {
+    if (teamId == null) continue
+    publishEvent(insertEvent({ type: 'system', scope: 'group', targetId: teamId, payload, createdBy: req.auth!.sub }))
+  }
+  res.json({ users: listAllUsers() })
 })
 
 function targetUser(req: { params: Record<string, string | string[] | undefined> }) {

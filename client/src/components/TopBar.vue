@@ -4,8 +4,10 @@ import { useAuthStore } from '../stores/auth'
 import { useRealtimeStore } from '../stores/realtime'
 import { useToastStore } from '../stores/toasts'
 import DocumentBanner from './DocumentBanner.vue'
+import TeamMark from './TeamMark.vue'
 
-defineProps<{ title: string }>()
+/** color 가 있으면 제목 앞에 팀 색 점을 붙인다 (팀 화면) */
+defineProps<{ title: string; color?: string | null }>()
 const auth = useAuthStore()
 const rt = useRealtimeStore()
 const toasts = useToastStore()
@@ -20,7 +22,7 @@ async function logout() {
 <template>
   <div class="topbar">
     <div>
-      <h1 style="margin: 0">{{ title }}</h1>
+      <h1 style="margin: 0"><TeamMark v-if="color" :color="color" size="lg" />{{ title }}</h1>
       <span class="muted">{{ auth.user?.name }} ({{ auth.user?.role }})</span>
     </div>
     <div class="row">

@@ -7,7 +7,8 @@ import cookieParser from 'cookie-parser'
 import { config } from './config.js'
 import { runMigrations } from './db/index.js'
 import { seed } from './db/seed.js'
-import { rehashPins } from './db/users.js'
+import { listGroups, rehashPins } from './db/users.js'
+import { ensureLeader, ensureTeams } from './db/teams.js'
 import { pruneRefreshTokens } from './auth/tokens.js'
 import { authRouter } from './routes/auth.js'
 import { apiRouter } from './routes/api.js'
@@ -15,7 +16,9 @@ import { initRealtime } from './realtime/index.js'
 
 runMigrations()
 rehashPins() // PIN 규약(대문자) 정규화 + PIN_SECRET 변경 시 해시 복구
+ensureTeams() // 기본 4팀 생성 + 옛 그룹(e, f, …) 정리
 if (config.seedOnStart) seed()
+for (const t of listGroups()) ensureLeader(t.id) // 팀당 리더 1명 (시드·옛 데이터 정리)
 pruneRefreshTokens()
 
 const app = express()

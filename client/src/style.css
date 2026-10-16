@@ -189,9 +189,24 @@ a { color: var(--blue); }
 .badge.off::before { background: var(--red); }
 .badge.warn { color: var(--amber); border-color: #f0d9a8; background: var(--amber-bg); }
 .badge.warn::before { background: var(--amber); }
-.badge.group::before { background: var(--blue); }
+.badge.group::before { background: var(--team, var(--blue)); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25); }
 .badge.user::before { background: var(--ink); }
 .badge + .badge, a + .badge { margin-left: 5px; }
+
+/* 팀 색 점 (TeamMark.vue): 팀 이름 앞 10px 원. 밝은 색(화이트)은 테두리를 진하게 */
+.team-mark {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--team, var(--muted));
+  border: 1px solid var(--line);
+  vertical-align: middle;
+  margin-right: 6px;
+  flex: none;
+}
+.team-mark.light { border-color: var(--line-strong); }
+.team-mark.lg { width: 14px; height: 14px; margin-right: 8px; }
 
 /* 알림 피드 */
 .feed { list-style: none; padding: 0; margin: 0; }
