@@ -12,15 +12,13 @@ interface EventRow {
   created_at: string
 }
 
-const groupName = db.prepare('SELECT name FROM groups WHERE id = ?')
-const userName = db.prepare('SELECT name FROM users WHERE id = ?')
-
 /** group/user scope 대상의 현재 이름 (삭제됐으면 null) */
 function targetNameOf(r: EventRow): string | null {
   if (r.target_id == null) return null
-  const stmt = r.scope === 'group' ? groupName : r.scope === 'user' ? userName : null
-  if (!stmt) return null
-  return (stmt.get(r.target_id) as { name: string } | undefined)?.name ?? null
+  // 모듈 로드 시점에 prepare 하면 빈 DB(마이그레이션 전)에서 "no such table" 로 기동이 실패하므로 호출 시점에 준비한다
+  const table = r.scope === 'group' ? 'groups' : r.scope === 'user' ? 'users' : null
+  if (!table) return null
+  return (db.prepare(`SELECT name FROM ${table} WHERE id = ?`).get(r.target_id) as { name: string } | undefined)?.name ?? null
 }
 
 function toEvent(r: EventRow): GameEvent {
