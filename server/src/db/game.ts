@@ -22,7 +22,7 @@ import { cancelPendingIssues, clearIssues } from './issuance.js'
 import { GameError } from './gameError.js'
 import { DEFAULT_ISSUE_LIMITS, emptyResources, PHASES, rankTeams, sumResources, teamLetter } from '../../../shared/game.js'
 import type {
-  GameResults, GameSettings, GameState, GameStatus, IssueLimits, IssueRequestView, LobbyTeam, Phase, Resources, ScoreRule, TradeView,
+  GameResults, GameSettings, GameState, GameStatus, IssueLimits, IssueRequestView, LobbyTeam, Phase, Resources, RosterTeam, ScoreRule, TradeView,
 } from '../../../shared/game.js'
 import type { GroupInfo } from '../../../shared/types.js'
 
@@ -393,6 +393,29 @@ export function takeFromLifeReserve(delta: number) {
 export function markAidUsed() {
   const ok = db.prepare('UPDATE game SET aid_used = 1 WHERE id = 1 AND aid_used = 0').run().changes === 1
   if (!ok) throw new GameError('aid_used', '원조는 게임 전체에서 1회만 가능합니다')
+}
+
+/**
+ * 프레젠테이션 팀 현황: 팀별 팀원 명단 (탈락 = 비활성). 테스트 계정은 "포함" 설정일 때만.
+ * 게임 시작 전에는 실제 팀 이름을 숨기므로 라우터가 막는다
+ */
+export function getPublicRoster(): RosterTeam[] {
+  const includeTest = getGameRow().include_test === 1
+  const rows = db
+    .prepare(
+      `SELECT group_id, name, is_leader, active FROM users
+       WHERE role = 'member' AND group_id IS NOT NULL AND (is_test = 0 OR ?)
+       ORDER BY is_leader DESC, id`,
+    )
+    .all(includeTest ? 1 : 0) as { group_id: number; name: string; is_leader: number; active: number }[]
+  return listGroups().map((t) => ({
+    teamId: t.id,
+    name: t.name,
+    color: t.color,
+    members: rows
+      .filter((r) => r.group_id === t.id)
+      .map((r) => ({ name: r.name, isLeader: r.is_leader === 1 && r.active === 1, eliminated: r.active === 0 })),
+  }))
 }
 
 /** 팀별 활성 인원 */

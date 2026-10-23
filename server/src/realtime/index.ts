@@ -106,7 +106,10 @@ export function publishEvent(ev: GameEvent) {
   }
 }
 
-/** 준비 상태의 팀 선택 현황이 바뀜 (기록하지 않는 신호). 받은 화면은 게임 상태를 다시 조회한다 */
+/**
+ * 팀 구성이 바뀜 (기록하지 않는 신호): 준비 상태의 팀 선택 현황, 게임 중 리더·탈락·팀 이동·이름 변경.
+ * 받은 화면은 게임 상태를 다시 조회한다 (프레젠테이션은 팀 현황 명단도, 관리자는 계정 목록도)
+ */
 export function signalLobby() {
   io?.to(rooms.all).emit('signal', 'lobby')
 }
