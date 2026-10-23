@@ -12,6 +12,7 @@ import { isBeforeStart } from '../../../shared/game'
 
 /**
  * color 가 있으면 제목 앞에 팀 색 점을 붙인다 (팀 화면). large 는 프레젠테이션용 큰 단계 표시줄.
+ * 제목·작은 글씨는 슬롯(title, subtitle)으로 바꿀 수 있다 (프레젠테이션의 제목 공개 효과).
  * 제목 아래 작은 글씨: subtitle 을 주면 그대로(프레젠테이션), 아니면 내 이름 —
  * 참가자는 게임 시작 후 "이름 (리더)" / "이름 (팀원)", 시작 전에는 이름만. 관리자는 "이름 (admin)"
  */
@@ -39,8 +40,8 @@ async function logout() {
 <template>
   <div class="topbar">
     <div>
-      <h1 style="margin: 0"><TeamMark v-if="color" :color="color" size="lg" />{{ title }}</h1>
-      <span class="muted">{{ who }}</span>
+      <h1 style="margin: 0"><TeamMark v-if="color" :color="color" size="lg" /><slot name="title">{{ title }}</slot></h1>
+      <span class="muted"><slot name="subtitle">{{ who }}</slot></span>
     </div>
     <div class="row">
       <span v-if="rt.connected" class="badge on">실시간 연결됨</span>

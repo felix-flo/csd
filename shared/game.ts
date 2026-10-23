@@ -79,6 +79,11 @@ export interface GameState {
   results: GameResults | null
   /** 팀 선택 현황 (준비 상태에서만) */
   lobby: LobbyTeam[] | null
+  /**
+   * 게임 제목. 게임 시작 후에만 서버가 채운다 (시작 전 null → 프레젠테이션은 "스위칭데이").
+   * 화면 코드에 넣으면 JS 파일로 미리 보이므로 서버에만 둔다 (server/src/db/game.ts GAME_TITLE)
+   */
+  title: string | null
 }
 
 /** 게임 설정 (관리자). setup·ready 상태에서 수정 */

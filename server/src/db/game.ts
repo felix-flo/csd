@@ -20,11 +20,14 @@ import { cancelActiveTrade, clearTrades } from './trades.js'
 import { allLivesDone, clearLifeSubmissions } from './life.js'
 import { cancelPendingIssues, clearIssues } from './issuance.js'
 import { GameError } from './gameError.js'
-import { DEFAULT_ISSUE_LIMITS, emptyResources, PHASES, rankTeams, sumResources, teamLetter } from '../../../shared/game.js'
+import { DEFAULT_ISSUE_LIMITS, emptyResources, isBeforeStart, PHASES, rankTeams, sumResources, teamLetter } from '../../../shared/game.js'
 import type {
   GameResults, GameSettings, GameState, GameStatus, IssueLimits, IssueRequestView, LobbyTeam, Phase, Resources, RosterTeam, ScoreRule, TradeView,
 } from '../../../shared/game.js'
 import type { GroupInfo } from '../../../shared/types.js'
+
+/** 게임 제목. 시작 전에는 공개하지 않는다 (GameState.title). 클라이언트 번들에 들어가지 않게 서버에만 둔다 */
+const GAME_TITLE = '더 트래픽 커뮤니티: 보이지 않는 손'
 
 interface GameRow {
   status: GameStatus
@@ -62,6 +65,7 @@ export function getGameState(): GameState {
     initialTotals: sumResources([...initial].filter(([id]) => teamIds.has(id)).map(([, r]) => r)),
     results: g.results ? (JSON.parse(g.results) as GameResults) : null,
     lobby: g.status === 'ready' ? getLobby() : null,
+    title: isBeforeStart(g.status) ? null : GAME_TITLE,
   }
 }
 
