@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** 문서 갱신 알림 배너. 모든 화면 상단에 표시 */
+/** 문서 갱신 알림 배너. 모든 화면 상단에 표시. 팀 룰 갱신은 그 팀(+관리자)에게만 온다 */
 import { useRouter } from 'vue-router'
 import { useDocumentsStore } from '../stores/documents'
 
@@ -8,7 +8,7 @@ const router = useRouter()
 
 function open(slug: string) {
   docs.dismiss(slug)
-  // 현재 문서는 rules 하나뿐. 문서가 늘어나면 slug 별 경로로 분기
+  // 문서는 룰북(전체 룰 'rules' + 팀 룰 'team-<id>') 뿐이고 모두 /rules 에서 본다
   router.push('/rules').catch(() => {})
 }
 </script>

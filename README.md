@@ -9,6 +9,7 @@
 - 게임 진행 (일차·단계, 재화, 리더 투표, 거래, 원조, 라이프, 등수): [docs/95.게임진행_설계.md](docs/95.게임진행_설계.md)
 - 게임 준비 단계(참가자 셀프 팀 선택) · 전체 리셋: [docs/96.게임준비_리셋.md](docs/96.게임준비_리셋.md)
 - 화이트팀 보석 · 옐로우팀 골드 발행 요청: [docs/97.보석골드_발행.md](docs/97.보석골드_발행.md)
+- 룰북 (전체 룰 + 팀별 룰): [docs/98.룰북_팀별룰.md](docs/98.룰북_팀별룰.md)
 - 로컬 개발: `npm install && npm run dev` → http://localhost:5173
 - 라즈베리파이 배포: `PI_HOST=pi@<host> ./deploy.sh`
 - 개발용 PIN (대소문자 구분 없음): `ADMN`(관리자) `SHOW`(프레젠테이션) `WLDR`/`WMEM` `YLDR`/`YMEM` `BLDR`/`BMEM` `RLDR`/`RMEM`(화이트/옐로우/블루/레드 팀 리더/테스트유저)

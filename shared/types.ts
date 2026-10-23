@@ -59,6 +59,20 @@ export interface DocumentInfo {
   hasPrevious: boolean
   updatedBy: number | null
   updatedAt: string
+  /** 팀 룰이면 팀 id (전체 룰은 null). 팀 룰 제목은 팀 이름으로 자동 ("○○ 팀 룰") */
+  teamId: number | null
+}
+
+/**
+ * GET /api/rules — 역할에 맞는 룰북 (docs/98.룰북_팀별룰.md)
+ * - 참가자: 전체 룰 + 자기 팀 룰 (게임 시작 후에만, 시작 전에는 null)
+ * - 프레젠테이션: 전체 룰만
+ * - 관리자: 전체 룰 + teams (모든 팀 룰)
+ */
+export interface RulesResponse {
+  global: DocumentInfo
+  team: DocumentInfo | null
+  teams?: DocumentInfo[]
 }
 
 /** 이벤트 대상 범위: 전체 / 역할 / 그룹 / 개인 */

@@ -17,14 +17,16 @@ import { applyRoster, RosterError } from '../db/roster.js'
 import { createTeam, deleteTeam, ensureLeader, moveMember, setLeader, teamNameExists, updateTeam } from '../db/teams.js'
 import { getGameRow } from '../db/game.js'
 import { allLivesDone } from '../db/life.js'
-import { getDocument, restoreDocument, updateDocument } from '../db/documents.js'
+import {
+  GLOBAL_RULES_SLUG, getDocument, getTeamRule, listTeamRules, restoreDocument, teamRuleSlug, updateDocument,
+} from '../db/documents.js'
 import { deleteEvents, insertEvent, listEventsForUser, listRecentEventsForUser } from '../db/events.js'
 import { disconnectUsers, moveUserRooms, publishEvent, signalLobby } from '../realtime/index.js'
 import { revokeUserRefreshTokens } from '../auth/tokens.js'
 import { gameRouter } from './game.js'
 import { HEX_COLOR, isPaletteColor } from '../../../shared/teams.js'
 import { isBeforeStart, teamLetter } from '../../../shared/game.js'
-import type { EventType, GroupInfo, MeResponse } from '../../../shared/types.js'
+import type { DocumentInfo, EventType, GroupInfo, MeResponse, RulesResponse } from '../../../shared/types.js'
 
 export const apiRouter = Router()
 
@@ -432,25 +434,80 @@ const documentSchema = z.object({
   markdown: z.string().max(50_000),
 })
 
+/** 전체 공개 문서만 (팀 룰은 GET /rules 로 권한을 확인해 준다) */
 apiRouter.get('/documents/:slug', (req, res) => {
   const slug = slugSchema.safeParse(req.params.slug)
   const doc = slug.success ? getDocument(slug.data) : null
-  if (!doc) {
+  if (!doc || doc.teamId != null) {
     res.status(404).json({ error: 'not_found' })
     return
   }
   res.json({ document: doc })
 })
 
-function announceDocument(doc: { slug: string; title: string }, userId: number) {
+/**
+ * 갱신 알림: 전체 룰은 전체, 팀 룰은 그 팀(+관리자)에게만 — 다른 팀은 팀 룰이 바뀐 사실도 모른다.
+ * 게임 시작 전에는 팀원에게 팀 룰을 보여 주지 않고 팀 이름도 숨기므로(A, B …) 팀 룰 알림은 진행자에게만
+ */
+function announceDocument(doc: DocumentInfo, userId: number) {
+  const team = doc.teamId != null
+  const hidden = team && isBeforeStart(getGameRow().status)
   const ev = insertEvent({
     type: 'document.updated',
-    scope: 'all',
-    payload: { slug: doc.slug, title: doc.title, message: `"${doc.title}" 이(가) 갱신되었습니다` },
+    scope: hidden ? 'role' : team ? 'group' : 'all',
+    targetId: hidden ? null : doc.teamId,
+    targetRole: hidden ? 'admin' : null,
+    payload: { slug: doc.slug, title: doc.title, teamId: doc.teamId, message: `"${doc.title}" 이(가) 갱신되었습니다` },
     createdBy: userId,
   })
   publishEvent(ev)
 }
+
+/**
+ * 룰북 (docs/98). 참가자는 전체 룰 + 자기 팀 룰(게임 시작 후 — 시작 전에는 팀 이름을 A, B… 로 숨기므로),
+ * 프레젠테이션은 전체 룰만, 관리자는 모든 팀 룰까지. 팀은 토큰이 아니라 DB 기준
+ */
+apiRouter.get('/rules', (req, res) => {
+  const global = getDocument(GLOBAL_RULES_SLUG)!
+  const role = req.auth!.role
+  const body: RulesResponse = { global, team: null }
+  if (role === 'admin') body.teams = listTeamRules()
+  if (role === 'member') {
+    const user = findUserById(req.auth!.sub)
+    if (user?.groupId != null && !isBeforeStart(getGameRow().status)) body.team = getTeamRule(user.groupId)
+  }
+  res.json(body)
+})
+
+const teamIdParam = z.coerce.number().int().positive()
+
+apiRouter.put('/admin/rules/team/:teamId', requireRole('admin'), (req, res) => {
+  const teamId = teamIdParam.safeParse(req.params.teamId)
+  const parsed = z.object({ markdown: z.string().max(50_000) }).safeParse(req.body)
+  if (!teamId.success || !parsed.success) {
+    res.status(400).json({ error: 'bad_request' })
+    return
+  }
+  const current = getTeamRule(teamId.data)
+  const doc = current ? updateDocument(current.slug, { title: '', markdown: parsed.data.markdown }, req.auth!.sub) : null
+  if (!doc) {
+    res.status(404).json({ error: 'not_found' })
+    return
+  }
+  announceDocument(doc, req.auth!.sub)
+  res.json({ document: doc })
+})
+
+apiRouter.post('/admin/rules/team/:teamId/restore', requireRole('admin'), (req, res) => {
+  const teamId = teamIdParam.safeParse(req.params.teamId)
+  const doc = teamId.success ? restoreDocument(teamRuleSlug(teamId.data), req.auth!.sub) : null
+  if (!doc) {
+    res.status(404).json({ error: 'no_previous_version' })
+    return
+  }
+  announceDocument(doc, req.auth!.sub)
+  res.json({ document: doc })
+})
 
 apiRouter.put('/admin/documents/:slug', requireRole('admin'), (req, res) => {
   const slug = slugSchema.safeParse(req.params.slug)
@@ -459,7 +516,8 @@ apiRouter.put('/admin/documents/:slug', requireRole('admin'), (req, res) => {
     res.status(400).json({ error: 'bad_request' })
     return
   }
-  const doc = updateDocument(slug.data, parsed.data, req.auth!.sub)
+  // 팀 룰은 /admin/rules/team/:teamId 로만 (제목 자동·알림 범위가 다르다)
+  const doc = getDocument(slug.data)?.teamId == null ? updateDocument(slug.data, parsed.data, req.auth!.sub) : null
   if (!doc) {
     res.status(404).json({ error: 'not_found' })
     return
@@ -470,7 +528,7 @@ apiRouter.put('/admin/documents/:slug', requireRole('admin'), (req, res) => {
 
 apiRouter.post('/admin/documents/:slug/restore', requireRole('admin'), (req, res) => {
   const slug = slugSchema.safeParse(req.params.slug)
-  const doc = slug.success ? restoreDocument(slug.data, req.auth!.sub) : null
+  const doc = slug.success && getDocument(slug.data)?.teamId == null ? restoreDocument(slug.data, req.auth!.sub) : null
   if (!doc) {
     res.status(404).json({ error: 'no_previous_version' })
     return
