@@ -156,7 +156,7 @@ a { color: var(--blue); }
   margin-bottom: 14px;
   border-bottom: 1px solid var(--line-soft);
 }
-.topbar h1 { margin: 0; }
+.topbar h1 { margin: 0; word-break: keep-all; }
 .topbar .muted { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.06em; }
 
 /* 뱃지: 흰 바탕 + 헤어라인, 상태는 작은 색 점으로 */

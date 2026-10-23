@@ -52,6 +52,15 @@ export interface LobbyTeam {
   capacity: number
 }
 
+/** 프레젠테이션 팀 현황 (게임 시작 후). PIN·계정 id 는 담지 않는다 */
+export interface RosterTeam {
+  teamId: number
+  name: string
+  color: string
+  /** 리더 먼저, 그다음 id 순 */
+  members: { name: string; isLeader: boolean; eliminated: boolean }[]
+}
+
 /** 모든 역할에 공개되는 게임 상태 */
 export interface GameState {
   status: GameStatus

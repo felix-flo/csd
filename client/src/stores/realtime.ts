@@ -91,7 +91,7 @@ export const useRealtimeStore = defineStore('realtime', {
         }
       })
       socket.on('event', (ev) => this.push(ev))
-      // 준비 상태의 팀 선택 현황 변경 (기록 없는 신호): 게임 상태를 다시 받고, 관리자는 계정 목록도
+      // 팀 구성 변경 (기록 없는 신호): 게임 상태를 다시 받고, 관리자는 계정 목록도 (프레젠테이션 팀 현황은 게임 상태 갱신에 맞춰 다시 받음)
       socket.on('signal', (kind) => {
         if (kind !== 'lobby') return
         void useGameStore().load()

@@ -1,6 +1,7 @@
 /**
  * 게임 진행 API (docs/95.게임진행_설계.md). apiRouter 아래에 붙으므로 requireAuth 는 이미 적용돼 있다.
  * - 모든 역할: GET /game (일차·단계·초기 재화 합계·발표된 등수)
+ * - 프레젠테이션·관리자: GET /game/roster 팀 현황 (팀원 명단·탈락, 시작 후에만)
  * - 참가자  : GET /game/team, 투표, 라이프 제출(리더), 거래(리더)
  * - 관리자  : /admin/game/* 설정·초기셋팅완료·설정으로 되돌리기·시작·다음 단계·종료·등수 발표·리셋, 재화 조정, 원조, 동표 지정, 거래 강제 취소
  * - 참가자(준비 상태): POST /game/join 팀 선택. 시작 전에는 팀 게임 정보를 주지 않는다
@@ -14,7 +15,7 @@ import { findGroupById, findUserById, listGroups } from '../db/users.js'
 import { isBeforeStart } from '../../../shared/game.js'
 import { GameError } from '../db/gameError.js'
 import {
-  activeMemberCount, advance, endGame, getGameRow, getGameState, getPrep, getSettings, joinTeam, markAidUsed, prepareGame, publishResults,
+  activeMemberCount, advance, endGame, getGameRow, getGameState, getPrep, getPublicRoster, getSettings, joinTeam, markAidUsed, prepareGame, publishResults,
   requireRunning, resetGame, revertToSetup, saveSettings, startGame, takeFromLifeReserve,
 } from '../db/game.js'
 import { applyDeltas, describeDeltas, getAllResources, getTeamResources, listLedger, negate } from '../db/resources.js'
@@ -94,6 +95,8 @@ function announceElection(day: number, teamId: number, r: FinalizeResult, by: nu
   const who = r.leaderId != null ? `${userName(r.leaderId)} 님` : '없음'
   const how = r.changed ? `새 리더 ${who}` : `리더 ${who} 재신임`
   emit('game', 'group', teamId, 'election.done', `리더 선출 결과: ${how}${r.votes ? ` (${r.votes}표)` : ''}`, by, { day, leaderId: r.leaderId })
+  // 팀 알림을 받지 않는 프레젠테이션의 팀 현황(리더 표시) 갱신
+  signalLobby()
 }
 
 function announceAllLeaders(day: number, by: number) {
@@ -115,6 +118,15 @@ function announceCancelled(t: TradeView | null, reason: string, by: number) {
 
 gameRouter.get('/game', (_req, res) => {
   res.json({ state: getGameState() })
+})
+
+/** 프레젠테이션 팀 현황. 시작 전에는 실제 팀 이름을 숨기므로 거부 (준비 상태는 state.lobby 의 A, B … 로) */
+gameRouter.get('/game/roster', requireRole('presenter', 'admin'), (_req, res) => {
+  if (isBeforeStart(getGameRow().status)) {
+    res.status(409).json({ error: 'not_started' })
+    return
+  }
+  res.json({ teams: getPublicRoster() })
 })
 
 /** 내 팀 게임 정보 (재화·리더 투표·라이프 제출·거래). 팀은 토큰이 아니라 DB 기준 */
@@ -403,6 +415,7 @@ gameRouter.post('/game/life', requireRole('member'), handle(lifeSchema, (req, re
   const msg = `라이프 제출 완료: ${sub.saved.length}명 생존${dead.length ? ` · 탈락 ${dead.join(', ')}` : ''}`
   emit('game', 'group', teamId, 'life.submitted', msg, by, { day: g.day, eliminated: sub.eliminated })
   if (allLivesDone(g.day)) emit('game', 'all', null, 'life.all_done', '모든 팀의 라이프가 제출되었습니다.', by, { day: g.day })
+  signalLobby() // 프레젠테이션 팀 현황(탈락 표시)
   // 응답을 먼저 보낸 뒤 세션을 끊는다 (리더 본인이 탈락한 경우에도 결과 화면을 받을 수 있게)
   res.json({ submission: sub })
   endSessions(sub.eliminated)

@@ -385,6 +385,8 @@ apiRouter.post('/admin/users/:id/name', requireRole('admin'), (req, res) => {
     return
   }
   updateUserName(user.id, parsed.data.name)
+  // 프레젠테이션 팀 현황 명단도 갱신
+  signalLobby()
   res.json({ users: listAllUsers() })
 })
 
