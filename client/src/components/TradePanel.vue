@@ -3,6 +3,8 @@
  * 거래 (거래 활동 단계). 조작은 리더만, 팀원은 진행 상황만 본다.
  * 요청 → 상대 리더 수락 → 두 팀 중 먼저 낸 팀이 크레딧 1개 → 서로 줄 재화를 "제안" → 양쪽 다 "수락" 하면 완료.
  * 다른 팀끼리 거래 중이면 요청할 때 "다른 팀이 거래중입니다" 팝업.
+ * 제안할 재화는 −/+ 버튼 또는 숫자 직접 입력. 입력은 0 이상 정수만(숫자 외 문자는 지움), 보유량을 넘으면 보유량으로 바꾼다.
+ * 입력 중 보유량이 줄면 입력값도 낮춘다. 서버도 정수·음수·보유량 초과를 다시 검사한다.
  */
 import { computed, reactive, ref, watch } from 'vue'
 import { RESOURCE_KINDS, RESOURCE_LABELS, emptyResources, josa, type Resources, type TradeView } from '../../../shared/game'
@@ -28,8 +30,14 @@ const iAmTarget = computed(() => props.trade?.to.teamId === props.myTeamId)
 const bothProposed = computed(() => !!props.trade?.from.offer && !!props.trade?.to.offer)
 
 const draft = reactive<Resources>(emptyResources())
+/** 입력칸 아래 안내 (보유량으로 맞췄을 때) */
+const notes = reactive<Partial<Record<keyof Resources, string>>>({})
 // 내가 제안한 값이 있으면 편집기에 채운다 (다시 제안할 때 기준)
-watch(() => mySide.value?.offer, (o) => Object.assign(draft, o ?? emptyResources()), { immediate: true })
+watch(() => mySide.value?.offer, (o) => {
+  Object.assign(draft, o ?? emptyResources())
+  // 제안이 반영되면 입력 안내(보유량으로 맞춤)는 지운다
+  for (const k of RESOURCE_KINDS) delete notes[k]
+}, { immediate: true })
 const draftChanged = computed(() => !mySide.value?.offer || RESOURCE_KINDS.some((k) => draft[k] !== mySide.value!.offer![k]))
 
 function offerText(o: Resources | null): string {
@@ -60,7 +68,45 @@ async function act(path: string, body?: unknown) {
 const cancelConfirm = ref(false)
 function step(k: keyof Resources, d: number) {
   draft[k] = Math.min(props.resources[k], Math.max(0, draft[k] + d))
+  delete notes[k]
 }
+
+/** 숫자 입력: 숫자만 남기고(앞자리 0 정리), 보유량을 넘으면 보유량으로. 비우면 입력 중에는 빈칸, 칸을 벗어나면 0 */
+const texts = reactive<Record<keyof Resources, string>>({ gem: '0', gold: '0', life: '0', credit: '0' })
+watch(draft, () => {
+  for (const k of RESOURCE_KINDS) if (!(texts[k] === '' && draft[k] === 0)) texts[k] = String(draft[k])
+}, { immediate: true })
+function onInput(k: keyof Resources, e: Event) {
+  const el = e.target as HTMLInputElement
+  let digits = el.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '')
+  let n = digits === '' ? 0 : Number(digits)
+  const max = props.resources[k]
+  if (n > max) {
+    n = max
+    digits = String(max)
+    notes[k] = `보유량(${max})까지만 제안할 수 있습니다`
+  } else delete notes[k]
+  texts[k] = digits
+  el.value = digits
+  draft[k] = n
+}
+function onBlur(k: keyof Resources) {
+  if (texts[k] === '') texts[k] = '0'
+}
+/** 숫자·편집 키 외에는 막는다 (-, ., e, + 등) */
+function onKeydown(e: KeyboardEvent) {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.key.length > 1) return
+  if (!/^[0-9]$/.test(e.key)) e.preventDefault()
+}
+// 입력 중 보유량이 줄면(정정·크레딧 소모 등) 입력값을 새 보유량으로 낮춘다
+watch(() => ({ ...props.resources }), (r) => {
+  for (const k of RESOURCE_KINDS) {
+    if (draft[k] > r[k]) {
+      draft[k] = r[k]
+      notes[k] = `보유량이 줄어 ${r[k]}(으)로 맞췄습니다`
+    }
+  }
+})
 </script>
 
 <template>
@@ -122,9 +168,23 @@ function step(k: keyof Resources, d: number) {
                 <span>{{ r.emoji }} {{ r.label }} <span class="muted">/ {{ resources[r.key] }}</span></span>
                 <span class="row" style="gap: 4px">
                   <button class="secondary sq" type="button" :disabled="busy || draft[r.key] <= 0" @click="step(r.key, -1)">−</button>
-                  <span class="mono num">{{ draft[r.key] }}</span>
+                  <input
+                    class="mono num"
+                    type="text"
+                    inputmode="numeric"
+                    pattern="[0-9]*"
+                    autocomplete="off"
+                    :aria-label="`${r.label} 제안 수량 (최대 ${resources[r.key]})`"
+                    :value="texts[r.key]"
+                    :disabled="busy"
+                    @keydown="onKeydown"
+                    @input="onInput(r.key, $event)"
+                    @blur="onBlur(r.key)"
+                    @focus="($event.target as HTMLInputElement).select()"
+                  />
                   <button class="secondary sq" type="button" :disabled="busy || draft[r.key] >= resources[r.key]" @click="step(r.key, 1)">+</button>
                 </span>
+                <span v-if="notes[r.key]" class="note">{{ notes[r.key] }}</span>
               </div>
               <button style="margin-top: 8px" :disabled="busy || !draftChanged" @click="act(`/api/trade/${trade.id}/offer`, { offer: { ...draft } })">
                 {{ mySide?.offer ? '다시 제안' : '제안' }}
@@ -173,8 +233,9 @@ function step(k: keyof Resources, d: number) {
 @media (max-width: 560px) { .offers { grid-template-columns: 1fr; } }
 .offer { border: 1px solid var(--line-soft); border-radius: var(--radius); padding: 10px; }
 .offer .label { margin-bottom: 6px; }
-.stepper { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; }
+.stepper { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; padding: 4px 0; }
+.note { flex-basis: 100%; text-align: right; color: var(--amber, #b7791f); font-size: 0.8rem; }
 .sq { width: 34px; height: 34px; padding: 0; font-size: 1.1rem; }
-.num { min-width: 2em; text-align: center; font-size: 1.05rem; }
+.num { width: 3.6em; text-align: center; font-size: 1.05rem; padding: 4px 6px; }
 .big { font-size: 1.1rem; margin: 4px 0 0; }
 </style>
