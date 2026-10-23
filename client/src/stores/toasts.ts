@@ -27,8 +27,10 @@ const TICK = 100
  * 소리를 낼 이벤트인지.
  * - 전체 공지·전체 시스템 알림·전체 게임 알림(단계 전환, 모든 팀 리더 선출/라이프 제출 완료, 등수 발표): scope 'all', 또는 역할 전체('role')
  * - 그 외(팀 공지·팀 이동/탈락 알림·거래 알림, 개인 알림)는 팝업만. 전쟁 선포는 룰 확정 후 여기에 추가한다.
+ * - payload.muted (보석·골드 발행 알림)는 범위와 무관하게 팝업만.
  */
 export function shouldChime(ev: GameEvent): boolean {
+  if (ev.payload.muted) return false
   if (ev.type !== 'system' && ev.type !== 'notice' && ev.type !== 'game') return false
   return ev.scope === 'all' || ev.scope === 'role'
 }

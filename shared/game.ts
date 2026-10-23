@@ -83,6 +83,8 @@ export interface GameSettings {
   lifeReserve: number
   /** teamId → 초기 재화 */
   initial: Record<number, Resources>
+  /** 일차당 발행 한도 (보석: 이월 없음, 골드: 안 쓴 만큼 이월) */
+  issueLimit: IssueLimits
 }
 
 export type ScoreMode = 'gem' | 'gold' | 'ratio'
@@ -165,6 +167,68 @@ export interface LifeSubmissionView {
   createdAt: string
 }
 
+// ---- 보석·골드 발행 (docs/97.보석골드_발행.md) ----
+
+export type IssueKind = 'gem' | 'gold'
+export type IssueLimits = Record<IssueKind, number>
+export const DEFAULT_ISSUE_LIMITS: IssueLimits = { gem: 250, gold: 200 }
+
+/** 발행 요청을 할 수 있는 팀 (groups.code). 팀 이름·색을 바꿔도 code 는 그대로다 */
+export const ISSUE_TEAM_CODE: Record<IssueKind, string> = { gem: 'white', gold: 'yellow' }
+
+export function issueKindOfTeam(code: string | null | undefined): IssueKind | null {
+  if (code === ISSUE_TEAM_CODE.gem) return 'gem'
+  if (code === ISSUE_TEAM_CODE.gold) return 'gold'
+  return null
+}
+
+/** 요청할 수 있는 단계: 매 일차 거래 활동부터 라이프 제출까지 */
+export const ISSUE_PHASES: readonly Phase[] = ['trade', 'council', 'life']
+
+export type IssueStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
+
+export const ISSUE_STATUS_LABELS: Record<IssueStatus, string> = {
+  pending: '수락 대기',
+  approved: '수락됨',
+  rejected: '거절됨',
+  cancelled: '취소됨',
+}
+
+export interface IssueRequestView {
+  id: number
+  day: number
+  teamId: number
+  kind: IssueKind
+  amount: number
+  status: IssueStatus
+  requestedBy: number | null
+  requestedByName: string | null
+  createdAt: string
+  decidedAt: string | null
+}
+
+/**
+ * 남은 발행 가능량. used = 대기 중 + 수락된 수량.
+ * - 보석: 이번 일차 한도 − 이번 일차 사용량
+ * - 골드: 한도 × 지금까지 일차 수 − 전체 사용량 (안 쓴 만큼 다음 일차로 이월)
+ */
+export function issueRemaining(kind: IssueKind, limit: number, day: number, used: { today: number; total: number }): number {
+  const cap = kind === 'gem' ? limit - used.today : limit * day - used.total
+  return Math.max(0, cap)
+}
+
+/** 화이트·옐로우팀 화면의 발행 정보 (그 팀만) */
+export interface TeamIssueView {
+  kind: IssueKind
+  /** 지금 단계에서 요청할 수 있는지 (단계만. 리더 여부·대기 요청은 따로) */
+  phaseOpen: boolean
+  /** 이번 일차 남은 발행 가능량 (대기 중 요청도 뺀 값) */
+  remaining: number
+  pending: IssueRequestView | null
+  /** 최근 요청 (최신순) */
+  recent: IssueRequestView[]
+}
+
 /** 팀원 화면용 (자기 팀만) */
 export interface TeamGameView {
   resources: Resources
@@ -172,6 +236,8 @@ export interface TeamGameView {
   lifeSubmission: LifeSubmissionView | null
   /** 내 팀이 참여한 진행 중 거래 */
   trade: TradeView | null
+  /** 화이트(보석)·옐로우(골드)팀만 */
+  issue: TeamIssueView | null
 }
 
 /** 관리자 화면용 팀 행 */
@@ -195,7 +261,7 @@ export interface LedgerEntry {
   createdAt: string
 }
 
-export type LedgerReason = 'init' | 'production' | 'correction' | 'aid' | 'trade' | 'trade_credit' | 'life'
+export type LedgerReason = 'init' | 'production' | 'correction' | 'aid' | 'trade' | 'trade_credit' | 'life' | 'issue'
 
 export const LEDGER_REASON_LABELS: Record<LedgerReason, string> = {
   init: '초기 설정',
@@ -205,6 +271,7 @@ export const LEDGER_REASON_LABELS: Record<LedgerReason, string> = {
   trade: '거래',
   trade_credit: '거래 크레딧',
   life: '라이프 제출',
+  issue: '발행',
 }
 
 export interface AdminGameView {
@@ -223,6 +290,15 @@ export interface AdminGameView {
     unassigned: number
     /** 활성 팀원이 있는데 리더가 지정되지 않은 팀 */
     noLeader: number[]
+  }
+  /** 보석·골드 발행 */
+  issues: {
+    /** 수락 대기 (오래된 순) */
+    pending: IssueRequestView[]
+    /** 최근 처리·요청 (최신순) */
+    recent: IssueRequestView[]
+    /** 이번 일차 남은 발행 가능량 (해당 팀이 없으면 null) */
+    remaining: Record<IssueKind, number | null>
   }
 }
 

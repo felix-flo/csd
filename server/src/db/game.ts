@@ -18,9 +18,12 @@ import {
 import { allElectionsDone, clearElections, finalizeElection, openElections, type FinalizeResult } from './election.js'
 import { cancelActiveTrade, clearTrades } from './trades.js'
 import { allLivesDone, clearLifeSubmissions } from './life.js'
+import { cancelPendingIssues, clearIssues } from './issuance.js'
 import { GameError } from './gameError.js'
-import { emptyResources, PHASES, rankTeams, sumResources, teamLetter } from '../../../shared/game.js'
-import type { GameResults, GameSettings, GameState, GameStatus, LobbyTeam, Phase, Resources, ScoreRule, TradeView } from '../../../shared/game.js'
+import { DEFAULT_ISSUE_LIMITS, emptyResources, PHASES, rankTeams, sumResources, teamLetter } from '../../../shared/game.js'
+import type {
+  GameResults, GameSettings, GameState, GameStatus, IssueLimits, IssueRequestView, LobbyTeam, Phase, Resources, ScoreRule, TradeView,
+} from '../../../shared/game.js'
 import type { GroupInfo } from '../../../shared/types.js'
 
 interface GameRow {
@@ -33,6 +36,8 @@ interface GameRow {
   life_reserve: number
   aid_used: number
   results: string | null
+  gem_issue_limit: number
+  gold_issue_limit: number
 }
 
 export function getGameRow(): GameRow {
@@ -83,6 +88,7 @@ export function getSettings(): GameSettings {
     includeTest: g.include_test === 1,
     lifeReserve: g.life_reserve_initial,
     initial: Object.fromEntries(listGroups().map((t) => [t.id, initial.get(t.id) ?? emptyResources()])),
+    issueLimit: { gem: g.gem_issue_limit, gold: g.gold_issue_limit },
   }
 }
 
@@ -112,6 +118,8 @@ export function saveSettings(input: {
   includeTest: boolean
   lifeReserve: number
   initial: Record<string, Resources>
+  /** 없으면 기존 값 유지 */
+  issueLimit?: IssueLimits
 }): number[] {
   return db.transaction(() => {
     const status = getGameRow().status
@@ -133,6 +141,7 @@ export function saveSettings(input: {
     updateGame('total_days = ?, include_test = ?, life_reserve_initial = ?, life_reserve = ?', [
       input.totalDays, input.includeTest ? 1 : 0, input.lifeReserve, input.lifeReserve,
     ])
+    if (input.issueLimit) updateGame('gem_issue_limit = ?, gold_issue_limit = ?', [input.issueLimit.gem, input.issueLimit.gold])
     const ended = applyTestAccounts(input.includeTest)
     if (status === 'ready') ended.push(...syncParticipantPins().deleted)
     return ended
@@ -246,6 +255,7 @@ export function startGame(by: number): number[] {
     clearElections()
     clearTrades()
     clearLifeSubmissions()
+    clearIssues()
     resetAmountsToInitial()
     recordInitialLedger(1, by)
     updateGame(`status = 'running', day = 1, phase = 'leader', life_reserve = life_reserve_initial, aid_used = 0, results = NULL,
@@ -296,14 +306,15 @@ export function advance(expect: { day: number; phase: Phase }): AdvanceResult {
   })()
 }
 
-/** 마지막 날에만. 진행 중 거래는 취소 */
-export function endGame(): TradeView | null {
+/** 마지막 날에만. 진행 중 거래와 대기 중 발행 요청은 취소 */
+export function endGame(): { trade: TradeView | null; issues: IssueRequestView[] } {
   return db.transaction(() => {
     const g = requireRunning()
     if (g.day < (g.total_days ?? 0)) throw new GameError('not_last_day', '마지막 날에만 종료할 수 있습니다')
-    const cancelled = cancelActiveTrade()
+    const trade = cancelActiveTrade()
+    const issues = cancelPendingIssues()
     updateGame(`status = 'ended', phase = NULL, ended_at = datetime('now')`)
-    return cancelled
+    return { trade, issues }
   })()
 }
 
@@ -328,7 +339,7 @@ export function publishResults(rule: ScoreRule): GameResults {
  * - 진행 기록(재화 이력·투표·거래·라이프)과 알림(공지 포함 모든 종류)을 비운다. events id 는 AUTOINCREMENT 라 재사용되지 않아 클라이언트 replay 가 꼬이지 않는다
  * - 시드 테스트 계정을 고정 PIN 으로 다시 만든다 (팀·리더 미리 배정)
  * - 팀 정의·룰 문서는 유지. 총 일수는 비운다
- * - 설정값(최대 인원·초기 재화·매장량·테스트 계정 포함)은 기본 유지. clearSettings 면 0 (테스트 계정은 포함) 으로 비운다
+ * - 설정값(최대 인원·초기 재화·매장량·테스트 계정 포함·발행 한도)은 기본 유지. clearSettings 면 0 (테스트 계정은 포함, 발행 한도는 기본값 250/200) 으로 비운다
  */
 export interface ResetResult {
   /** 지운 계정 id (접속 중인 소켓을 끊는다) */
@@ -347,6 +358,7 @@ export function resetGame(clearSettings = false): ResetResult {
     clearTrades()
     clearElections()
     clearLifeSubmissions()
+    clearIssues()
     clearLedger()
     const events = db.prepare('DELETE FROM events').run().changes
     if (removed.length) db.prepare(`DELETE FROM users WHERE id IN (${removed.map(() => '?').join(',')})`).run(...removed)
@@ -354,7 +366,7 @@ export function resetGame(clearSettings = false): ResetResult {
     if (clearSettings) {
       db.prepare('UPDATE groups SET capacity = 0').run()
       db.prepare('UPDATE team_resources SET initial = 0').run()
-      updateGame('include_test = 1, life_reserve_initial = 0')
+      updateGame('include_test = 1, life_reserve_initial = 0, gem_issue_limit = ?, gold_issue_limit = ?', [DEFAULT_ISSUE_LIMITS.gem, DEFAULT_ISSUE_LIMITS.gold])
     }
     resetAmountsToInitial()
     updateGame(`status = 'setup', total_days = NULL, day = 0, phase = NULL, life_reserve = life_reserve_initial, aid_used = 0,

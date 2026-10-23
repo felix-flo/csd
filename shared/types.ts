@@ -83,11 +83,16 @@ export type EventType = 'notice' | 'system' | 'document.updated' | 'game' | 'tra
  * - resources.updated  : 팀 재화 변동 (scope=group)
  * - life.submitted     : 팀 라이프 제출 (scope=group)
  * - life.all_done      : 모든 팀 라이프 제출 완료 (scope=all)
+ * - issue.requested    : 보석·골드 발행 요청 (scope=role admin, 팝업 대신 관리자 화면의 요청 창)
+ * - issue.decided      : 발행 수락/거절 (보석은 화이트팀만 scope=group, 골드 수락은 scope=all 로 공개, 거절은 옐로우팀만)
+ * - issue.cancelled    : 게임 종료로 대기 요청 취소 (scope=group)
+ * 발행 알림은 payload.muted (팝업은 뜨지만 소리는 없음)
  */
 export type GameKind =
   | 'game.updated' | 'game.reset' | 'game.results'
   | 'election.progress' | 'election.done' | 'election.tie' | 'election.all_done'
   | 'resources.updated' | 'life.submitted' | 'life.all_done'
+  | 'issue.requested' | 'issue.decided' | 'issue.cancelled'
 
 /**
  * system 이벤트의 payload.kind.

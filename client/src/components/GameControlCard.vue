@@ -214,7 +214,7 @@ function publish() {
     <div v-if="resetDone" class="reset-done">
       <strong>리셋 완료</strong> · 참가자 {{ resetDone.members }}명 · 진행자 {{ resetDone.staff }}명 · 알림 {{ resetDone.events }}건 삭제, 테스트 계정은 같은 PIN 으로 다시 생성.
       <br />
-      <template v-if="resetDone.clearedSettings">게임 설정값(최대 인원·초기 재화·라이프 매장량)도 0 으로 비웠습니다.</template>
+      <template v-if="resetDone.clearedSettings">게임 설정값(최대 인원·초기 재화·라이프 매장량)도 0 으로 비웠습니다 (발행 한도는 기본값 250·200).</template>
       <template v-else>게임 설정값(최대 인원·초기 재화·라이프 매장량)은 이전 값을 남겼습니다. 아래 "게임 설정" 카드에서 수정하세요.</template>
       <button class="secondary small" type="button" @click="resetDone = null">닫기</button>
     </div>
@@ -367,7 +367,7 @@ function publish() {
     >
       <label v-if="modal === 'reset'" class="row clear-opt">
         <input v-model="clearSettings" type="checkbox" />
-        게임 설정값(팀별 최대 인원·초기 재화·라이프 매장량)도 0 으로 초기화
+        게임 설정값(팀별 최대 인원·초기 재화·라이프 매장량)도 0 으로 초기화 (발행 한도는 기본값 250·200 으로)
       </label>
     </ModalDialog>
   </div>

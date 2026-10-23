@@ -1,13 +1,13 @@
 <script setup lang="ts">
 /**
- * 게임 설정 (시작 전: 설정·준비 상태): 총 일수, 팀별 최대 인원, 테스트 계정 포함 여부, 라이프 매장량, 팀별 초기 재화.
+ * 게임 설정 (시작 전: 설정·준비 상태): 총 일수, 팀별 최대 인원, 테스트 계정 포함 여부, 라이프 매장량, 발행 한도, 팀별 초기 재화.
  * - 설정 상태: "초기셋팅완료" → 준비 상태 (최대 인원 합계만큼 팀 없는 PIN 생성, 참가자가 로그인해 팀 선택)
  * - 준비 상태: 계속 수정 가능. 최대 인원을 늘리면 PIN 이 추가되고, 줄이면 쓰지 않은 PIN 이 지워진다. 게임 시작은 "게임 진행" 카드
  * 리셋하면 총 일수만 비워지고 나머지 설정은 유지된다.
  */
 import { computed, reactive, ref, watch } from 'vue'
 import type { GroupInfo } from '../../../shared/types'
-import { RESOURCE_KINDS, emptyResources, isBeforeStart, teamLetter, type AdminGameView, type Resources } from '../../../shared/game'
+import { DEFAULT_ISSUE_LIMITS, RESOURCE_KINDS, emptyResources, isBeforeStart, teamLetter, type AdminGameView, type Resources } from '../../../shared/game'
 import { RESOURCES } from '../lib/resources'
 import { api } from '../lib/api'
 import { useGameStore } from '../stores/game'
@@ -25,6 +25,7 @@ const totalDays = ref<number | null>(null)
 const capacity = reactive<Record<number, number>>({})
 const includeTest = ref(true)
 const lifeReserve = ref(0)
+const issueLimit = reactive({ ...DEFAULT_ISSUE_LIMITS })
 const initial = reactive<Record<number, Resources>>({})
 const bulk = reactive<Resources>(emptyResources())
 const bulkCapacity = ref(5)
@@ -38,6 +39,7 @@ function resetInputs() {
   totalDays.value = s.totalDays
   includeTest.value = s.includeTest
   lifeReserve.value = s.lifeReserve
+  Object.assign(issueLimit, s.issueLimit)
   for (const g of props.groups) {
     initial[g.id] = { ...(s.initial[g.id] ?? emptyResources()) }
     capacity[g.id] = s.capacity[g.id] ?? 0
@@ -61,6 +63,8 @@ const dirty = computed(() => {
     totalDays.value !== s.totalDays ||
     includeTest.value !== s.includeTest ||
     lifeReserve.value !== s.lifeReserve ||
+    issueLimit.gem !== s.issueLimit.gem ||
+    issueLimit.gold !== s.issueLimit.gold ||
     props.groups.some((g) => (capacity[g.id] ?? 0) !== (s.capacity[g.id] ?? 0)) ||
     props.groups.some((g) => RESOURCE_KINDS.some((k) => (initial[g.id]?.[k] ?? 0) !== (s.initial[g.id]?.[k] ?? 0)))
   )
@@ -75,6 +79,7 @@ async function save(): Promise<boolean> {
       capacity: Object.fromEntries(props.groups.map((g) => [String(g.id), Math.max(0, capacity[g.id] || 0)])),
       includeTest: includeTest.value,
       lifeReserve: Math.max(0, lifeReserve.value || 0),
+      issueLimit: { gem: Math.max(0, issueLimit.gem || 0), gold: Math.max(0, issueLimit.gold || 0) },
       initial: Object.fromEntries(props.groups.map((g) => [String(g.id), initial[g.id]])),
     }
     game.setAdmin(await api.put<AdminGameView>('/api/admin/game/settings', body))
@@ -123,8 +128,13 @@ async function prepare() {
       <label>라이프 매장량 <input v-model.number="lifeReserve" type="number" min="0" style="width: 6em" /></label>
       <label class="row" style="gap: 6px"><input v-model="includeTest" type="checkbox" /> 팀별 테스트 계정(리더 1·팀원 1) 포함</label>
     </div>
+    <div class="row" style="margin-bottom: 10px">
+      <label>💎 보석 발행 한도 <input v-model.number="issueLimit.gem" type="number" min="0" style="width: 6em" /> /일차</label>
+      <label>🥇 골드 발행 한도 <input v-model.number="issueLimit.gold" type="number" min="0" style="width: 6em" /> /일차 (이월)</label>
+    </div>
     <p class="muted" style="margin-top: 0">
       라이프 매장량: 생산 활동으로 지급할 수 있는 라이프 총량. 테스트 계정은 팀·리더가 미리 정해져 있고 최대 인원에 들어가지 않습니다. 빼면 탈락(로그인 차단) 처리됩니다.
+      발행 한도: 화이트팀 리더는 보석을 일차마다 한도까지(이월 없음), 옐로우팀 리더는 골드를 일차마다 한도씩 쌓아서(안 쓴 만큼 이월) 발행 요청할 수 있습니다.
     </p>
 
     <table class="res-table">

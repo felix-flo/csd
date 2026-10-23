@@ -9,6 +9,7 @@ import TradePanel from '../components/TradePanel.vue'
 import LifeSubmit from '../components/LifeSubmit.vue'
 import ResultsBoard from '../components/ResultsBoard.vue'
 import ReadyLobby from '../components/ReadyLobby.vue'
+import IssuePanel from '../components/IssuePanel.vue'
 import { useAuthStore } from '../stores/auth'
 import { useRealtimeStore } from '../stores/realtime'
 import { useGameStore } from '../stores/game'
@@ -86,6 +87,8 @@ const phaseHint: Record<string, string> = {
     <div v-else-if="phase && phaseHint[phase]" class="card">
       <p class="muted" style="margin: 0">{{ phaseHint[phase] }}</p>
     </div>
+    <!-- 화이트팀 보석 / 옐로우팀 골드 발행 (그 팀만) -->
+    <IssuePanel v-if="s?.status === 'running' && game.team?.issue" :issue="game.team.issue" :is-leader="isLeader" />
 
     <div class="card">
       <h2>팀원</h2>

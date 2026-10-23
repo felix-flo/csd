@@ -202,6 +202,8 @@ export const useRealtimeStore = defineStore('realtime', {
         // 게임 진행·거래 알림. silent(투표 진행 상황, 설정 변경 등)는 피드에만
         ((ev.type === 'game' || ev.type === 'trade') && !ev.payload.silent)
       if (!popup) return false
+      // 발행 요청은 관리자 화면이 요청 창(IssueAdminCard)으로 띄우므로 토스트는 겹치지 않게 뺀다
+      if (ev.payload.kind === 'issue.requested' && useAuthStore().user?.role === 'admin') return false
       const me = useAuthStore().user?.id
       return ev.createdBy == null || ev.createdBy !== me
     },

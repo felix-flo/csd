@@ -4,6 +4,7 @@
  * - 참가자  : GET /game/team, 투표, 라이프 제출(리더), 거래(리더)
  * - 관리자  : /admin/game/* 설정·초기셋팅완료·설정으로 되돌리기·시작·다음 단계·종료·등수 발표·리셋, 재화 조정, 원조, 동표 지정, 거래 강제 취소
  * - 참가자(준비 상태): POST /game/join 팀 선택. 시작 전에는 팀 게임 정보를 주지 않는다
+ * - 보석·골드 발행 (docs/97): 화이트·옐로우 리더 POST /issue/request, 관리자 POST /admin/issue/:id/decide
  * 상태 변화는 events 에 기록 후 Socket.IO 로 알린다. 클라이언트는 game/trade 이벤트를 받으면 상태를 다시 조회한다.
  */
 import { Router, type Request, type Response } from 'express'
@@ -22,12 +23,13 @@ import { allLivesDone, getLifeSubmission, submitLife } from '../db/life.js'
 import {
   acceptOffer, cancelActiveTrade, cancelTrade, getActiveTrade, getActiveTradeForTeam, payCredit, proposeOffer, requestTrade, respondTrade,
 } from '../db/trades.js'
+import { decideIssue, getAdminIssues, getTeamIssue, requestIssue } from '../db/issuance.js'
 import { db } from '../db/index.js'
 import { insertEvent } from '../db/events.js'
 import { disconnectUsers, moveUserRooms, publishEvent, signalLobby } from '../realtime/index.js'
 import { revokeUserRefreshTokens } from '../auth/tokens.js'
-import { emptyResources, josa, PHASE_LABELS, PHASES, RESOURCE_KINDS } from '../../../shared/game.js'
-import type { AdminGameView, Resources, TeamGameView, TradeView } from '../../../shared/game.js'
+import { emptyResources, josa, PHASE_LABELS, PHASES, RESOURCE_KINDS, RESOURCE_LABELS } from '../../../shared/game.js'
+import type { AdminGameView, IssueRequestView, Resources, TeamGameView, TradeView } from '../../../shared/game.js'
 import type { EventScope, GameKind } from '../../../shared/types.js'
 
 export const gameRouter = Router()
@@ -134,6 +136,7 @@ gameRouter.get('/game/team', requireRole('member'), (req, res) => {
     election: running ? getElection(g.day, teamId, req.auth!.sub) : null,
     lifeSubmission: running ? getLifeSubmission(g.day, teamId) : null,
     trade: getActiveTradeForTeam(teamId),
+    issue: getTeamIssue(teamId),
   }
   res.json(body)
 })
@@ -157,6 +160,7 @@ function adminView(): AdminGameView {
     trade: getActiveTrade(),
     ledger: listLedger(50),
     prep: getPrep(),
+    issues: getAdminIssues(),
   }
 }
 
@@ -172,6 +176,7 @@ const settingsSchema = z.object({
   includeTest: z.boolean(),
   lifeReserve: amount,
   initial: z.record(z.string().regex(/^\d+$/), resourcesSchema),
+  issueLimit: z.object({ gem: amount, gold: amount }).optional(),
 })
 
 gameRouter.put('/admin/game/settings', requireRole('admin'), handle(settingsSchema, (req, res, body) => {
@@ -221,7 +226,10 @@ gameRouter.post('/admin/game/next', requireRole('admin'), handle(advanceSchema, 
 
 gameRouter.post('/admin/game/end', requireRole('admin'), handle(null, (req, res) => {
   const cancelled = endGame()
-  announceCancelled(cancelled, '게임 종료로', req.auth!.sub)
+  announceCancelled(cancelled.trade, '게임 종료로', req.auth!.sub)
+  for (const r of cancelled.issues) {
+    emit('game', 'group', r.teamId, 'issue.cancelled', `게임 종료로 ${issueText(r)} 발행 요청이 취소되었습니다`, req.auth!.sub, { issueId: r.id, muted: true })
+  }
   emit('game', 'all', null, 'game.updated', '게임이 종료되었습니다. 곧 등수가 발표됩니다', req.auth!.sub)
   res.json(adminView())
 }))
@@ -318,6 +326,32 @@ gameRouter.post('/admin/game/trade/cancel', requireRole('admin'), handle(null, (
   res.json(adminView())
 }))
 
+// ---- 보석·골드 발행 ----
+
+function issueText(r: IssueRequestView): string {
+  return `${RESOURCE_LABELS[r.kind]} ${r.amount}개`
+}
+
+/**
+ * 관리자 수락/거절. 알림은 모두 무음(muted).
+ * - 보석: 화이트팀만 (다른 팀·프레젠테이션은 모른다)
+ * - 골드: 수락하면 이번 발행 수량을 전체에 1회 공개, 거절은 옐로우팀만
+ */
+gameRouter.post('/admin/issue/:id/decide', requireRole('admin'), handle(z.object({ accept: z.boolean() }), (req, res, body) => {
+  const id = Number(req.params.id)
+  if (!Number.isInteger(id)) throw new GameError('not_found', '', 404)
+  const r = decideIssue(id, body.accept, req.auth!.sub)
+  const extra = { issueId: r.id, status: r.status, muted: true }
+  if (!body.accept) {
+    emit('game', 'group', r.teamId, 'issue.decided', `${issueText(r)} 발행 요청이 거절되었습니다`, req.auth!.sub, extra)
+  } else if (r.kind === 'gold') {
+    emit('game', 'all', null, 'issue.decided', `${josa(teamName(r.teamId), '이/가')} 골드 ${r.amount}개를 발행했습니다`, req.auth!.sub, extra)
+  } else {
+    emit('game', 'group', r.teamId, 'issue.decided', `${issueText(r)} 발행이 수락되었습니다 (보석 +${r.amount})`, req.auth!.sub, extra)
+  }
+  res.json(adminView())
+}))
+
 // ---- 참가자: 팀 선택 (준비 상태) ----
 
 gameRouter.post('/game/join', requireRole('member'), handle(z.object({ teamId: z.number().int().positive() }), (req, res, body) => {
@@ -372,6 +406,17 @@ gameRouter.post('/game/life', requireRole('member'), handle(lifeSchema, (req, re
   // 응답을 먼저 보낸 뒤 세션을 끊는다 (리더 본인이 탈락한 경우에도 결과 화면을 받을 수 있게)
   res.json({ submission: sub })
   endSessions(sub.eliminated)
+}))
+
+// ---- 참가자(리더): 보석·골드 발행 요청 ----
+
+/** 화이트(보석)·옐로우(골드) 리더. 되돌릴 수 없다. 팀 알림(관리자도 받음)은 무음, 관리자 화면은 요청 창을 띄운다 */
+gameRouter.post('/issue/request', requireRole('member'), handle(z.object({ amount: z.number().int().min(1).max(100_000) }), (req, res, body) => {
+  const teamId = requireLeader(req)
+  const by = req.auth!.sub
+  const r = requestIssue(teamId, body.amount, by)
+  emit('game', 'group', teamId, 'issue.requested', `${userName(by)} 님이 ${issueText(r)} 발행을 요청했습니다`, by, { issueId: r.id, muted: true })
+  res.json({ issue: getTeamIssue(teamId) })
 }))
 
 // ---- 참가자(리더): 거래 ----
