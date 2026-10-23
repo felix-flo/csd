@@ -148,6 +148,7 @@ function copyList() {
             <template v-else>
               <a href="#" @click.prevent="startEdit(u)">{{ u.name }}</a>
               <span v-if="u.isLeader" class="badge">리더</span>
+              <span v-if="u.isTest" class="badge role" title="시드 테스트 계정. 게임 설정에서 포함 여부를 정합니다">테스트</span>
               <span v-if="!u.nameSet" class="badge warn">이름 미입력</span>
             </template>
           </td>

@@ -69,13 +69,13 @@ export function listGroupMembers(groupId: number): PublicUser[] {
 export function listAllUsers(): AdminUser[] {
   const rows = db
     .prepare(
-      `SELECT u.${selectCols.split(', ').join(', u.')}, u.pin,
+      `SELECT u.${selectCols.split(', ').join(', u.')}, u.pin, u.is_test,
               g.code AS group_code, g.name AS group_name, g.team_color AS group_color
        FROM users u LEFT JOIN groups g ON g.id = u.group_id
        ORDER BY CASE u.role WHEN 'admin' THEN 0 WHEN 'presenter' THEN 1 ELSE 2 END, g.id, u.is_leader DESC, u.id`,
     )
     .all() as (UserRow & {
-      pin: string | null; group_code: string | null; group_name: string | null; group_color: string | null
+      pin: string | null; is_test: number; group_code: string | null; group_name: string | null; group_color: string | null
     })[]
   return rows.map((r) => ({
     ...toPublic(r),
@@ -84,6 +84,7 @@ export function listAllUsers(): AdminUser[] {
     groupCode: r.group_code,
     groupName: r.group_name,
     groupColor: r.group_color,
+    isTest: r.is_test === 1,
   }))
 }
 

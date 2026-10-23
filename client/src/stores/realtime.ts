@@ -9,6 +9,7 @@ import type { ClientToServerEvents, GameEvent, ServerToClientEvents } from '../.
 import { useAuthStore } from './auth'
 import { useDocumentsStore } from './documents'
 import { useTeamsStore } from './teams'
+import { useGameStore } from './game'
 import { useToastStore } from './toasts'
 import { api } from '../lib/api'
 
@@ -58,6 +59,7 @@ export const useRealtimeStore = defineStore('realtime', {
         // 1) 최근 기록으로 피드를 채운다 (팝업 없음). 새로고침·재로그인 후에도 지난 알림이 보이도록
         await this.loadRecent()
         void useTeamsStore().load()
+        void useGameStore().load()
         // 2) 마지막으로 본 id 이후 것만 replay → 놓친 공지는 팝업
         this.replaying = true
         this.pendingToasts = []
@@ -131,6 +133,7 @@ export const useRealtimeStore = defineStore('realtime', {
           this.events = this.events.filter((e) => !(types.includes(e.type) && e.id < before))
         }
         if (ev.type === 'system') this.onSystem(ev)
+        if (ev.type === 'game' || ev.type === 'trade') this.onGame(ev)
         this.events.push(ev)
         if (this.events.length > 200) this.events.splice(0, this.events.length - 200)
       }
@@ -157,14 +160,28 @@ export const useRealtimeStore = defineStore('realtime', {
       }
     },
     /**
+     * game/trade 이벤트: 게임 상태를 다시 받는다. 리더가 바뀌거나 팀원이 탈락하면 내 정보·팀원 목록도 갱신.
+     * replay 로 지난 이벤트가 몰려와도 game 스토어가 한 번으로 합친다.
+     */
+    onGame(ev: GameEvent) {
+      void useGameStore().load()
+      const kind = ev.payload.kind
+      if (kind === 'election.done' || kind === 'life.submitted' || kind === 'game.reset') {
+        this.groupVersion++
+        void useAuthStore().refreshMe()
+      }
+    },
+    /**
      * 플로팅 팝업을 띄울지. 서버가 본인 수신분만 보내므로 범위는 따로 거르지 않는다.
-     * - 공지(notice), 그리고 팀 이동·탈락/복귀 시스템 알림. 룰 갱신은 배너가 있고, 그 외 시스템 메시지는 피드로 충분
+     * - 공지(notice), 팀 이동·탈락/복귀 시스템 알림, 게임 진행·거래 알림. 룰 갱신은 배너가 있고, 그 외 시스템 메시지는 피드로 충분
      * - 본인이 만든 이벤트(진행자가 직접 보낸 공지·처리)는 제외
      */
     shouldToast(ev: GameEvent): boolean {
       const popup =
         ev.type === 'notice' ||
-        (ev.type === 'system' && (ev.payload.kind === 'member.moved' || ev.payload.kind === 'members.active'))
+        (ev.type === 'system' && (ev.payload.kind === 'member.moved' || ev.payload.kind === 'members.active')) ||
+        // 게임 진행·거래 알림. silent(투표 진행 상황, 설정 변경 등)는 피드에만
+        ((ev.type === 'game' || ev.type === 'trade') && !ev.payload.silent)
       if (!popup) return false
       const me = useAuthStore().user?.id
       return ev.createdBy == null || ev.createdBy !== me
@@ -179,6 +196,7 @@ export const useRealtimeStore = defineStore('realtime', {
       useToastStore().clear()
       useDocumentsStore().clear()
       useTeamsStore().clear()
+      useGameStore().clear()
     },
   },
 })

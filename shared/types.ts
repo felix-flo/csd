@@ -20,6 +20,8 @@ export interface AdminUser extends PublicUser {
   groupCode: string | null
   groupName: string | null
   groupColor: string | null
+  /** 시드 테스트 계정 (팀별 리더·팀원). 게임 설정에서 포함 여부를 정한다 */
+  isTest: boolean
 }
 
 export interface GroupInfo {
@@ -58,8 +60,30 @@ export interface DocumentInfo {
 /** 이벤트 대상 범위: 전체 / 역할 / 그룹 / 개인 */
 export type EventScope = 'all' | 'role' | 'group' | 'user'
 
-/** 이벤트 종류. 룰 확정 후 거래/전쟁 요청 등을 추가한다. */
-export type EventType = 'notice' | 'system' | 'document.updated'
+/**
+ * 이벤트 종류.
+ * - game  : 게임 진행 (단계·일차 전환, 리더 선출, 재화 변동, 라이프 제출, 등수 발표). payload.kind 는 GameKind
+ * - trade : 거래 (요청·수락·제안·완료·취소). 거래 당사자 두 팀에 scope=group 으로만 보낸다 (관리자는 전부 받음)
+ */
+export type EventType = 'notice' | 'system' | 'document.updated' | 'game' | 'trade'
+
+/**
+ * game 이벤트의 payload.kind.
+ * - game.updated       : 시작·단계/일차 전환·종료 (scope=all). 클라이언트는 게임 상태 재조회
+ * - game.reset         : 리셋 (scope=all)
+ * - game.results       : 등수 발표 (scope=all)
+ * - election.progress  : 팀원이 투표함 (scope=group, 팝업 없음)
+ * - election.done      : 팀 리더 확정 (scope=group)
+ * - election.tie       : 동표 → 관리자 지정 대기 (scope=group)
+ * - election.all_done  : 모든 팀 리더 선출 완료 (scope=all)
+ * - resources.updated  : 팀 재화 변동 (scope=group)
+ * - life.submitted     : 팀 라이프 제출 (scope=group)
+ * - life.all_done      : 모든 팀 라이프 제출 완료 (scope=all)
+ */
+export type GameKind =
+  | 'game.updated' | 'game.reset' | 'game.results'
+  | 'election.progress' | 'election.done' | 'election.tie' | 'election.all_done'
+  | 'resources.updated' | 'life.submitted' | 'life.all_done'
 
 /**
  * system 이벤트의 payload.kind.

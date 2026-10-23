@@ -19,12 +19,14 @@ import { getDocument, restoreDocument, updateDocument } from '../db/documents.js
 import { deleteEvents, insertEvent, listEventsForUser, listRecentEventsForUser } from '../db/events.js'
 import { disconnectUsers, moveUserRooms, publishEvent } from '../realtime/index.js'
 import { revokeUserRefreshTokens } from '../auth/tokens.js'
+import { gameRouter } from './game.js'
 import { HEX_COLOR, isPaletteColor } from '../../../shared/teams.js'
 import type { EventType, GroupInfo, MeResponse } from '../../../shared/types.js'
 
 export const apiRouter = Router()
 
 apiRouter.use(requireAuth)
+apiRouter.use(gameRouter)
 
 apiRouter.get('/me', (req, res) => {
   const user = req.auth!.user
@@ -113,7 +115,7 @@ apiRouter.post('/admin/notice', requireRole('admin'), (req, res) => {
 
 // ---- 관리자: 알림 기록 초기화 (기본 공지만) ----
 const clearEventsSchema = z.object({
-  types: z.array(z.enum(['notice', 'system', 'document.updated'])).min(1).max(10).optional(),
+  types: z.array(z.enum(['notice', 'system', 'document.updated', 'game', 'trade'])).min(1).max(10).optional(),
   before: z.number().int().positive().nullable().optional(),
 })
 

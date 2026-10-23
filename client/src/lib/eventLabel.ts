@@ -2,8 +2,15 @@ import type { GameEvent } from '../../../shared/types'
 
 const roleNames: Record<string, string> = { member: '참가자 전원', presenter: '프레젠테이션', admin: '진행자' }
 
-/** 이벤트 범위 문구: 전체 / 역할 · 참가자 전원 / 팀 · 블루 팀 / 개인 · 홍길동 */
+/** 이벤트 범위 문구: 전체 / 역할 · 참가자 전원 / 팀 · 블루 팀 / 개인 · 홍길동. 게임·거래 알림은 앞에 구분을 붙인다 */
 export function scopeLabel(ev: GameEvent): string {
+  const base = baseScopeLabel(ev)
+  if (ev.type === 'trade') return `거래 · ${base}`
+  if (ev.type === 'game') return `게임 · ${base}`
+  return base
+}
+
+function baseScopeLabel(ev: GameEvent): string {
   switch (ev.scope) {
     case 'all': return '전체'
     case 'role': return `역할 · ${roleNames[ev.targetRole ?? ''] ?? ev.targetRole ?? ''}`

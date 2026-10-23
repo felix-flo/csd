@@ -5,9 +5,10 @@ import { useRealtimeStore } from '../stores/realtime'
 import { useToastStore } from '../stores/toasts'
 import DocumentBanner from './DocumentBanner.vue'
 import TeamMark from './TeamMark.vue'
+import GamePhaseBar from './GamePhaseBar.vue'
 
-/** color 가 있으면 제목 앞에 팀 색 점을 붙인다 (팀 화면) */
-defineProps<{ title: string; color?: string | null }>()
+/** color 가 있으면 제목 앞에 팀 색 점을 붙인다 (팀 화면). large 는 프레젠테이션용 큰 단계 표시줄 */
+defineProps<{ title: string; color?: string | null; large?: boolean }>()
 const auth = useAuthStore()
 const rt = useRealtimeStore()
 const toasts = useToastStore()
@@ -34,6 +35,7 @@ async function logout() {
     </div>
   </div>
   <DocumentBanner />
+  <GamePhaseBar :large="large" />
 </template>
 
 <style scoped>

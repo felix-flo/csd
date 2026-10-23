@@ -6,22 +6,37 @@ import RosterCard from '../components/RosterCard.vue'
 import UserAdmin from '../components/UserAdmin.vue'
 import RulesEditor from '../components/RulesEditor.vue'
 import TeamMark from '../components/TeamMark.vue'
+import GameSetupCard from '../components/GameSetupCard.vue'
+import GameControlCard from '../components/GameControlCard.vue'
+import GameResourcesCard from '../components/GameResourcesCard.vue'
 import { api } from '../lib/api'
+import { useRealtimeStore } from '../stores/realtime'
+import { useGameStore } from '../stores/game'
 import type { AdminUser, GroupInfo } from '../../../shared/types'
 
+const rt = useRealtimeStore()
+const game = useGameStore()
 const users = ref<AdminUser[]>([])
 const groups = ref<GroupInfo[]>([])
-onMounted(async () => {
+async function loadUsers() {
   const res = await api.get<{ users: AdminUser[]; groups: GroupInfo[] }>('/api/admin/users')
   users.value = res.users
   groups.value = res.groups
+}
+onMounted(() => {
+  void loadUsers()
+  void game.load()
 })
+// 리더 선출·라이프 탈락·리셋 등으로 계정 상태가 바뀌면 다시 받는다
+watch(() => rt.groupVersion, loadUsers)
+// 게임 설정 저장(테스트 계정 포함 여부)·리셋은 계정 활성 상태를 바꾼다
+watch(() => [game.admin?.settings.includeTest, game.admin?.state.status], loadUsers)
 function onUpdated(u: AdminUser[], g?: GroupInfo[]) {
   users.value = u
   if (g) groups.value = g
 }
 
-// 개발용: 실시간 파이프라인 확인용 공지 전송. 실제 관리자 기능(거래 승인, 재화 조정)은 룰 확정 후 구현
+// 개발용: 실시간 파이프라인 확인용 공지 전송
 const scope = ref<'all' | 'role' | 'group' | 'user'>('all')
 const targetId = ref<number | null>(null)
 const targetTeam = computed(() => groups.value.find((g) => g.id === targetId.value))
@@ -61,13 +76,12 @@ async function send() {
 <template>
   <div class="page" style="max-width: 960px">
     <TopBar title="게임 진행자" />
+    <GameControlCard :users="users" :groups="groups" />
+    <GameResourcesCard :groups="groups" />
     <RulesEditor />
     <RosterCard :users="users" :groups="groups" @updated="onUpdated" />
+    <GameSetupCard :groups="groups" />
     <UserAdmin :users="users" :groups="groups" @updated="onUpdated" />
-    <div class="card">
-      <h2>관리 기능</h2>
-      <p class="muted">팀별 거래 승인 / 재화 수동 조정 등은 룰 확정 후 구현 예정.</p>
-    </div>
     <div class="card">
       <h2>테스트 공지 보내기 <span class="muted">(개발용)</span></h2>
       <form @submit.prevent="send" class="row">

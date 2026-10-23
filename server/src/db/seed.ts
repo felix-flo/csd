@@ -33,7 +33,7 @@ export function seed() {
   const findGroup = db.prepare('SELECT id FROM groups WHERE code = ?')
   const userExists = db.prepare('SELECT 1 FROM users WHERE pin_hash = ?')
   const insertUser = db.prepare(
-    'INSERT INTO users (name, role, group_id, is_leader, pin, pin_hash, name_set) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO users (name, role, group_id, is_leader, pin, pin_hash, name_set, is_test) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
   )
   // 0002 마이그레이션 이전에 만들어진 시드 행: 평문 PIN 백필 (1회)
   const backfill = db.prepare('UPDATE users SET pin = ?, name_set = ? WHERE pin_hash = ? AND pin IS NULL')
@@ -50,7 +50,8 @@ export function seed() {
         continue
       }
       const groupId = u.group ? (findGroup.get(u.group) as { id: number }).id : null
-      insertUser.run(u.name, u.role, groupId, u.leader ? 1 : 0, u.pin, pinHash, nameSet)
+      // 시드 참가자 = 팀별 테스트 계정. 게임 설정의 "테스트 계정 포함" 으로 게임 참여 여부를 정한다
+      insertUser.run(u.name, u.role, groupId, u.leader ? 1 : 0, u.pin, pinHash, nameSet, u.role === 'member' ? 1 : 0)
       created++
     }
   })()
