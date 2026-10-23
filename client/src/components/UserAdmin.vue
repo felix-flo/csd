@@ -43,14 +43,19 @@ interface Section {
  * 팀 순서대로 소속 참가자. 팀 없는 참가자는 맨 뒤.
  * 시작 전에는 팀 명단에 스스로 팀을 고른 참가자만 두고, 팀 미선택 PIN(→ "참가자 PIN" 카드)과 테스트 계정은 접힌 묶음으로 뺀다
  * (PIN 이 팀에 묶여 있는 것처럼 보이지 않게).
+ * 시작 후에도 "테스트 계정 포함" 을 끈 채 시작했으면 테스트 계정은 팀 명단에 넣지 않는다 (비활성이지만 탈락이 아니라 게임 제외)
  */
+const excludeTests = computed(() => game.admin?.settings.includeTest === false)
+/** 테스트 계정을 팀 명단에서 빼고 "테스트 계정" 묶음에 둘지 */
+const separateTests = computed(() => beforeStart.value || excludeTests.value)
 const sections = computed<Section[]>(() => {
   const pre = beforeStart.value
-  const inTeam = (u: AdminUser, g: GroupInfo) => u.groupId === g.id && !(pre && u.isTest)
+  const sep = separateTests.value
+  const inTeam = (u: AdminUser, g: GroupInfo) => u.groupId === g.id && !(sep && u.isTest)
   const result: Section[] = props.groups.map((g) => ({ key: `t${g.id}`, team: g, title: g.name, list: members.value.filter((u) => inTeam(u, g)), collapsible: false }))
-  const orphans = members.value.filter((u) => !(pre && u.isTest) && (u.groupId == null || !props.groups.some((g) => g.id === u.groupId)))
+  const orphans = members.value.filter((u) => !(sep && u.isTest) && (u.groupId == null || !props.groups.some((g) => g.id === u.groupId)))
   if (orphans.length) result.push({ key: 'none', team: null, title: '(팀 미선택)', list: orphans, collapsible: pre })
-  const tests = pre ? members.value.filter((u) => u.isTest) : []
+  const tests = sep ? members.value.filter((u) => u.isTest) : []
   if (tests.length) result.push({ key: 'test', team: null, title: '테스트 계정', list: tests, collapsible: true })
   return result
 })
@@ -165,9 +170,9 @@ function copyList() {
             <span v-if="team && beforeStart" class="mono letter" title="참가자에게 보이는 이름">{{ letterOf(team.id) }}</span>
             <TeamMark v-if="team" :color="team.color" />
             <strong>{{ title }}</strong>
-            <span class="muted">{{ list.filter((u) => u.active).length }}명<template v-if="key !== 'none'"> 참가 중</template><template v-if="list.some((u) => !u.active)"> · 탈락 {{ list.filter((u) => !u.active).length }}명</template></span>
+            <span class="muted">{{ list.filter((u) => u.active).length }}명<template v-if="key !== 'none'"> 참가 중</template><template v-if="list.some((u) => !u.active)"> · {{ key === 'test' && excludeTests ? '제외' : '탈락' }} {{ list.filter((u) => !u.active).length }}명</template></span>
             <span v-if="key === 'none' && beforeStart" class="muted"> · PIN 상태는 "참가자 PIN" 카드</span>
-            <span v-if="key === 'test'" class="muted"> · 팀·리더가 미리 정해진 개발용 계정</span>
+            <span v-if="key === 'test'" class="muted"> · 팀·리더가 미리 정해진 개발용 계정<template v-if="excludeTests"> · 게임 설정에서 제외됨</template></span>
             <span v-if="team && beforeStart && list.length === 0" class="muted"> · 아직 팀을 고른 참가자가 없습니다</span>
           </td>
           <td colspan="2" class="row" style="justify-content: flex-end">
@@ -196,7 +201,10 @@ function copyList() {
             </select>
           </td>
           <td class="pin">{{ showPins ? u.pin : '••••' }}</td>
-          <td><span class="badge" :class="u.active ? 'on' : 'off'">{{ u.active ? '참가 중' : '탈락' }}</span></td>
+          <td>
+            <span v-if="u.isTest && excludeTests && !u.active" class="badge" title="게임 설정에서 테스트 계정 포함을 꺼 두었습니다">제외</span>
+            <span v-else class="badge" :class="u.active ? 'on' : 'off'">{{ u.active ? '참가 중' : '탈락' }}</span>
+          </td>
           <td class="row">
             <button v-if="u.active && u.groupId != null && !u.isLeader" :disabled="busy" class="secondary small" @click="makeLeader(u)">리더 지정</button>
             <button :disabled="busy" class="secondary small" @click="resetPin(u)">PIN 리셋</button>
