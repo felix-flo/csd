@@ -3,11 +3,11 @@
  * 라이프 제출 (리더). 팀 라이프(💙)를 팀원 카드로 끌어다 놓으면 그 팀원이 팀 색으로 활성화된다.
  * - 드래그는 pointer 이벤트로 직접 구현 (HTML5 drag&drop 은 모바일 터치에서 동작하지 않음). 카드를 탭해도 할당/해제된다.
  * - 제출 → "정말로 제출하겠습니까?" 확인 → 라이프를 못 받은 팀원은 즉시 탈락(로그인 차단·세션 종료).
- * 팀원은 진행 상황만 본다.
+ * 팀원은 진행 상황만 본다. 활성 팀원이 1명뿐이면 제출하지 않는다 (자동 생존, 라이프 소모 없음).
  */
 import { computed, onBeforeUnmount, ref } from 'vue'
 import type { PublicUser } from '../../../shared/types'
-import type { LifeSubmissionView } from '../../../shared/game'
+import { isLifeExempt, type LifeSubmissionView } from '../../../shared/game'
 import { api, ApiError } from '../lib/api'
 import { useAuthStore } from '../stores/auth'
 import { useGameStore } from '../stores/game'
@@ -99,6 +99,10 @@ const nameOf = (id: number) => props.members.find((m) => m.id === id)?.name ?? `
       <p>생존: <strong>{{ shown.saved.map(nameOf).join(', ') || '없음' }}</strong></p>
       <p v-if="shown.eliminated.length" class="error">탈락: {{ shown.eliminated.map(nameOf).join(', ') }}</p>
       <p v-if="shown.eliminated.includes(auth.user?.id ?? -1)" class="muted">라이프를 받지 못해 탈락했습니다. 곧 접속이 종료됩니다.</p>
+    </template>
+
+    <template v-else-if="isLifeExempt(members.length)">
+      <p>팀원이 1명이라 라이프 제출이 없습니다. 라이프를 쓰지 않고 그대로 생존합니다.</p>
     </template>
 
     <template v-else-if="!isLeader">

@@ -233,6 +233,8 @@ gameRouter.post('/admin/game/next', requireRole('admin'), handle(advanceSchema, 
     ? `${r.day}일차가 시작되었습니다 · ${PHASE_LABELS[r.phase]} 중`
     : `${r.day}일차 · ${PHASE_LABELS[r.phase]} 중입니다`
   emit('game', 'all', null, 'game.updated', message, by, { day: r.day, phase: r.phase })
+  // 모든 팀이 제출 불필요(팀원 1명 이하)면 라이프 제출 단계에 들어가자마자 완료
+  if (r.phase === 'life' && allLivesDone(r.day)) emit('game', 'all', null, 'life.all_done', '모든 팀의 라이프가 제출되었습니다.', by, { day: r.day })
   res.json(adminView())
 }))
 

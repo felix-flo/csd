@@ -80,13 +80,13 @@ async function applyAid() {
         <tr v-for="t in view.teams" :key="t.teamId">
           <td><TeamMark :color="team(t.teamId)?.color ?? ''" />{{ team(t.teamId)?.name }}</td>
           <td v-for="k in RESOURCE_KINDS" :key="k" class="mono">
-            <strong>{{ t.resources[k] }}</strong> <span class="muted">/ {{ t.initial[k] }}</span>
+            <strong>{{ t.resources[k] }}</strong>
           </td>
           <td class="mono">{{ t.activeMembers }}명</td>
         </tr>
       </tbody>
     </table>
-    <p class="muted" style="margin: 6px 0 0">현재 / 초기값. 남은 라이프 매장량 <strong class="mono">{{ view.lifeReserve }}</strong></p>
+    <p class="muted" style="margin: 6px 0 0">현재 보유량. 남은 라이프 매장량 <strong class="mono">{{ view.lifeReserve }}</strong></p>
 
     <h3>생산 · 정정</h3>
     <form class="row" @submit.prevent="applyAdjust">

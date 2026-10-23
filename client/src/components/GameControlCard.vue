@@ -9,7 +9,7 @@
  */
 import { computed, ref } from 'vue'
 import type { AdminUser, GroupInfo } from '../../../shared/types'
-import { PHASE_LABELS, PHASES, RESOURCE_LABELS, rankTeams, teamLetter, type AdminGameView, type Resources, type ScoreMode, type TradeView } from '../../../shared/game'
+import { PHASE_LABELS, PHASES, RESOURCE_LABELS, isLifeExempt, rankTeams, teamLetter, type AdminGameView, type Resources, type ScoreMode, type TradeView } from '../../../shared/game'
 import { useRouter } from 'vue-router'
 import { api } from '../lib/api'
 import { useGameStore } from '../stores/game'
@@ -312,6 +312,7 @@ function publish() {
                 <span v-if="t.lifeSubmission.eliminated.length" class="error"> · 탈락 {{ t.lifeSubmission.eliminated.map(nameOf).join(', ') }}</span>
               </template>
               <span v-else-if="t.activeMembers === 0" class="muted">활성 팀원 없음</span>
+              <span v-else-if="isLifeExempt(t.activeMembers)" class="muted">제출 불필요 · 팀원 1명 (자동 생존, 라이프 {{ t.resources.life }} 유지)</span>
               <span v-else class="muted">미제출 (라이프 {{ t.resources.life }} · 팀원 {{ t.activeMembers }}명)</span>
             </td>
           </tr>

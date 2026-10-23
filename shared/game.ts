@@ -169,6 +169,14 @@ export interface TradeView {
 
 // ---- 라이프 제출 ----
 
+/**
+ * 활성 팀원이 1명만 남은 팀은 라이프 제출이 없다 (자동 생존, 라이프 소모 없음). 인원은 그 시점 기준이라
+ * 제출 단계 도중에 1명이 되면 바로 제출 불필요로 바뀐다. 0명인 팀은 제출할 사람이 없어 완료로 본다.
+ */
+export function isLifeExempt(activeMembers: number): boolean {
+  return activeMembers === 1
+}
+
 export interface LifeSubmissionView {
   saved: number[]
   eliminated: number[]

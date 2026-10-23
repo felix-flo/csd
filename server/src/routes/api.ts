@@ -16,6 +16,7 @@ import {
 import { applyRoster, RosterError } from '../db/roster.js'
 import { createTeam, deleteTeam, ensureLeader, moveMember, setLeader, teamNameExists, updateTeam } from '../db/teams.js'
 import { getGameRow } from '../db/game.js'
+import { allLivesDone } from '../db/life.js'
 import { getDocument, restoreDocument, updateDocument } from '../db/documents.js'
 import { deleteEvents, insertEvent, listEventsForUser, listRecentEventsForUser } from '../db/events.js'
 import { disconnectUsers, moveUserRooms, publishEvent, signalLobby } from '../realtime/index.js'
@@ -158,6 +159,18 @@ const activeSchema = z.object({
   active: z.boolean(),
 })
 
+/** 라이프 제출 단계 중 이번 변경(탈락·팀 이동)으로 남은 팀이 모두 제출 불필요(팀원 1명 이하)가 되면 완료 알림 */
+function livesDoneBefore(): boolean | null {
+  const g = getGameRow()
+  return g.status === 'running' && g.phase === 'life' ? allLivesDone(g.day) : null
+}
+function announceLivesIfNowDone(before: boolean | null, by: number) {
+  if (before !== false) return
+  const g = getGameRow()
+  if (!allLivesDone(g.day)) return
+  publishEvent(insertEvent({ type: 'game', scope: 'all', payload: { kind: 'life.all_done', message: '모든 팀의 라이프가 제출되었습니다.', day: g.day }, createdBy: by }))
+}
+
 apiRouter.post('/admin/users/active', requireRole('admin'), (req, res) => {
   const parsed = activeSchema.safeParse(req.body)
   if (!parsed.success) {
@@ -171,6 +184,7 @@ apiRouter.post('/admin/users/active', requireRole('admin'), (req, res) => {
     .map((id) => byId.get(id))
     .filter((u): u is NonNullable<typeof u> => !!u && u.role === 'member' && u.active !== active)
   const ids = targets.map((u) => u.id)
+  const livesBefore = livesDoneBefore()
   const changed = setUsersActive(ids, active)
   if (!active) {
     // 탈락: 재로그인 불가 + 이미 로그인된 세션도 즉시 종료 → 팀 재화·알림을 받지 못한다
@@ -201,6 +215,7 @@ apiRouter.post('/admin/users/active', requireRole('admin'), (req, res) => {
     })
     publishEvent(ev)
   }
+  announceLivesIfNowDone(livesBefore, req.auth!.sub)
   signalLobby()
   res.json({ changed, users: listAllUsers() })
 })
@@ -313,6 +328,7 @@ apiRouter.post('/admin/users/:id/team', requireRole('admin'), (req, res) => {
     res.status(403).json({ error: 'not_member' })
     return
   }
+  const livesBefore = livesDoneBefore()
   const moved = moveMember(user.id, parsed.data.teamId)
   if (moved === 'not_found') {
     res.status(404).json({ error: 'not_found' })
@@ -344,6 +360,7 @@ apiRouter.post('/admin/users/:id/team', requireRole('admin'), (req, res) => {
     if (teamId == null) continue
     publishEvent(insertEvent({ type: 'system', scope: 'group', targetId: teamId, payload, createdBy: req.auth!.sub }))
   }
+  announceLivesIfNowDone(livesBefore, req.auth!.sub)
   signalLobby()
   res.json({ users: listAllUsers() })
 })
