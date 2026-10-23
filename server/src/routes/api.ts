@@ -367,6 +367,8 @@ apiRouter.post('/admin/users/:id/leader', requireRole('admin'), (req, res) => {
     payload: { kind: 'leader.set', userId: user.id, message: `${user.name} 님이 리더로 지정되었습니다` },
     createdBy: req.auth!.sub,
   }))
+  // 다른 관리자 화면의 시작 점검(리더 미지정 팀)도 바로 갱신
+  signalLobby()
   res.json({ users: listAllUsers() })
 })
 

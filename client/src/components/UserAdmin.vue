@@ -64,6 +64,8 @@ async function run(label: string, fn: () => Promise<{ users: AdminUser[] } & Rec
     const res = await fn()
     emit('updated', res.users)
     status.value = label
+    // 리더 지정·탈락/복귀·팀 이동은 게임 진행 카드의 시작 점검(리더 없는 팀·미배정 수)도 바꾼다 → 소켓 신호를 기다리지 않고 바로 다시 받는다
+    void game.load()
     return res
   } catch (e) {
     status.value = `실패: ${(e as Error).message}`

@@ -130,6 +130,7 @@ function onConfirm() {
 }
 
 // ---- 준비: 팀별 입장 현황 · 리더 지정 ----
+const letterOfTeam = (teamId: number) => teamLetter(props.groups.findIndex((g) => g.id === teamId))
 const lobbyOf = (teamId: number) => s.value?.lobby?.find((l) => l.teamId === teamId)
 const membersOf = (teamId: number) => props.users.filter((u) => u.role === 'member' && u.active && u.groupId === teamId)
 const leaderOf = (teamId: number) => membersOf(teamId).find((u) => u.isLeader)
@@ -195,6 +196,9 @@ function publish() {
         <span class="mono"><strong>게임 준비 중</strong> · 참가자 입장·팀 선택</span>
         <button class="secondary" :disabled="busy" @click="modal = 'revert'">설정으로 되돌리기</button>
         <button :disabled="busy || view.prep.noLeader.length > 0" :title="view.prep.noLeader.length ? '리더가 없는 팀이 있습니다' : ''" @click="modal = 'start'">게임 시작</button>
+        <span v-if="view.prep.noLeader.length" class="blocker">
+          리더 미지정: {{ view.prep.noLeader.map(letterOfTeam).join(', ') }} 팀 — 아래 표에서 리더를 고르면 시작할 수 있습니다
+        </span>
       </template>
       <template v-else-if="s.status === 'running'">
         <span class="mono">{{ s.day }}일차 / 총 {{ s.totalDays }}일 · <strong>{{ PHASE_LABELS[s.phase!] }}</strong></span>
@@ -377,6 +381,7 @@ h3 { font-size: 0.95rem; margin: 16px 0 6px; font-weight: 600; }
 .tbl th, .tbl td { text-align: left; padding: 5px 12px 5px 0; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
 .tbl th { color: var(--muted); font-weight: 500; font-size: 0.8rem; }
 .letter { display: inline-block; min-width: 1.4em; font-weight: 600; }
+.blocker { color: var(--red); font-size: 0.88rem; }
 .trade { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
 button.small { padding: 4px 10px; font-size: 0.85rem; }
 .reset-done { margin-top: 8px; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--blue); border-radius: var(--radius); background: var(--bg-soft); line-height: 1.6; }
