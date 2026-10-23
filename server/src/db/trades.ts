@@ -95,6 +95,8 @@ export function requestTrade(day: number, fromTeam: number, toTeam: number, by: 
     if (fromTeam === toTeam) throw new GameError('same_team', '', 400)
     if (!findGroupById(toTeam)) throw new GameError('not_found', '', 404)
     if (!listGroupMembers(toTeam).some((m) => m.isLeader)) throw new GameError('no_leader', '상대 팀에 리더가 없습니다')
+    // 전쟁 선포부터 결과가 나올 때까지 모든 팀 거래 금지 (war.ts 가 이 모듈을 쓰므로 직접 조회)
+    if (db.prepare(`SELECT 1 FROM wars WHERE status = 'declared'`).get()) throw new GameError('war_active', '전쟁 중에는 거래할 수 없습니다')
     const active = getActiveTrade()
     if (active) {
       const mine = active.from.teamId === fromTeam || active.to.teamId === fromTeam

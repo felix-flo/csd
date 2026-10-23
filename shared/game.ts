@@ -84,6 +84,55 @@ export interface GameState {
    * 화면 코드에 넣으면 JS 파일로 미리 보이므로 서버에만 둔다 (server/src/db/game.ts GAME_TITLE)
    */
   title: string | null
+  /** 전쟁 (진행 중일 때만 의미 있음). 모든 화면 상단 "⚔️ 전쟁 중" 띠, 거래 금지 표시에 쓴다 */
+  war: PublicWarState
+}
+
+// ---- 전쟁 (docs/99.전쟁.md) ----
+
+/** 선포 비용으로 낼 수 있는 재화 (보석·골드·크레딧). 일차마다 관리자가 정한다 */
+export const WAR_COST_KINDS = ['gem', 'gold', 'credit'] as const
+export type WarCost = Record<(typeof WAR_COST_KINDS)[number], number>
+export type WarStatus = 'declared' | 'attacker_won' | 'defender_won' | 'draw' | 'cancelled'
+/** 관리자 결과 지정: 공격팀 승 / 방어팀 승 / 무승부 / 전쟁 취소 */
+export type WarResult = 'attacker' | 'defender' | 'draw' | 'cancel'
+
+export const WAR_STATUS_LABELS: Record<WarStatus, string> = {
+  declared: '전쟁 중',
+  attacker_won: '공격팀 승리',
+  defender_won: '방어팀 승리',
+  draw: '무승부',
+  cancelled: '취소',
+}
+
+/** 모든 역할 공개 */
+export interface PublicWarState {
+  /** 진행 중 전쟁 (선포~결과). 이 동안 모든 팀 거래 금지 */
+  active: { id: number; attacker: number; defender: number } | null
+  /** 오늘 이미 선포됐는지 (하루 게임 전체 1회) */
+  usedToday: boolean
+  /** 오늘 선포 비용 (게임 진행 중에만) */
+  cost: WarCost | null
+}
+
+/** 관리자용 전쟁 기록. spoils 는 승리팀이 빼앗은 재화 (관리자·승리팀만 안다) */
+export interface WarView {
+  id: number
+  day: number
+  attacker: number
+  defender: number
+  status: WarStatus
+  cost: WarCost
+  spoils: Resources | null
+  createdAt: string
+  decidedAt: string | null
+}
+
+/** 패배팀 재화의 절반(내림)을 빼앗는다 */
+export function warSpoils(loser: Resources): Resources {
+  const out = emptyResources()
+  for (const k of RESOURCE_KINDS) out[k] = Math.floor(loser[k] / 2)
+  return out
 }
 
 /** 게임 설정 (관리자). setup·ready 상태에서 수정 */
@@ -99,6 +148,8 @@ export interface GameSettings {
   initial: Record<number, Resources>
   /** 일차당 발행 한도 (보석: 이월 없음, 골드: 안 쓴 만큼 이월) */
   issueLimit: IssueLimits
+  /** 1일차 전쟁 선포 비용 (설정 전이면 null — 시작 조건) */
+  warCost: WarCost | null
 }
 
 export type ScoreMode = 'gem' | 'gold' | 'ratio'
@@ -283,7 +334,7 @@ export interface LedgerEntry {
   createdAt: string
 }
 
-export type LedgerReason = 'init' | 'production' | 'correction' | 'aid' | 'trade' | 'trade_credit' | 'life' | 'issue'
+export type LedgerReason = 'init' | 'production' | 'correction' | 'aid' | 'trade' | 'trade_credit' | 'life' | 'issue' | 'war_cost' | 'war_loss' | 'war_spoils'
 
 export const LEDGER_REASON_LABELS: Record<LedgerReason, string> = {
   init: '초기 설정',
@@ -294,6 +345,9 @@ export const LEDGER_REASON_LABELS: Record<LedgerReason, string> = {
   trade_credit: '거래 크레딧',
   life: '라이프 제출',
   issue: '발행',
+  war_cost: '전쟁 비용',
+  war_loss: '전쟁 패배',
+  war_spoils: '전쟁 전리품',
 }
 
 export interface AdminGameView {
@@ -321,6 +375,15 @@ export interface AdminGameView {
     recent: IssueRequestView[]
     /** 이번 일차 남은 발행 가능량 (해당 팀이 없으면 null) */
     remaining: Record<IssueKind, number | null>
+  }
+  /** 전쟁 */
+  war: {
+    /** 오늘 전쟁 기록 (진행 중이거나 끝난 것) */
+    today: WarView | null
+    /** 오늘 선포 비용 */
+    todayCost: WarCost | null
+    /** 다음 날 선포 비용 (입력해야 다음 날로 넘어간다. 마지막 날에는 필요 없음) */
+    nextCost: WarCost | null
   }
 }
 

@@ -26,6 +26,8 @@ const capacity = reactive<Record<number, number>>({})
 const includeTest = ref(true)
 const lifeReserve = ref(0)
 const issueLimit = reactive({ ...DEFAULT_ISSUE_LIMITS })
+/** 1일차 전쟁 선포 비용 (저장해야 게임 시작 가능. 2일차부터는 게임 진행 카드에서 전날 정한다) */
+const warCost = reactive({ gem: 0, gold: 0, credit: 0 })
 const initial = reactive<Record<number, Resources>>({})
 const bulk = reactive<Resources>(emptyResources())
 const bulkCapacity = ref(5)
@@ -40,6 +42,7 @@ function resetInputs() {
   includeTest.value = s.includeTest
   lifeReserve.value = s.lifeReserve
   Object.assign(issueLimit, s.issueLimit)
+  Object.assign(warCost, s.warCost ?? { gem: 0, gold: 0, credit: 0 })
   for (const g of props.groups) {
     initial[g.id] = { ...(s.initial[g.id] ?? emptyResources()) }
     capacity[g.id] = s.capacity[g.id] ?? 0
@@ -65,6 +68,8 @@ const dirty = computed(() => {
     lifeReserve.value !== s.lifeReserve ||
     issueLimit.gem !== s.issueLimit.gem ||
     issueLimit.gold !== s.issueLimit.gold ||
+    !s.warCost ||
+    (['gem', 'gold', 'credit'] as const).some((k) => warCost[k] !== s.warCost![k]) ||
     props.groups.some((g) => (capacity[g.id] ?? 0) !== (s.capacity[g.id] ?? 0)) ||
     props.groups.some((g) => RESOURCE_KINDS.some((k) => (initial[g.id]?.[k] ?? 0) !== (s.initial[g.id]?.[k] ?? 0)))
   )
@@ -80,6 +85,7 @@ async function save(): Promise<boolean> {
       includeTest: includeTest.value,
       lifeReserve: Math.max(0, lifeReserve.value || 0),
       issueLimit: { gem: Math.max(0, issueLimit.gem || 0), gold: Math.max(0, issueLimit.gold || 0) },
+      warCost: { gem: Math.max(0, warCost.gem || 0), gold: Math.max(0, warCost.gold || 0), credit: Math.max(0, warCost.credit || 0) },
       initial: Object.fromEntries(props.groups.map((g) => [String(g.id), initial[g.id]])),
     }
     game.setAdmin(await api.put<AdminGameView>('/api/admin/game/settings', body))
@@ -132,8 +138,16 @@ async function prepare() {
       <label>💎 보석 발행 한도 <input v-model.number="issueLimit.gem" type="number" min="0" style="width: 6em" /> /일차</label>
       <label>🥇 골드 발행 한도 <input v-model.number="issueLimit.gold" type="number" min="0" style="width: 6em" /> /일차 (이월)</label>
     </div>
+    <div class="row" style="margin-bottom: 10px">
+      <span>⚔️ 1일차 전쟁 선포 비용</span>
+      <label>보석 <input v-model.number="warCost.gem" type="number" min="0" style="width: 5em" /></label>
+      <label>골드 <input v-model.number="warCost.gold" type="number" min="0" style="width: 5em" /></label>
+      <label>크레딧 <input v-model.number="warCost.credit" type="number" min="0" style="width: 5em" /></label>
+      <span v-if="!settings?.warCost" class="error" style="font-size: 0.85rem">저장해야 게임을 시작할 수 있습니다</span>
+    </div>
     <p class="muted" style="margin-top: 0">
       라이프 매장량: 생산 활동으로 지급할 수 있는 라이프 총량. 테스트 계정은 팀·리더가 미리 정해져 있고 최대 인원에 들어가지 않습니다. 빼면 탈락(로그인 차단) 처리됩니다.
+      전쟁 선포 비용: 2일차부터는 게임 진행 카드에서 전날 끝나기 전에 정합니다(0 이면 무료).
       발행 한도: 화이트팀 리더는 보석을 일차마다 한도까지(이월 없음), 옐로우팀 리더는 골드를 일차마다 한도씩 쌓아서(안 쓴 만큼 이월) 발행 요청할 수 있습니다.
     </p>
 

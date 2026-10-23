@@ -23,6 +23,7 @@ const error = ref('')
 const popup = ref<{ title: string; message: string } | null>(null)
 
 const others = computed(() => teams.teams.filter((t) => t.id !== props.myTeamId))
+const warActive = computed(() => !!game.state?.war?.active)
 const mySide = computed(() => (props.trade ? (props.trade.from.teamId === props.myTeamId ? props.trade.from : props.trade.to) : null))
 const theirSide = computed(() => (props.trade ? (props.trade.from.teamId === props.myTeamId ? props.trade.to : props.trade.from) : null))
 const partner = computed(() => teams.byId(theirSide.value?.teamId))
@@ -47,6 +48,7 @@ function offerText(o: Resources | null): string {
 
 const ERRORS: Record<string, { title: string; message: string }> = {
   trade_busy: { title: '다른 팀이 거래중입니다', message: '진행 중인 거래가 끝난 뒤 다시 요청하세요.' },
+  war_active: { title: '전쟁 중입니다', message: '전쟁 결과가 나올 때까지 거래할 수 없습니다.' },
   credit_already_paid: { title: '상대 팀이 먼저 냈습니다', message: '상대 팀이 크레딧을 먼저 제출해 거래가 시작되었습니다.' },
 }
 
@@ -113,8 +115,11 @@ watch(() => ({ ...props.resources }), (r) => {
   <div class="card">
     <h2>거래</h2>
 
+    <!-- 전쟁 중: 모든 팀 거래 금지 -->
+    <p v-if="!trade && warActive" class="war-block">⚔️ 전쟁 중에는 거래할 수 없습니다. 진행자가 결과를 정하면 다시 거래할 수 있습니다.</p>
+
     <!-- 진행 중 거래 없음 -->
-    <template v-if="!trade">
+    <template v-else-if="!trade">
       <template v-if="isLeader">
         <p class="muted">거래할 팀을 고르세요. 상대 리더가 수락하면 두 팀 중 먼저 크레딧 1개를 낸 팀이 거래를 시작합니다.</p>
         <div class="teams">
@@ -227,6 +232,7 @@ watch(() => ({ ...props.resources }), (r) => {
 
 <style scoped>
 .teams { display: grid; gap: 6px; }
+.war-block { color: var(--red); font-weight: 600; margin: 0; }
 .team-btn { text-align: left; padding: 12px 14px; font-size: 1rem; }
 .partner { font-size: 1.05rem; margin: 0 0 8px; }
 .offers { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }

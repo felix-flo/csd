@@ -10,6 +10,7 @@ import LifeSubmit from '../components/LifeSubmit.vue'
 import ResultsBoard from '../components/ResultsBoard.vue'
 import ReadyLobby from '../components/ReadyLobby.vue'
 import IssuePanel from '../components/IssuePanel.vue'
+import WarPanel from '../components/WarPanel.vue'
 import { useAuthStore } from '../stores/auth'
 import { useRealtimeStore } from '../stores/realtime'
 import { useGameStore } from '../stores/game'
@@ -87,6 +88,13 @@ const phaseHint: Record<string, string> = {
     <div v-else-if="phase && phaseHint[phase]" class="card">
       <p class="muted" style="margin: 0">{{ phaseHint[phase] }}</p>
     </div>
+    <!-- 전쟁: 거래 활동 단계에서 선포. 진행 중이면 다른 단계에서도 상황 표시 -->
+    <WarPanel
+      v-if="group && game.team && (phase === 'trade' || s?.war?.active)"
+      :my-team-id="group.id"
+      :is-leader="isLeader"
+      :resources="game.team.resources"
+    />
     <!-- 화이트팀 보석 / 옐로우팀 골드 발행 (그 팀만) -->
     <IssuePanel v-if="s?.status === 'running' && game.team?.issue" :issue="game.team.issue" :is-leader="isLeader" />
 

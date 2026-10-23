@@ -7,9 +7,12 @@
  * - 리더 선출 동표(동표자 중 현 리더 없음)는 여기서 지정한다.
  * - 제재(대가 없는 제재)는 아직 없음. 추가 시 리더간 협의 패널에 "다음날 거래 제재 팀" 선택을 둔다.
  */
-import { computed, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import type { AdminUser, GroupInfo } from '../../../shared/types'
-import { PHASE_LABELS, PHASES, RESOURCE_LABELS, isLifeExempt, rankTeams, teamLetter, type AdminGameView, type Resources, type ScoreMode, type TradeView } from '../../../shared/game'
+import {
+  PHASE_LABELS, PHASES, RESOURCE_LABELS, WAR_COST_KINDS, WAR_STATUS_LABELS, isLifeExempt, josa, rankTeams, teamLetter,
+  type AdminGameView, type Resources, type ScoreMode, type TradeView, type WarCost, type WarResult,
+} from '../../../shared/game'
 import { useRouter } from 'vue-router'
 import { api } from '../lib/api'
 import { useGameStore } from '../stores/game'
@@ -36,16 +39,43 @@ const isLastDay = computed(() => !!s.value && s.value.day >= (s.value.totalDays 
  * 게임 종료: 마지막 날에는 버튼을 계속 보여 주되, 그날 턴이 모두 끝나야(라이프 제출 단계 + 모든 팀 제출) 활성.
  * 서버도 같은 조건으로 막는다 (409 not_finished). 0·1명 팀은 제출 불필요라 완료로 본다
  */
-const canEnd = computed(() => isLastDay.value && s.value?.phase === 'life' && !!s.value.livesDone)
+const canEnd = computed(() => isLastDay.value && s.value?.phase === 'life' && !!s.value.livesDone && !warActive.value)
 /** 아직 라이프를 제출하지 않은(제출 대상인) 팀 이름 */
 const lifePending = computed(() =>
   (view.value?.teams ?? []).filter((t) => !t.lifeSubmission && t.activeMembers > 0 && !isLifeExempt(t.activeMembers)).map((t) => team(t.teamId)?.name ?? `#${t.teamId}`),
 )
 const endBlocker = computed(() => {
   if (!isLastDay.value || canEnd.value) return ''
+  if (warActive.value) return '전쟁 결과를 먼저 정하세요'
   if (s.value?.phase !== 'life') return '마지막 날 라이프 제출 단계에서 모든 팀이 제출하면 종료할 수 있습니다'
   return `라이프 미제출: ${lifePending.value.join(', ')} — 모든 팀이 제출하면 종료할 수 있습니다`
 })
+// ---- 전쟁 (docs/99) ----
+const warToday = computed(() => view.value?.war.today ?? null)
+/** 진행 중 전쟁이 있으면 단계 넘기기·게임 종료 불가 (서버도 409 war_active) */
+const warActive = computed(() => warToday.value?.status === 'declared')
+const costText = (c: WarCost | null | undefined) =>
+  !c ? '미정' : WAR_COST_KINDS.filter((k) => c[k] > 0).map((k) => `${RESOURCE_LABELS[k]} ${c[k]}`).join(', ') || '없음 (무료)'
+/** 다음 날 선포 비용 입력 (저장해야 "다음 날로" 가 눌린다) */
+const nextCost = reactive<WarCost>({ gem: 0, gold: 0, credit: 0 })
+watch(() => view.value?.war.nextCost, (c) => Object.assign(nextCost, c ?? { gem: 0, gold: 0, credit: 0 }), { immediate: true })
+function saveNextCost() {
+  const day = (s.value?.day ?? 0) + 1
+  const body = Object.fromEntries(WAR_COST_KINDS.map((k) => [k, Math.max(0, Math.floor(nextCost[k] || 0))]))
+  return run(`${day}일차 전쟁 선포 비용 저장`, () => api.post('/api/admin/war/cost', body))
+}
+const warResult = ref<WarResult | null>(null)
+function askWar(result: WarResult) {
+  warResult.value = result
+  modal.value = 'war'
+}
+/** 다음 단계/다음 날 버튼을 막는 이유 */
+const advanceBlocker = computed(() => {
+  if (warActive.value) return '⚔️ 전쟁 결과를 먼저 정하세요'
+  if (!nextPhase.value && !isLastDay.value && !view.value?.war.nextCost) return `${(s.value?.day ?? 0) + 1}일차 전쟁 선포 비용을 아래 "전쟁" 에서 정해야 다음 날로 넘어갈 수 있습니다`
+  return ''
+})
+
 const nextPhase = computed(() => {
   const p = s.value?.phase
   if (!p) return null
@@ -84,7 +114,7 @@ const clearSettings = ref(false)
 const resetDone = ref<ResetSummary | null>(null)
 
 // ---- 확인 팝업 ----
-type ModalKind = 'next' | 'end' | 'reset' | 'cancelTrade' | 'start' | 'revert'
+type ModalKind = 'next' | 'end' | 'reset' | 'cancelTrade' | 'start' | 'revert' | 'war'
 const modal = ref<ModalKind | null>(null)
 const modalText = computed(() => {
   const st = s.value
@@ -120,6 +150,23 @@ const modalText = computed(() => {
       return { title: '설정 단계로 되돌릴까요?', message: '참가자는 팀을 고를 수 없게 됩니다. 이미 팀을 고른 참가자와 PIN 은 그대로 남습니다.' }
     case 'cancelTrade':
       return { title: '진행 중인 거래를 취소할까요?', message: '이미 낸 크레딧은 돌려주지 않습니다.' }
+    case 'war': {
+      const w = warToday.value
+      if (!w) return { title: '', message: '' }
+      const a = team(w.attacker)?.name ?? '공격팀'
+      const d = team(w.defender)?.name ?? '방어팀'
+      const r = warResult.value
+      if (r === 'attacker' || r === 'defender') {
+        const win = r === 'attacker' ? a : d
+        const lose = r === 'attacker' ? d : a
+        return {
+          title: `${win} 승리로 정할까요?`,
+          message: `⚔️ ${a} → ${d}\n${lose}의 모든 재화(보석·골드·라이프·크레딧) 절반(내림)을 ${josa(win, '이/가')} 가져갑니다.\n결과는 전체에 알리고, 가져간 수량은 ${win}에게만 보입니다. 되돌릴 수 없습니다.`,
+        }
+      }
+      if (r === 'draw') return { title: '무승부로 정할까요?', message: `⚔️ ${a} → ${d}\n재화 이동은 없고, 낸 선포 비용은 돌려주지 않습니다. 되돌릴 수 없습니다.` }
+      return { title: '전쟁을 취소할까요?', message: `⚔️ ${a} → ${d}\n재화 이동은 없고, 낸 선포 비용은 돌려주지 않습니다. 오늘은 다시 선포할 수 없습니다.` }
+    }
     default:
       return { title: '', message: '' }
   }
@@ -140,6 +187,8 @@ function onConfirm() {
       return run('게임 시작', () => api.post('/api/admin/game/start'))
     case 'revert':
       return run('설정 단계로 되돌림', () => api.post('/api/admin/game/revert'))
+    case 'war':
+      return run('전쟁 결과 지정', () => api.post(`/api/admin/war/${warToday.value!.id}/resolve`, { result: warResult.value }))
   }
 }
 
@@ -209,15 +258,17 @@ function publish() {
       <template v-else-if="s.status === 'ready'">
         <span class="mono"><strong>게임 준비 중</strong> · 참가자 입장·팀 선택</span>
         <button class="secondary" :disabled="busy" @click="modal = 'revert'">설정으로 되돌리기</button>
-        <button :disabled="busy || view.prep.noLeader.length > 0" :title="view.prep.noLeader.length ? '리더가 없는 팀이 있습니다' : ''" @click="modal = 'start'">게임 시작</button>
+        <button :disabled="busy || view.prep.noLeader.length > 0 || !view.settings.warCost" :title="view.prep.noLeader.length ? '리더가 없는 팀이 있습니다' : ''" @click="modal = 'start'">게임 시작</button>
+        <span v-if="!view.settings.warCost" class="blocker">아래 "게임 설정" 에서 1일차 전쟁 선포 비용을 저장하세요</span>
         <span v-if="view.prep.noLeader.length" class="blocker">
           리더 미지정: {{ view.prep.noLeader.map(letterOfTeam).join(', ') }} 팀 — 아래 표에서 리더를 고르면 시작할 수 있습니다
         </span>
       </template>
       <template v-else-if="s.status === 'running'">
         <span class="mono">{{ s.day }}일차 / 총 {{ s.totalDays }}일 · <strong>{{ PHASE_LABELS[s.phase!] }}</strong></span>
-        <button v-if="nextPhase" :disabled="busy" @click="modal = 'next'">다음 단계: {{ PHASE_LABELS[nextPhase] }} →</button>
-        <button v-else-if="!isLastDay" :disabled="busy" @click="modal = 'next'">다음 날로 ({{ s.day + 1 }}일차) →</button>
+        <button v-if="nextPhase" :disabled="busy || !!advanceBlocker" @click="modal = 'next'">다음 단계: {{ PHASE_LABELS[nextPhase] }} →</button>
+        <button v-else-if="!isLastDay" :disabled="busy || !!advanceBlocker" @click="modal = 'next'">다음 날로 ({{ s.day + 1 }}일차) →</button>
+        <span v-if="advanceBlocker && (nextPhase || !isLastDay)" class="blocker">{{ advanceBlocker }}</span>
         <button v-if="isLastDay" :disabled="busy || !canEnd" class="danger" @click="modal = 'end'">게임 종료</button>
         <span v-if="endBlocker" class="blocker">{{ endBlocker }}</span>
       </template>
@@ -308,10 +359,40 @@ function publish() {
       </div>
     </template>
 
+    <!-- 전쟁: 오늘 비용·진행 중 전쟁 결과 지정·다음 날 비용 -->
+    <template v-if="s.status === 'running'">
+      <h3>⚔️ 전쟁</h3>
+      <p class="muted" style="margin-top: 0">
+        오늘({{ s.day }}일차) 선포 비용: <strong>{{ costText(view.war.todayCost) }}</strong> · 거래 활동 단계에서 리더가 하루 1회(게임 전체) 선포. 낸 비용은 소멸합니다.
+      </p>
+      <div v-if="warToday && warActive" class="war-active">
+        <div><strong>⚔️ 전쟁 중: {{ team(warToday.attacker)?.name }} → {{ team(warToday.defender)?.name }}</strong> <span class="muted">(비용 {{ costText(warToday.cost) }})</span></div>
+        <div class="muted">오프라인 게임 결과를 지정하세요. 결과가 나올 때까지 모든 거래와 단계 넘기기가 멈춥니다.</div>
+        <div class="row" style="margin-top: 6px">
+          <button class="danger" :disabled="busy" @click="askWar('attacker')">{{ team(warToday.attacker)?.name }} 승리</button>
+          <button class="danger" :disabled="busy" @click="askWar('defender')">{{ team(warToday.defender)?.name }} 승리</button>
+          <button class="secondary" :disabled="busy" @click="askWar('draw')">무승부</button>
+          <button class="secondary" :disabled="busy" @click="askWar('cancel')">전쟁 취소</button>
+        </div>
+      </div>
+      <p v-else-if="warToday">
+        오늘 전쟁: {{ team(warToday.attacker)?.name }} → {{ team(warToday.defender)?.name }} · <strong>{{ WAR_STATUS_LABELS[warToday.status] }}</strong>
+        <span v-if="warToday.spoils" class="muted"> · 전리품 {{ offerText(warToday.spoils) }}</span>
+      </p>
+      <p v-else class="muted">오늘 선포된 전쟁 없음</p>
+      <div v-if="!isLastDay" class="row war-cost">
+        <span>{{ s.day + 1 }}일차 선포 비용</span>
+        <label v-for="k in WAR_COST_KINDS" :key="k">{{ RESOURCE_LABELS[k] }} <input v-model.number="nextCost[k]" type="number" min="0" /></label>
+        <button class="secondary small" :disabled="busy" @click="saveNextCost">저장</button>
+        <span v-if="view.war.nextCost" class="muted">저장됨: {{ costText(view.war.nextCost) }}</span>
+        <span v-else class="blocker">아직 정하지 않음 — 정해야 다음 날로 넘어갑니다</span>
+      </div>
+    </template>
+
     <!-- 리더간 협의 -->
     <p v-if="s.status === 'running' && s.phase === 'council'" class="muted">
       대가 없는 원조는 아래 "팀 재화" 카드의 원조 입력으로 처리합니다 (게임 전체 1회{{ view.aidUsed ? ' · 사용함' : '' }}).
-      제재 기능은 아직 없습니다.
+      제재 기능은 아직 없습니다. 전쟁은 거래 활동 단계에서 선포됩니다 (아래 "전쟁").
     </p>
 
     <!-- 라이프 제출 -->
@@ -374,9 +455,9 @@ function publish() {
       :open="modal !== null"
       :title="modalText.title"
       :message="modalText.message"
-      :confirm-label="modal === 'reset' ? '리셋' : modal === 'end' ? '종료' : modal === 'start' ? '시작' : '확인'"
+      :confirm-label="modal === 'reset' ? '리셋' : modal === 'end' ? '종료' : modal === 'start' ? '시작' : modal === 'war' ? '결과 확정' : '확인'"
       cancel-label="취소"
-      :danger="modal === 'reset' || modal === 'end' || modal === 'cancelTrade'"
+      :danger="modal === 'reset' || modal === 'end' || modal === 'cancelTrade' || modal === 'war'"
       :busy="busy"
       @confirm="onConfirm"
       @cancel="modal = null"
@@ -397,6 +478,10 @@ h3 { font-size: 0.95rem; margin: 16px 0 6px; font-weight: 600; }
 .tbl th, .tbl td { text-align: left; padding: 5px 12px 5px 0; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
 .tbl th { color: var(--muted); font-weight: 500; font-size: 0.8rem; }
 .letter { display: inline-block; min-width: 1.4em; font-weight: 600; }
+.war-active { border: 2px solid var(--red); border-left-width: 6px; border-radius: var(--radius); background: var(--red-bg); padding: 10px 12px; }
+.war-active strong { color: var(--red); }
+.war-cost { gap: 8px; align-items: center; margin-top: 6px; }
+.war-cost input { width: 5em; padding: 3px 6px; }
 .blocker { color: var(--red); font-size: 0.88rem; }
 .trade { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
 button.small { padding: 4px 10px; font-size: 0.85rem; }

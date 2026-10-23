@@ -2,14 +2,19 @@
 /**
  * 게임 진행 표시줄. 모든 역할의 상단바 아래에 붙는다 (TopBar).
  * "2일차 / 총 5일 · 거래 활동 중" + 하루 흐름 5단계 중 현재 위치. 준비 상태에서는 "게임 준비 중".
+ * 전쟁 중(선포~결과)에는 아래에 "⚔️ 전쟁 중: 공격팀 → 방어팀 · 모든 거래 중지" 띠를 붙인다.
  */
 import { computed } from 'vue'
 import { useGameStore } from '../stores/game'
+import { useTeamsStore } from '../stores/teams'
 import { PHASE_LABELS, PHASES } from '../../../shared/game'
 
 defineProps<{ large?: boolean }>()
 const game = useGameStore()
 const s = computed(() => game.state)
+const teams = useTeamsStore()
+const war = computed(() => (s.value?.status === 'running' ? s.value.war?.active ?? null : null))
+const nameOf = (id: number) => teams.byId(id)?.name ?? `#${id}`
 </script>
 
 <template>
@@ -28,6 +33,10 @@ const s = computed(() => game.state)
     <div v-else-if="s.status === 'ready'" class="now"><strong>게임 준비 중</strong><span class="muted">참가자 입장·팀 선택</span></div>
     <div v-else class="now"><strong>게임 종료</strong><span v-if="!s.results" class="muted">등수 발표 대기 중</span></div>
   </div>
+  <div v-if="war" class="war-bar" :class="{ large }" role="status">
+    ⚔️ <strong>전쟁 중: {{ nameOf(war.attacker) }} → {{ nameOf(war.defender) }}</strong>
+    <span>· 결과가 나올 때까지 모든 거래 중지</span>
+  </div>
 </template>
 
 <style scoped>
@@ -44,6 +53,9 @@ const s = computed(() => game.state)
   border-left: 3px solid var(--blue);
   border-radius: var(--radius);
 }
+.war-bar { margin: -6px 0 14px; padding: 10px 12px; border: 2px solid var(--red); border-left-width: 6px; border-radius: var(--radius); background: var(--red-bg); color: var(--red); }
+.war-bar strong { font-size: 1.1rem; }
+.war-bar.large strong { font-size: 1.8rem; }
 .phase-bar.ended { border-left-color: var(--ink); }
 .phase-bar.ready { border-left-color: var(--line-strong); }
 .now { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }

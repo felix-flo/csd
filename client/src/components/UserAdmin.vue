@@ -28,6 +28,19 @@ const status = ref('')
 const editingId = ref<number | null>(null)
 const editName = ref('')
 const showPins = ref(false)
+/** 개별로 연 PIN (계정 id). "전체 PIN 숨기기" 를 누르면 함께 닫는다 */
+const openPins = ref(new Set<number>())
+const pinShown = (id: number) => showPins.value || openPins.value.has(id)
+function togglePin(id: number) {
+  const next = new Set(openPins.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  openPins.value = next
+}
+function toggleAllPins() {
+  showPins.value = !showPins.value
+  if (!showPins.value) openPins.value = new Set()
+}
 
 const members = computed(() => props.users.filter((u) => u.role === 'member'))
 const staff = computed(() => props.users.filter((u) => u.role !== 'member'))
@@ -136,7 +149,7 @@ function copyList() {
     </p>
 
     <div class="row" style="margin-bottom: 12px">
-      <button class="secondary" @click="showPins = !showPins">{{ showPins ? 'PIN 숨기기' : 'PIN 보기' }}</button>
+      <button class="secondary" @click="toggleAllPins">{{ showPins ? '전체 PIN 숨기기' : '전체 PIN 보기' }}</button>
       <button class="secondary" @click="copyList">이름/PIN 목록 복사</button>
       <button :disabled="busy" class="secondary" @click="setActive(members.map((u) => u.id), true)">참가자 전체 복귀</button>
       <button :disabled="busy" class="secondary" @click="setActive(members.map((u) => u.id), false, '참가자 전체')">참가자 전체 탈락</button>
@@ -158,7 +171,10 @@ function copyList() {
             <a v-else href="#" @click.prevent="startEdit(u)">{{ u.name }}</a>
           </td>
           <td>{{ u.role }} <span v-if="u.isFixed" class="badge" title="리셋해도 남는 고정 계정">고정</span><span v-else-if="u.role === 'admin'" class="muted" title="게임 리셋 때 삭제됩니다">· 리셋 시 삭제</span></td>
-          <td class="pin">{{ showPins ? u.pin : '••••' }}</td>
+          <td class="pin">
+            <span class="mono">{{ pinShown(u.id) ? u.pin : '••••' }}</span>
+            <button v-if="!showPins" class="secondary small pin-btn" type="button" @click="togglePin(u.id)">{{ openPins.has(u.id) ? 'PIN 숨기기' : 'PIN 보기' }}</button>
+          </td>
           <td><span class="badge on">활성</span></td>
           <td><button v-if="canResetPin(u)" :disabled="busy" class="secondary small" @click="resetPin(u)">PIN 리셋</button></td>
         </tr>
@@ -200,7 +216,10 @@ function copyList() {
               <option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}</option>
             </select>
           </td>
-          <td class="pin">{{ showPins ? u.pin : '••••' }}</td>
+          <td class="pin">
+            <span class="mono">{{ pinShown(u.id) ? u.pin : '••••' }}</span>
+            <button v-if="!showPins" class="secondary small pin-btn" type="button" @click="togglePin(u.id)">{{ openPins.has(u.id) ? 'PIN 숨기기' : 'PIN 보기' }}</button>
+          </td>
           <td>
             <span v-if="u.isTest && excludeTests && !u.active" class="badge" title="게임 설정에서 테스트 계정 포함을 꺼 두었습니다">제외</span>
             <span v-else class="badge" :class="u.active ? 'on' : 'off'">{{ u.active ? '참가 중' : '탈락' }}</span>
@@ -219,6 +238,8 @@ function copyList() {
 </template>
 
 <style scoped>
+.pin-btn { margin-left: 6px; padding: 2px 8px; font-size: 0.78rem; letter-spacing: normal; font-family: inherit; }
+.pin { white-space: nowrap; }
 .users { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
 .users th, .users td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
 .users th { color: var(--muted); font-weight: 500; font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.08em; }

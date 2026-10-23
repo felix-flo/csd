@@ -19,10 +19,11 @@ import { allElectionsDone, clearElections, finalizeElection, openElections, type
 import { cancelActiveTrade, clearTrades } from './trades.js'
 import { allLivesDone, clearLifeSubmissions } from './life.js'
 import { cancelPendingIssues, clearIssues } from './issuance.js'
+import { clearWars, getActiveWar, getPublicWar, getWarCost, setWarCost } from './war.js'
 import { GameError } from './gameError.js'
 import { DEFAULT_ISSUE_LIMITS, emptyResources, isBeforeStart, PHASES, rankTeams, sumResources, teamLetter } from '../../../shared/game.js'
 import type {
-  GameResults, GameSettings, GameState, GameStatus, IssueLimits, IssueRequestView, LobbyTeam, Phase, Resources, RosterTeam, ScoreRule, TradeView,
+  GameResults, GameSettings, GameState, GameStatus, IssueLimits, IssueRequestView, LobbyTeam, Phase, Resources, RosterTeam, ScoreRule, TradeView, WarCost,
 } from '../../../shared/game.js'
 import type { GroupInfo } from '../../../shared/types.js'
 
@@ -66,6 +67,7 @@ export function getGameState(): GameState {
     results: g.results ? (JSON.parse(g.results) as GameResults) : null,
     lobby: g.status === 'ready' ? getLobby() : null,
     title: isBeforeStart(g.status) ? null : GAME_TITLE,
+    war: getPublicWar(g.day, g.status === 'running'),
   }
 }
 
@@ -93,6 +95,7 @@ export function getSettings(): GameSettings {
     lifeReserve: g.life_reserve_initial,
     initial: Object.fromEntries(listGroups().map((t) => [t.id, initial.get(t.id) ?? emptyResources()])),
     issueLimit: { gem: g.gem_issue_limit, gold: g.gold_issue_limit },
+    warCost: getWarCost(1),
   }
 }
 
@@ -124,6 +127,8 @@ export function saveSettings(input: {
   initial: Record<string, Resources>
   /** 없으면 기존 값 유지 */
   issueLimit?: IssueLimits
+  /** 1일차 전쟁 선포 비용. 없으면 기존 값 유지 */
+  warCost?: WarCost
 }): number[] {
   return db.transaction(() => {
     const status = getGameRow().status
@@ -145,6 +150,7 @@ export function saveSettings(input: {
     updateGame('total_days = ?, include_test = ?, life_reserve_initial = ?, life_reserve = ?', [
       input.totalDays, input.includeTest ? 1 : 0, input.lifeReserve, input.lifeReserve,
     ])
+    if (input.warCost) setWarCost(1, input.warCost)
     if (input.issueLimit) updateGame('gem_issue_limit = ?, gold_issue_limit = ?', [input.issueLimit.gem, input.issueLimit.gold])
     const ended = applyTestAccounts(input.includeTest)
     if (status === 'ready') ended.push(...syncParticipantPins().deleted)
@@ -255,6 +261,8 @@ export function startGame(by: number): number[] {
     deactivated.push(...unassigned)
     const { noLeader } = getPrep()
     if (noLeader.length) throw new GameError('no_leader', `리더를 지정하세요: ${noLeader.map(teamLabel).join(', ')}`)
+    if (!getWarCost(1)) throw new GameError('no_war_cost', '게임 설정에서 1일차 전쟁 선포 비용을 저장하세요')
+    clearWars()
     clearLedger()
     clearElections()
     clearTrades()
@@ -287,6 +295,7 @@ export function advance(expect: { day: number; phase: Phase }): AdvanceResult {
   return db.transaction(() => {
     const g = requireRunning()
     if (g.day !== expect.day || g.phase !== expect.phase) throw new GameError('stale', '이미 다음 단계로 넘어갔습니다. 화면을 새로고침하세요')
+    if (getActiveWar()) throw new GameError('war_active', '전쟁 결과를 먼저 정하세요')
     const result: AdvanceResult = { day: g.day, phase: g.phase!, finalized: [], cancelledTrade: null }
     if (g.phase === 'leader') {
       for (const t of listGroups()) {
@@ -301,6 +310,7 @@ export function advance(expect: { day: number; phase: Phase }): AdvanceResult {
       updateGame('phase = ?', [result.phase])
     } else {
       if (g.day >= (g.total_days ?? 0)) throw new GameError('last_day', '마지막 날입니다. 게임 종료를 누르세요')
+      if (!getWarCost(g.day + 1)) throw new GameError('no_war_cost', `${g.day + 1}일차 전쟁 선포 비용을 먼저 정하세요`)
       result.day = g.day + 1
       result.phase = 'leader'
       updateGame(`day = ?, phase = 'leader'`, [result.day])
@@ -318,6 +328,7 @@ export function endGame(): { trade: TradeView | null; issues: IssueRequestView[]
   return db.transaction(() => {
     const g = requireRunning()
     if (g.day < (g.total_days ?? 0)) throw new GameError('not_last_day', '마지막 날에만 종료할 수 있습니다')
+    if (getActiveWar()) throw new GameError('war_active', '전쟁 결과를 먼저 정하세요')
     if (g.phase !== 'life' || !allLivesDone(g.day)) {
       throw new GameError('not_finished', '마지막 날 라이프 제출 단계에서 모든 팀이 제출해야 종료할 수 있습니다')
     }
@@ -369,6 +380,7 @@ export function resetGame(clearSettings = false): ResetResult {
     clearElections()
     clearLifeSubmissions()
     clearIssues()
+    clearWars()
     clearLedger()
     const events = db.prepare('DELETE FROM events').run().changes
     if (removed.length) db.prepare(`DELETE FROM users WHERE id IN (${removed.map(() => '?').join(',')})`).run(...removed)
@@ -377,6 +389,7 @@ export function resetGame(clearSettings = false): ResetResult {
       db.prepare('UPDATE groups SET capacity = 0').run()
       db.prepare('UPDATE team_resources SET initial = 0').run()
       updateGame('include_test = 1, life_reserve_initial = 0, gem_issue_limit = ?, gold_issue_limit = ?', [DEFAULT_ISSUE_LIMITS.gem, DEFAULT_ISSUE_LIMITS.gold])
+      setWarCost(1, { gem: 0, gold: 0, credit: 0 })
     }
     resetAmountsToInitial()
     updateGame(`status = 'setup', total_days = NULL, day = 0, phase = NULL, life_reserve = life_reserve_initial, aid_used = 0,

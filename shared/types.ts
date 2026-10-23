@@ -101,12 +101,17 @@ export type EventType = 'notice' | 'system' | 'document.updated' | 'game' | 'tra
  * - issue.decided      : 발행 수락/거절 (보석은 화이트팀만 scope=group, 골드 수락은 scope=all 로 공개, 거절은 옐로우팀만)
  * - issue.cancelled    : 게임 종료로 대기 요청 취소 (scope=group)
  * 발행 알림은 payload.muted (팝업은 뜨지만 소리는 없음)
+ * - war.declared       : 전쟁 선포 (scope=all, 소리 있음). payload.war = 강조 팝업
+ * - war.resolved       : 전쟁 결과 — 승리팀 이름·무승부·취소 (scope=all)
+ * - war.spoils         : 승리팀이 빼앗은 재화 (scope=group 승리팀만)
+ * - war.lost           : 패배 알림 (scope=group 패배팀, 수량 없음)
  */
 export type GameKind =
   | 'game.updated' | 'game.reset' | 'game.results'
   | 'election.progress' | 'election.done' | 'election.tie' | 'election.all_done'
   | 'resources.updated' | 'life.submitted' | 'life.all_done'
   | 'issue.requested' | 'issue.decided' | 'issue.cancelled'
+  | 'war.declared' | 'war.resolved' | 'war.spoils' | 'war.lost'
 
 /**
  * system 이벤트의 payload.kind.

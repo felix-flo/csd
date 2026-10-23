@@ -18,6 +18,8 @@ export interface Toast {
   createdAt: string
   /** 남은 시간(ms). 호버 중에는 줄지 않는다 */
   remaining: number
+  /** 전쟁 알림: 빨간 강조 팝업 (payload.war) */
+  war: boolean
 }
 
 const MAX = 3
@@ -63,6 +65,7 @@ export const useToastStore = defineStore('toasts', {
         message: eventMessage(ev),
         createdAt: ev.createdAt,
         remaining: this.duration,
+        war: !!ev.payload.war,
       })
       if (this.items.length > MAX) this.items.splice(0, this.items.length - MAX)
       this.ensureTimer()
