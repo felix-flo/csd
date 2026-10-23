@@ -123,10 +123,12 @@ export function castVote(day: number, teamId: number, voterId: number, candidate
     if (!row) throw new GameError('no_election')
     if (row.status !== 'voting') throw new GameError('election_closed', '이미 리더 선출이 끝났습니다')
     if (!activeMemberIds(teamId).includes(candidateId)) throw new GameError('bad_candidate', '팀원만 선택할 수 있습니다', 400)
-    db.prepare(
+    // 투표는 1회 확정 (바꿀 수 없음). PK (day, voter_id) 로 중복 클릭·동시 요청에도 한 표만 들어간다
+    const inserted = db.prepare(
       `INSERT INTO leader_votes (day, group_id, voter_id, candidate_id) VALUES (?, ?, ?, ?)
-       ON CONFLICT (day, voter_id) DO UPDATE SET candidate_id = excluded.candidate_id`,
-    ).run(day, teamId, voterId, candidateId)
+       ON CONFLICT (day, voter_id) DO NOTHING`,
+    ).run(day, teamId, voterId, candidateId).changes === 1
+    if (!inserted) throw new GameError('already_voted', '이미 투표했습니다. 투표는 바꿀 수 없습니다')
     return finalizeElection(day, teamId)
   })()
 }

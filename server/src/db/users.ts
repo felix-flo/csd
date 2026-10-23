@@ -172,16 +172,22 @@ export function deleteUsers(ids: number[]): number {
   return db.prepare(`DELETE FROM users WHERE id IN (${placeholders})`).run(...ids).changes
 }
 
-/** 기존 PIN 과 겹치지 않는 영문 대문자·숫자 4자리 랜덤 PIN */
+/**
+ * 기존 PIN 과 겹치지 않는 영문 대문자·숫자 4자리 랜덤 PIN.
+ * 종이·화면에서 헷갈리는 글자(0/O, 1/I/L)는 쓰지 않는다 → 31자, 31^4 ≈ 92만 가지
+ */
+const PIN_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
+
 export function generatePin(): string {
   const exists = db.prepare('SELECT 1 FROM users WHERE pin_hash = ?')
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+  const n = PIN_ALPHABET.length
+  const limit = 256 - (256 % n)
   for (let attempt = 0; attempt < 1000; attempt++) {
-    // 36 은 256 을 나누지 못하므로 편향을 피하려고 범위를 넘는 바이트는 버린다
+    // n 은 256 을 나누지 못하므로 편향을 피하려고 범위를 넘는 바이트는 버린다
     const pin = Array.from(crypto.randomBytes(16))
-      .filter((b) => b < 252)
+      .filter((b) => b < limit)
       .slice(0, 4)
-      .map((b) => alphabet[b % 36])
+      .map((b) => PIN_ALPHABET[b % n])
       .join('')
     if (pin.length !== 4) continue
     if (!exists.get(hashPin(pin))) return pin
