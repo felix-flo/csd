@@ -32,6 +32,20 @@ const nameOf = (id: number | null | undefined) => props.users.find((u) => u.id =
 const team = (id: number) => props.groups.find((g) => g.id === id)
 
 const isLastDay = computed(() => !!s.value && s.value.day >= (s.value.totalDays ?? 0))
+/**
+ * 게임 종료: 마지막 날에는 버튼을 계속 보여 주되, 그날 턴이 모두 끝나야(라이프 제출 단계 + 모든 팀 제출) 활성.
+ * 서버도 같은 조건으로 막는다 (409 not_finished). 0·1명 팀은 제출 불필요라 완료로 본다
+ */
+const canEnd = computed(() => isLastDay.value && s.value?.phase === 'life' && !!s.value.livesDone)
+/** 아직 라이프를 제출하지 않은(제출 대상인) 팀 이름 */
+const lifePending = computed(() =>
+  (view.value?.teams ?? []).filter((t) => !t.lifeSubmission && t.activeMembers > 0 && !isLifeExempt(t.activeMembers)).map((t) => team(t.teamId)?.name ?? `#${t.teamId}`),
+)
+const endBlocker = computed(() => {
+  if (!isLastDay.value || canEnd.value) return ''
+  if (s.value?.phase !== 'life') return '마지막 날 라이프 제출 단계에서 모든 팀이 제출하면 종료할 수 있습니다'
+  return `라이프 미제출: ${lifePending.value.join(', ')} — 모든 팀이 제출하면 종료할 수 있습니다`
+})
 const nextPhase = computed(() => {
   const p = s.value?.phase
   if (!p) return null
@@ -87,7 +101,7 @@ const modalText = computed(() => {
       return { title: `${st.day + 1}일차로 넘길까요?`, message: `하루가 지나고 ${st.day + 1}일차 리더 선출이 시작됩니다.${warn}` }
     }
     case 'end':
-      return { title: '게임을 종료할까요?', message: '종료하면 진행 중인 거래는 취소되고, 환산 규칙을 골라 등수를 발표할 수 있습니다.' }
+      return { title: '게임을 종료할까요?', message: `${st.day}일차 모든 팀의 라이프 제출이 끝났습니다. 종료하면 더 이상 진행할 수 없고, 수락 대기 중인 발행 요청은 취소됩니다.\n환산 규칙을 골라 등수를 발표할 수 있습니다.` }
     case 'reset': {
       const self = !props.users.find((u) => u.id === auth.user?.id)?.isFixed
       return {
@@ -204,7 +218,8 @@ function publish() {
         <span class="mono">{{ s.day }}일차 / 총 {{ s.totalDays }}일 · <strong>{{ PHASE_LABELS[s.phase!] }}</strong></span>
         <button v-if="nextPhase" :disabled="busy" @click="modal = 'next'">다음 단계: {{ PHASE_LABELS[nextPhase] }} →</button>
         <button v-else-if="!isLastDay" :disabled="busy" @click="modal = 'next'">다음 날로 ({{ s.day + 1 }}일차) →</button>
-        <button v-if="isLastDay" :disabled="busy" class="danger" @click="modal = 'end'">게임 종료</button>
+        <button v-if="isLastDay" :disabled="busy || !canEnd" class="danger" @click="modal = 'end'">게임 종료</button>
+        <span v-if="endBlocker" class="blocker">{{ endBlocker }}</span>
       </template>
       <span v-else class="mono"><strong>게임 종료</strong></span>
       <span class="spacer" />

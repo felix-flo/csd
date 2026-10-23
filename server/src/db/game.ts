@@ -306,11 +306,17 @@ export function advance(expect: { day: number; phase: Phase }): AdvanceResult {
   })()
 }
 
-/** 마지막 날에만. 진행 중 거래와 대기 중 발행 요청은 취소 */
+/**
+ * 마지막 날의 턴이 모두 끝나야 종료할 수 있다: 라이프 제출 단계 + 모든 팀 제출 완료 (팀원 0·1명 팀은 완료로 본다).
+ * 비상 조기 종료는 두지 않는다 (문제가 생기면 리셋). 진행 중 거래와 대기 중 발행 요청은 취소
+ */
 export function endGame(): { trade: TradeView | null; issues: IssueRequestView[] } {
   return db.transaction(() => {
     const g = requireRunning()
     if (g.day < (g.total_days ?? 0)) throw new GameError('not_last_day', '마지막 날에만 종료할 수 있습니다')
+    if (g.phase !== 'life' || !allLivesDone(g.day)) {
+      throw new GameError('not_finished', '마지막 날 라이프 제출 단계에서 모든 팀이 제출해야 종료할 수 있습니다')
+    }
     const trade = cancelActiveTrade()
     const issues = cancelPendingIssues()
     updateGame(`status = 'ended', phase = NULL, ended_at = datetime('now')`)

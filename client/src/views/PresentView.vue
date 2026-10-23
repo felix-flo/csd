@@ -36,7 +36,7 @@ const alive = (t: RosterTeam) => t.members.filter((m) => !m.eliminated).length
 
 <template>
   <div class="page" style="max-width: 1100px">
-    <TopBar title="더 트래픽 커뮤니티: 보이지 않는 손" subtitle="for Traffic Unit" large />
+    <TopBar title="더 트래픽 커뮤니티: 보이지 않는 손" subtitle="for Switching Day" large />
     <ResultsBoard v-if="s?.status === 'ended' && s.results" :results="s.results" large />
     <div v-if="s?.status === 'running' && (s.phase === 'leader' && s.leadersDone || s.phase === 'life' && s.livesDone)" class="card done-banner">
       {{ s.phase === 'leader' ? '모든팀의 리더 선출이 완료되었습니다.' : '모든 팀의 라이프가 제출되었습니다.' }}
