@@ -4,16 +4,24 @@
  * - 참가자 삭제는 없다. 게임에서 빠지면 "탈락 처리" → 로그인 차단 + 세션 종료 + 팀 재화·알림 수신 불가.
  * - 팀 이동은 재로그인 없이 즉시 반영되고, 이전 팀·새 팀 팀원에게 알림이 간다.
  * - PIN 리셋은 본인과 프레젠테이션 계정 제외. 리셋하면 해당 유저의 세션이 즉시 끊긴다.
+ * - 리더 지정: 게임 시작 전에는 팀마다 관리자가 지정해야 시작할 수 있다. 진행 중에도 수동 교체용으로 쓸 수 있다.
+ * - 팀 없는 참가자 = 준비 상태에서 아직 팀을 고르지 않은 PIN. 팀 이동으로 직접 배정할 수 있다.
  */
 import { computed, ref } from 'vue'
 import type { AdminUser, GroupInfo } from '../../../shared/types'
 import { api } from '../lib/api'
 import { useAuthStore } from '../stores/auth'
+import { useGameStore } from '../stores/game'
+import { isBeforeStart, teamLetter } from '../../../shared/game'
 import TeamMark from './TeamMark.vue'
 
 const props = defineProps<{ users: AdminUser[]; groups: GroupInfo[] }>()
 const emit = defineEmits<{ updated: [users: AdminUser[]] }>()
 const auth = useAuthStore()
+const game = useGameStore()
+const beforeStart = computed(() => isBeforeStart(game.admin?.state.status))
+/** 참가자에게 보이는 팀 이름 (시작 전 A, B, C…) */
+const letterOf = (teamId: number) => teamLetter(props.groups.findIndex((g) => g.id === teamId))
 
 const busy = ref(false)
 const status = ref('')
@@ -57,6 +65,10 @@ function moveTeam(u: AdminUser, e: Event) {
   const team = props.groups.find((g) => g.id === teamId)
   if (!team || teamId === u.groupId) return
   return run(`${u.name} → ${team.name}`, () => api.post(`/api/admin/users/${u.id}/team`, { teamId }))
+}
+
+function makeLeader(u: AdminUser) {
+  return run(`${u.name} 리더 지정`, () => api.post(`/api/admin/users/${u.id}/leader`))
 }
 
 function startEdit(u: AdminUser) {
@@ -120,7 +132,7 @@ function copyList() {
             </template>
             <a v-else href="#" @click.prevent="startEdit(u)">{{ u.name }}</a>
           </td>
-          <td>{{ u.role }}</td>
+          <td>{{ u.role }} <span v-if="u.isFixed" class="badge" title="리셋해도 남는 고정 계정">고정</span><span v-else-if="u.role === 'admin'" class="muted" title="게임 리셋 때 삭제됩니다">· 리셋 시 삭제</span></td>
           <td class="pin">{{ showPins ? u.pin : '••••' }}</td>
           <td><span class="badge on">활성</span></td>
           <td><button v-if="canResetPin(u)" :disabled="busy" class="secondary small" @click="resetPin(u)">PIN 리셋</button></td>
@@ -129,8 +141,9 @@ function copyList() {
       <tbody v-for="[team, list] in byTeam" :key="team?.id ?? 'none'">
         <tr class="group-head">
           <td colspan="4">
+            <span v-if="team && beforeStart" class="mono letter" title="참가자에게 보이는 이름">{{ letterOf(team.id) }}</span>
             <TeamMark v-if="team" :color="team.color" />
-            <strong>{{ team?.name ?? '(팀 없음)' }}</strong>
+            <strong>{{ team?.name ?? '(팀 미선택)' }}</strong>
             <span class="muted">{{ list.filter((u) => u.active).length }}명 참가 중<template v-if="list.some((u) => !u.active)"> · 탈락 {{ list.filter((u) => !u.active).length }}명</template></span>
           </td>
           <td colspan="2" class="row" style="justify-content: flex-end">
@@ -161,6 +174,7 @@ function copyList() {
           <td class="pin">{{ showPins ? u.pin : '••••' }}</td>
           <td><span class="badge" :class="u.active ? 'on' : 'off'">{{ u.active ? '참가 중' : '탈락' }}</span></td>
           <td class="row">
+            <button v-if="u.active && u.groupId != null && !u.isLeader" :disabled="busy" class="secondary small" @click="makeLeader(u)">리더 지정</button>
             <button :disabled="busy" class="secondary small" @click="resetPin(u)">PIN 리셋</button>
             <button :disabled="busy" class="secondary small" :class="{ danger: u.active }" @click="setActive([u.id], !u.active)">
               {{ u.active ? '탈락 처리' : '복귀' }}
@@ -181,6 +195,7 @@ function copyList() {
 .users a { color: inherit; text-decoration: underline dotted; }
 .pin { font-family: var(--font-mono); letter-spacing: 0.15em; }
 .team-select { padding: 3px 6px; font-size: 0.85rem; }
+.letter { display: inline-block; min-width: 1.4em; font-weight: 600; }
 button.small { padding: 4px 10px; font-size: 0.85rem; }
 button.small.danger { background: var(--surface); color: var(--red); border-color: var(--line); }
 </style>

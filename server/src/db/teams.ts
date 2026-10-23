@@ -4,6 +4,8 @@
  *   그 밖의 옛 그룹(e, f, …)은 ensureTeams() 가 소속 참가자를 인원 적은 팀으로 옮긴 뒤 삭제한다.
  * - 팀 추가/이름·색 수정은 자유. 삭제는 소속 참가자(활성·비활성 포함)가 0명일 때만.
  * - 팀당 리더 1명: 활성 참가자 중 기존 리더(id 최소) 유지, 없으면 활성 참가자 중 id 최소. 나머지는 리더 해제.
+ *   단, 게임 시작 전(설정·준비)에는 리더 표시를 건드리지 않는다 — 관리자가 직접 지정하고(setLeader), 시작할 때 정리한다.
+ *   (테스트 계정을 뺐다 다시 넣어도 미리 정해 둔 테스트 리더가 유지되도록)
  */
 import { db } from './index.js'
 import { listGroups } from './users.js'
@@ -90,11 +92,18 @@ export function teamNameExists(name: string, exceptId?: number): boolean {
   return !!db.prepare('SELECT 1 FROM groups WHERE name = ? AND id != ?').get(name, exceptId ?? -1)
 }
 
+function beforeStart(): boolean {
+  const g = db.prepare('SELECT status FROM game WHERE id = 1').get() as { status: string } | undefined
+  return !g || g.status === 'setup' || g.status === 'ready'
+}
+
 /**
  * 팀당 리더 1명 보장. 활성 참가자만 리더가 될 수 있다.
+ * 게임 시작 전에는 아무것도 바꾸지 않는다 (관리자 지정 대기. 비활성 리더는 시작 점검에서 "리더 없음" 으로 본다).
  * 반환: 새로 리더가 된 유저 id (변경 없으면 null)
  */
 export function ensureLeader(teamId: number): number | null {
+  if (beforeStart()) return null
   const rows = db
     .prepare(`SELECT id, is_leader, active FROM users WHERE role = 'member' AND group_id = ? ORDER BY id`)
     .all(teamId) as { id: number; is_leader: number; active: number }[]
@@ -131,5 +140,19 @@ export function moveMember(userId: number, toTeamId: number): { from: GroupInfo 
     if (from) ensureLeader(from.id)
     ensureLeader(to.id)
     return { from, to }
+  })()
+}
+
+/** 관리자가 리더 지정. 활성 참가자이고 팀이 있어야 한다. 같은 팀의 다른 리더는 해제 */
+export function setLeader(userId: number): GroupInfo | 'not_found' | 'inactive' | 'no_team' {
+  return db.transaction(() => {
+    const u = db.prepare(`SELECT group_id, active FROM users WHERE id = ? AND role = 'member'`).get(userId) as
+      | { group_id: number | null; active: number }
+      | undefined
+    if (!u) return 'not_found' as const
+    if (u.active !== 1) return 'inactive' as const
+    if (u.group_id == null) return 'no_team' as const
+    db.prepare(`UPDATE users SET is_leader = CASE WHEN id = ? THEN 1 ELSE 0 END WHERE role = 'member' AND group_id = ?`).run(userId, u.group_id)
+    return db.prepare('SELECT id, code, name, team_color AS color FROM groups WHERE id = ?').get(u.group_id) as GroupInfo
   })()
 }

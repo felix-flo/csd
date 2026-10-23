@@ -71,7 +71,18 @@ export const useRealtimeStore = defineStore('realtime', {
         for (const ev of this.pendingToasts.slice(-3)) useToastStore().show(ev)
         this.pendingToasts = []
       })
-      socket.on('disconnect', () => { this.connected = false })
+      socket.on('disconnect', async (reason) => {
+        this.connected = false
+        // 서버가 끊은 경우(탈락·PIN 리셋·게임 리셋으로 계정 삭제): 세션이 살아 있으면 다시 연결, 아니면 로그인 화면으로
+        if (reason !== 'io server disconnect') return
+        if (await auth.refresh()) {
+          socket?.connect()
+          return
+        }
+        auth.clear()
+        const { router } = await import('../router')
+        void router.replace('/login')
+      })
       socket.on('connect_error', async (err) => {
         if (err.message === 'unauthorized') {
           // access token 만료 → refresh 후 socket.io 가 자동 재시도
@@ -80,6 +91,12 @@ export const useRealtimeStore = defineStore('realtime', {
         }
       })
       socket.on('event', (ev) => this.push(ev))
+      // 준비 상태의 팀 선택 현황 변경 (기록 없는 신호): 게임 상태를 다시 받고, 관리자는 계정 목록도
+      socket.on('signal', (kind) => {
+        if (kind !== 'lobby') return
+        void useGameStore().load()
+        if (useAuthStore().user?.role === 'admin') this.groupVersion++
+      })
     },
     /**
      * 최근 50건을 받아 피드에 넣는다. 토스트는 띄우지 않고 lastEventId 도 올리지 않는다 (replay 가 판단).
@@ -153,10 +170,10 @@ export const useRealtimeStore = defineStore('realtime', {
     onSystem(ev: GameEvent) {
       const kind = ev.payload.kind
       if (kind === 'teams.updated') void useTeamsStore().load()
-      if (kind === 'member.moved' || kind === 'members.active') {
+      if (kind === 'member.moved' || kind === 'members.active' || kind === 'leader.set') {
         this.groupVersion++
-        // 내가 이동한 경우: 토큰은 그대로 두고 /api/me 로 팀 정보만 다시 받는다 (재로그인 불필요)
-        if (kind === 'member.moved' && ev.payload.userId === useAuthStore().user?.id) void useAuthStore().refreshMe()
+        // 내가 이동했거나 리더로 지정된 경우: 토큰은 그대로 두고 /api/me 로 팀·리더 정보만 다시 받는다 (재로그인 불필요)
+        if ((kind === 'member.moved' || kind === 'leader.set') && ev.payload.userId === useAuthStore().user?.id) void useAuthStore().refreshMe()
       }
     },
     /**
@@ -166,6 +183,8 @@ export const useRealtimeStore = defineStore('realtime', {
     onGame(ev: GameEvent) {
       void useGameStore().load()
       const kind = ev.payload.kind
+      // 리셋은 서버의 알림 기록을 모두 지운다 → 화면 피드도 이 이벤트 이전 것을 비운다
+      if (kind === 'game.reset') this.events = this.events.filter((e) => e.id >= ev.id)
       if (kind === 'election.done' || kind === 'life.submitted' || kind === 'game.reset') {
         this.groupVersion++
         void useAuthStore().refreshMe()
@@ -173,13 +192,13 @@ export const useRealtimeStore = defineStore('realtime', {
     },
     /**
      * 플로팅 팝업을 띄울지. 서버가 본인 수신분만 보내므로 범위는 따로 거르지 않는다.
-     * - 공지(notice), 팀 이동·탈락/복귀 시스템 알림, 게임 진행·거래 알림. 룰 갱신은 배너가 있고, 그 외 시스템 메시지는 피드로 충분
+     * - 공지(notice), 팀 이동·탈락/복귀·리더 지정 시스템 알림, 게임 진행·거래 알림. 룰 갱신은 배너가 있고, 그 외 시스템 메시지는 피드로 충분
      * - 본인이 만든 이벤트(진행자가 직접 보낸 공지·처리)는 제외
      */
     shouldToast(ev: GameEvent): boolean {
       const popup =
         ev.type === 'notice' ||
-        (ev.type === 'system' && (ev.payload.kind === 'member.moved' || ev.payload.kind === 'members.active')) ||
+        (ev.type === 'system' && (ev.payload.kind === 'member.moved' || ev.payload.kind === 'members.active' || ev.payload.kind === 'leader.set')) ||
         // 게임 진행·거래 알림. silent(투표 진행 상황, 설정 변경 등)는 피드에만
         ((ev.type === 'game' || ev.type === 'trade') && !ev.payload.silent)
       if (!popup) return false

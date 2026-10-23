@@ -27,9 +27,11 @@ const cookieOpts = {
 }
 
 // 4자리 영문·숫자 PIN 은 경우의 수가 적으므로(36^4 ≈ 168만) 로그인 시도는 반드시 제한한다.
+// 실패만 센다: 행사장 와이파이는 모두 같은 공인 IP 로 나가므로 성공까지 세면 준비 단계에 한꺼번에 로그인할 때 막힌다.
 const loginLimiter = rateLimit({
   windowMs: 60_000,
   limit: 10,
+  skipSuccessfulRequests: true,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   // cloudflared → traefik → app 경로이므로 Cloudflare 가 넣어주는 실제 클라이언트 IP 우선

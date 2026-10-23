@@ -106,6 +106,11 @@ export function publishEvent(ev: GameEvent) {
   }
 }
 
+/** 준비 상태의 팀 선택 현황이 바뀜 (기록하지 않는 신호). 받은 화면은 게임 상태를 다시 조회한다 */
+export function signalLobby() {
+  io?.to(rooms.all).emit('signal', 'lobby')
+}
+
 declare module 'socket.io' {
   interface SocketData {
     user?: import('../../../shared/types.js').PublicUser

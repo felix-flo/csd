@@ -14,13 +14,15 @@ import {
   updateUserName,
 } from '../db/users.js'
 import { applyRoster, RosterError } from '../db/roster.js'
-import { createTeam, deleteTeam, ensureLeader, moveMember, teamNameExists, updateTeam } from '../db/teams.js'
+import { createTeam, deleteTeam, ensureLeader, moveMember, setLeader, teamNameExists, updateTeam } from '../db/teams.js'
+import { getGameRow } from '../db/game.js'
 import { getDocument, restoreDocument, updateDocument } from '../db/documents.js'
 import { deleteEvents, insertEvent, listEventsForUser, listRecentEventsForUser } from '../db/events.js'
-import { disconnectUsers, moveUserRooms, publishEvent } from '../realtime/index.js'
+import { disconnectUsers, moveUserRooms, publishEvent, signalLobby } from '../realtime/index.js'
 import { revokeUserRefreshTokens } from '../auth/tokens.js'
 import { gameRouter } from './game.js'
 import { HEX_COLOR, isPaletteColor } from '../../../shared/teams.js'
+import { isBeforeStart, teamLetter } from '../../../shared/game.js'
 import type { EventType, GroupInfo, MeResponse } from '../../../shared/types.js'
 
 export const apiRouter = Router()
@@ -55,8 +57,12 @@ apiRouter.post('/me/name', (req, res) => {
   res.json({ user: findUserById(req.auth!.sub) })
 })
 
-/** 내 그룹 정보 (멤버 목록). 재화 등은 룰 확정 후 추가 */
+/** 내 팀 정보 (팀원 목록). 게임 시작 전에는 주지 않는다 (참가자는 "게임 준비중 입니다." 만 본다) */
 apiRouter.get('/group', requireRole('member'), (req, res) => {
+  if (isBeforeStart(getGameRow().status)) {
+    res.status(409).json({ error: 'not_started' })
+    return
+  }
   const groupId = req.auth!.groupId
   const group = groupId ? findGroupById(groupId) : null
   if (!group) {
@@ -193,6 +199,7 @@ apiRouter.post('/admin/users/active', requireRole('admin'), (req, res) => {
     })
     publishEvent(ev)
   }
+  signalLobby()
   res.json({ changed, users: listAllUsers() })
 })
 
@@ -223,6 +230,7 @@ apiRouter.post('/admin/teams', requireRole('admin'), (req, res) => {
   }
   const team = createTeam(parsed.data)
   announceTeams(req.auth!.sub, 'created', team)
+  signalLobby()
   res.status(201).json({ team, teams: listGroups(), users: listAllUsers() })
 })
 
@@ -258,13 +266,13 @@ apiRouter.delete('/admin/teams/:id', requireRole('admin'), (req, res) => {
     return
   }
   announceTeams(req.auth!.sub, 'deleted', team)
+  signalLobby()
   res.json({ teams: listGroups(), users: listAllUsers() })
 })
 
-// ---- 관리자: 인원 구성 / 이름 / PIN ----
-// 인원은 늘리기만 한다 (참가자 삭제 없음). 현재보다 작은 값은 400 cannot_shrink
+// ---- 관리자: 진행자 수 / 팀 이동 / 리더 지정 / 이름 / PIN ----
+// 진행자는 늘리기만 한다. 참가자 PIN 은 게임 설정의 팀별 최대 인원으로 만든다 (초기셋팅완료)
 const rosterSchema = z.object({
-  teams: z.record(z.string().regex(/^\d+$/), z.number().int().min(1).max(50)),
   staff: z.number().int().min(1).max(20),
 })
 
@@ -314,6 +322,12 @@ apiRouter.post('/admin/users/:id/team', requireRole('admin'), (req, res) => {
   }
   const { from, to } = moved
   moveUserRooms(user.id, from?.id ?? null, to.id)
+  // 시작 전에는 참가자에게 실제 팀 이름 대신 A, B, C… 로 알린다
+  const label = (t: GroupInfo | null) => {
+    if (!t) return '팀 없음'
+    if (!isBeforeStart(getGameRow().status)) return t.name
+    return `${teamLetter(listGroups().findIndex((g) => g.id === t.id))} 팀`
+  }
   const payload = {
     kind: 'member.moved',
     userId: user.id,
@@ -322,12 +336,35 @@ apiRouter.post('/admin/users/:id/team', requireRole('admin'), (req, res) => {
     fromTeamName: from?.name ?? null,
     toTeamId: to.id,
     toTeamName: to.name,
-    message: `${user.name} 님이 팀을 이동했습니다 (${from?.name ?? '팀 없음'} → ${to.name})`,
+    message: `${user.name} 님이 팀을 이동했습니다 (${label(from)} → ${label(to)})`,
   }
   for (const teamId of [from?.id, to.id]) {
     if (teamId == null) continue
     publishEvent(insertEvent({ type: 'system', scope: 'group', targetId: teamId, payload, createdBy: req.auth!.sub }))
   }
+  signalLobby()
+  res.json({ users: listAllUsers() })
+})
+
+/** 리더 지정 (게임 시작 전에는 관리자가 팀마다 지정해야 시작할 수 있다. 진행 중에도 수동 교체용으로 쓸 수 있다) */
+apiRouter.post('/admin/users/:id/leader', requireRole('admin'), (req, res) => {
+  const user = targetUser(req)
+  if (!user || user.role !== 'member') {
+    res.status(404).json({ error: 'not_found' })
+    return
+  }
+  const team = setLeader(user.id)
+  if (typeof team === 'string') {
+    res.status(team === 'not_found' ? 404 : 409).json({ error: team })
+    return
+  }
+  publishEvent(insertEvent({
+    type: 'system',
+    scope: 'group',
+    targetId: team.id,
+    payload: { kind: 'leader.set', userId: user.id, message: `${user.name} 님이 리더로 지정되었습니다` },
+    createdBy: req.auth!.sub,
+  }))
   res.json({ users: listAllUsers() })
 })
 

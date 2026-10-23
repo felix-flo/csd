@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 프레젠테이션 (빔 출력). 게임 중에는 일차·단계와 모든 팀 초기 재화 합계만 공개한다 (이후 변동은 비공개).
+ * 프레젠테이션 (빔 출력). 준비 상태에서는 팀 입장 현황(A 3/5 …, 실제 팀 이름 비공개)과 접속 QR. 게임 중에는 일차·단계와 모든 팀 초기 재화 합계만 공개한다 (이후 변동은 비공개).
  * 모든 팀 리더 선출 / 라이프 제출 완료는 큰 알림으로, 게임 종료 후에는 발표된 등수를 보여준다.
  */
 import { computed, onMounted } from 'vue'
@@ -24,7 +24,17 @@ const s = computed(() => game.state)
       {{ s.phase === 'leader' ? '모든팀의 리더 선출이 완료되었습니다.' : '모든 팀의 라이프가 제출되었습니다.' }}
     </div>
     <div class="present-grid">
-      <div class="card">
+      <div v-if="s?.status === 'ready' && s.lobby" class="card">
+        <h2>팀 입장 현황</h2>
+        <div class="lobby">
+          <div v-for="t in s.lobby" :key="t.teamId" class="lobby-team" :class="{ full: t.count >= t.capacity }">
+            <span class="letter">{{ t.label }}</span>
+            <span class="mono">{{ t.count }} / {{ t.capacity }}</span>
+          </div>
+        </div>
+        <p class="muted" style="margin: 12px 0 0">QR 로 접속해 PIN 으로 로그인한 뒤 이름을 입력하고 팀을 고르세요.</p>
+      </div>
+      <div v-else class="card">
         <h2>초기 재화 <span class="muted">모든 팀 합계</span></h2>
         <ResourceRow large show-label :amounts="s?.initialTotals" />
         <p class="muted" style="margin: 12px 0 0">게임 시작 시점의 전체 재화입니다. 이후 변동은 공개하지 않습니다.</p>
@@ -41,5 +51,9 @@ const s = computed(() => game.state)
 <style scoped>
 .present-grid { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: start; }
 @media (max-width: 720px) { .present-grid { grid-template-columns: 1fr; } }
+.lobby { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.lobby-team { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); font-size: 1.4rem; }
+.lobby-team.full { opacity: 0.4; }
+.lobby-team .letter { font-family: var(--font-display); font-size: 3.4rem; line-height: 1; }
 .done-banner { font-family: var(--font-display); font-size: 2.4rem; line-height: 1.2; border-left: 3px solid var(--blue); }
 </style>

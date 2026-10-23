@@ -22,6 +22,8 @@ export interface AdminUser extends PublicUser {
   groupColor: string | null
   /** 시드 테스트 계정 (팀별 리더·팀원). 게임 설정에서 포함 여부를 정한다 */
   isTest: boolean
+  /** 리셋해도 남는 고정 계정 (관리자 1명 + 프레젠테이션). 진행자·참가자는 리셋 때 삭제 */
+  isFixed: boolean
 }
 
 export interface GroupInfo {
@@ -91,8 +93,9 @@ export type GameKind =
  * - teams.updated    : 팀 추가/수정/삭제 → 클라이언트는 팀 목록 재조회 (scope=all)
  * - member.moved     : 참가자 팀 이동. 이전 팀과 새 팀에 각각 scope=group 으로 1건씩 (이동한 본인은 새 팀 것만 받는다)
  * - members.active   : 탈락(비활성)/복귀 처리. 영향 받은 팀마다 scope=group 1건
+ * - leader.set       : 관리자가 리더 지정 (scope=group)
  */
-export type SystemKind = 'events.cleared' | 'teams.updated' | 'member.moved' | 'members.active'
+export type SystemKind = 'events.cleared' | 'teams.updated' | 'member.moved' | 'members.active' | 'leader.set'
 
 export interface GameEvent {
   id: number
@@ -112,6 +115,11 @@ export interface GameEvent {
 export interface ServerToClientEvents {
   'event': (ev: GameEvent) => void
   'replay:done': (lastId: number) => void
+  /**
+   * 기록하지 않는 가벼운 신호. 'lobby' = 준비 상태의 팀 선택 현황이 바뀜 → 게임 상태(관리자는 계정 목록도) 재조회.
+   * 놓쳐도 재접속 때 상태를 다시 받으므로 outbox(events) 에 남기지 않는다
+   */
+  'signal': (kind: 'lobby') => void
 }
 
 /** Socket.IO 클라이언트 -> 서버 */

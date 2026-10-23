@@ -1,6 +1,6 @@
 /**
  * 게임 진행 정의 (서버/클라이언트 공용). 설계·결정 경위: docs/95.게임진행_설계.md
- * - 게임 상태: setup(설정) → running(진행, day/phase) → ended(종료, 등수 발표)
+ * - 게임 상태: setup(설정) → ready(준비: 참가자 입장·팀 선택) → running(진행, day/phase) → ended(종료, 등수 발표)
  * - 하루 흐름: 리더 선출 → 생산 활동 → 거래 활동 → 리더간 협의 → 라이프 제출. 단계 전환은 관리자 버튼으로만.
  */
 
@@ -25,7 +25,32 @@ export const PHASE_LABELS: Record<Phase, string> = {
   life: '라이프 제출',
 }
 
-export type GameStatus = 'setup' | 'running' | 'ended'
+export type GameStatus = 'setup' | 'ready' | 'running' | 'ended'
+
+/** 시작 전(설정·준비)에는 참가자가 게임 화면을 보지 못하고, 팀은 실제 이름 대신 A, B, C… 로 표시한다 */
+export function isBeforeStart(status: GameStatus | null | undefined): boolean {
+  return status === 'setup' || status === 'ready'
+}
+
+/** 팀 순서(0부터)로 A, B, C … Z, AA, AB … */
+export function teamLetter(index: number): string {
+  let n = index
+  let s = ''
+  do {
+    s = String.fromCharCode(65 + (n % 26)) + s
+    n = Math.floor(n / 26) - 1
+  } while (n >= 0)
+  return s
+}
+
+/** 준비 상태의 팀 선택 현황 (테스트 계정 제외) */
+export interface LobbyTeam {
+  teamId: number
+  /** A, B, C … (팀 순서) */
+  label: string
+  count: number
+  capacity: number
+}
 
 /** 모든 역할에 공개되는 게임 상태 */
 export interface GameState {
@@ -43,11 +68,15 @@ export interface GameState {
   initialTotals: Resources
   /** 발표된 등수 (종료 후 관리자가 발표하면) */
   results: GameResults | null
+  /** 팀 선택 현황 (준비 상태에서만) */
+  lobby: LobbyTeam[] | null
 }
 
-/** 게임 설정 (관리자). setup 상태에서만 수정 */
+/** 게임 설정 (관리자). setup·ready 상태에서 수정 */
 export interface GameSettings {
   totalDays: number | null
+  /** teamId → 최대 인원 (테스트 계정 제외). 초기셋팅완료 때 합계만큼 팀 없는 PIN 을 만든다 */
+  capacity: Record<number, number>
   /** 팀별 테스트 계정(시드 리더·팀원) 포함 여부. 미포함이면 비활성 처리돼 게임에서 빠진다 */
   includeTest: boolean
   /** 라이프 매장량 초기값. 생산 활동으로 지급하는 라이프는 남은 매장량 안에서만 가능 */
@@ -188,6 +217,13 @@ export interface AdminGameView {
   aidUsed: boolean
   trade: TradeView | null
   ledger: LedgerEntry[]
+  /** 시작 전 점검 (준비 상태) */
+  prep: {
+    /** 팀을 고르지 않은 활성 참가자 (시작하면 비활성) */
+    unassigned: number
+    /** 활성 팀원이 있는데 리더가 지정되지 않은 팀 */
+    noLeader: number[]
+  }
 }
 
 export function isResources(v: unknown): v is Resources {

@@ -6,7 +6,7 @@
  */
 import { computed, reactive, ref } from 'vue'
 import type { GroupInfo } from '../../../shared/types'
-import { LEDGER_REASON_LABELS, RESOURCE_KINDS, RESOURCE_LABELS, emptyResources, type AdminGameView, type Resources } from '../../../shared/game'
+import { LEDGER_REASON_LABELS, RESOURCE_KINDS, RESOURCE_LABELS, emptyResources, isBeforeStart, type AdminGameView, type Resources } from '../../../shared/game'
 import { RESOURCES } from '../lib/resources'
 import { api } from '../lib/api'
 import { useGameStore } from '../stores/game'
@@ -66,7 +66,7 @@ async function applyAid() {
 </script>
 
 <template>
-  <div v-if="view && view.state.status !== 'setup'" class="card">
+  <div v-if="view && !isBeforeStart(view.state.status)" class="card">
     <h2>팀 재화</h2>
     <table class="tbl">
       <thead>

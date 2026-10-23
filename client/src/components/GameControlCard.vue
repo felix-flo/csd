@@ -1,21 +1,28 @@
 <script setup lang="ts">
 /**
- * 게임 진행 (관리자): 단계 넘기기 / 다음 날 / 게임 종료 / 등수 발표 / 리셋, 그리고 현재 단계의 팀별 현황.
+ * 게임 진행 (관리자): 준비 상태 점검·리더 지정·게임 시작 / 단계 넘기기 / 다음 날 / 게임 종료 / 등수 발표 / 리셋, 그리고 현재 단계의 팀별 현황.
+ * - 준비 상태: 팀별 입장 현황(A 3/5)과 리더. 리더가 없는 팀이 있으면 시작할 수 없다. 팀을 고르지 않은 참가자는 시작할 때 비활성.
+ * - 리셋은 어느 상태에서나: 참가자·진행자 계정과 모든 기록·알림을 지우고 설정 단계로 (리셋한 사람이 진행자면 본인도 로그아웃).
  * - 다음 단계 요청에 보고 있던 일차·단계를 함께 보내 중복 클릭·관리자 2명 동시 조작을 막는다 (서버 stale 거부).
  * - 리더 선출 동표(동표자 중 현 리더 없음)는 여기서 지정한다.
  * - 제재(대가 없는 제재)는 아직 없음. 추가 시 리더간 협의 패널에 "다음날 거래 제재 팀" 선택을 둔다.
  */
 import { computed, ref } from 'vue'
 import type { AdminUser, GroupInfo } from '../../../shared/types'
-import { PHASE_LABELS, PHASES, RESOURCE_LABELS, rankTeams, type AdminGameView, type Resources, type ScoreMode, type TradeView } from '../../../shared/game'
+import { PHASE_LABELS, PHASES, RESOURCE_LABELS, rankTeams, teamLetter, type AdminGameView, type Resources, type ScoreMode, type TradeView } from '../../../shared/game'
+import { useRouter } from 'vue-router'
 import { api } from '../lib/api'
 import { useGameStore } from '../stores/game'
+import { useAuthStore } from '../stores/auth'
 import TeamMark from './TeamMark.vue'
 import ModalDialog from './ModalDialog.vue'
 import ResourceRow from './ResourceRow.vue'
 
 const props = defineProps<{ users: AdminUser[]; groups: GroupInfo[] }>()
+const emit = defineEmits<{ updated: [users: AdminUser[]] }>()
 const game = useGameStore()
+const auth = useAuthStore()
+const router = useRouter()
 const view = computed(() => game.admin)
 const s = computed(() => view.value?.state)
 const busy = ref(false)
@@ -32,11 +39,18 @@ const nextPhase = computed(() => {
   return i < PHASES.length - 1 ? PHASES[i + 1]! : null
 })
 
-async function run(label: string, fn: () => Promise<AdminGameView>) {
+async function run(label: string, fn: () => Promise<AdminGameView & { removedSelf?: boolean }>) {
   busy.value = true
   status.value = ''
   try {
-    game.setAdmin(await fn())
+    const res = await fn()
+    // 진행자가 리셋하면 본인 계정도 지워진다
+    if (res.removedSelf) {
+      auth.clear()
+      void router.push('/login')
+      return
+    }
+    game.setAdmin(res)
     status.value = label
   } catch (e) {
     status.value = `실패: ${(e as Error).message}`
@@ -48,7 +62,7 @@ async function run(label: string, fn: () => Promise<AdminGameView>) {
 }
 
 // ---- 확인 팝업 ----
-type ModalKind = 'next' | 'end' | 'reset' | 'cancelTrade'
+type ModalKind = 'next' | 'end' | 'reset' | 'cancelTrade' | 'start' | 'revert'
 const modal = ref<ModalKind | null>(null)
 const modalText = computed(() => {
   const st = s.value
@@ -66,11 +80,22 @@ const modalText = computed(() => {
     }
     case 'end':
       return { title: '게임을 종료할까요?', message: '종료하면 진행 중인 거래는 취소되고, 환산 규칙을 골라 등수를 발표할 수 있습니다.' }
-    case 'reset':
+    case 'reset': {
+      const self = !props.users.find((u) => u.id === auth.user?.id)?.isFixed
       return {
         title: '게임을 리셋할까요?',
-        message: '팀 구성·리더·탈락자를 게임 시작 시점으로 되돌리고, 재화를 초기 설정값으로, 재화 이력·투표·거래·라이프 기록과 게임 알림을 지웁니다.\n총 일수는 다시 입력해야 합니다.',
+        message: '참가자·진행자 계정을 모두 삭제하고(관리자·프레젠테이션 계정만 남음), 재화 이력·투표·거래·라이프 기록과 공지를 포함한 모든 알림을 지운 뒤 설정 단계로 돌아갑니다.\n'
+          + '팀 구성·룰 문서·게임 설정값은 남고 총 일수만 다시 입력합니다. 테스트 계정은 같은 PIN 으로 다시 만들어집니다.'
+          + (self ? '\n지금 로그인한 진행자 계정도 삭제되어 로그아웃됩니다.' : ''),
       }
+    }
+    case 'start': {
+      const p = view.value?.prep
+      const warn = p?.unassigned ? `\n팀을 고르지 않은 참가자 ${p.unassigned}명은 비활성(로그인 차단) 처리됩니다. 나중에 계정 관리에서 팀에 넣고 복귀시킬 수 있습니다.` : ''
+      return { title: '게임을 시작할까요?', message: `총 ${st.totalDays}일. 시작하면 참가자 화면이 게임 화면으로 바뀌고 1일차 리더 선출이 열립니다.${warn}` }
+    }
+    case 'revert':
+      return { title: '설정 단계로 되돌릴까요?', message: '참가자는 팀을 고를 수 없게 됩니다. 이미 팀을 고른 참가자와 PIN 은 그대로 남습니다.' }
     case 'cancelTrade':
       return { title: '진행 중인 거래를 취소할까요?', message: '이미 낸 크레딧은 돌려주지 않습니다.' }
     default:
@@ -89,6 +114,31 @@ function onConfirm() {
       return run('리셋됨', () => api.post('/api/admin/game/reset'))
     case 'cancelTrade':
       return run('거래 취소됨', () => api.post('/api/admin/game/trade/cancel'))
+    case 'start':
+      return run('게임 시작', () => api.post('/api/admin/game/start'))
+    case 'revert':
+      return run('설정 단계로 되돌림', () => api.post('/api/admin/game/revert'))
+  }
+}
+
+// ---- 준비: 팀별 입장 현황 · 리더 지정 ----
+const lobbyOf = (teamId: number) => s.value?.lobby?.find((l) => l.teamId === teamId)
+const membersOf = (teamId: number) => props.users.filter((u) => u.role === 'member' && u.active && u.groupId === teamId)
+const leaderOf = (teamId: number) => membersOf(teamId).find((u) => u.isLeader)
+async function pickLeader(e: Event) {
+  const userId = Number((e.target as HTMLSelectElement).value)
+  if (!userId) return
+  busy.value = true
+  status.value = ''
+  try {
+    const res = await api.post<{ users: AdminUser[] }>(`/api/admin/users/${userId}/leader`)
+    emit('updated', res.users)
+    await game.load()
+    status.value = `${nameOf(userId)} 리더 지정`
+  } catch (e2) {
+    status.value = `실패: ${(e2 as Error).message}`
+  } finally {
+    busy.value = false
   }
 }
 
@@ -128,11 +178,17 @@ function publish() {
 </script>
 
 <template>
-  <div v-if="view && s && s.status !== 'setup'" class="card">
+  <div v-if="view && s" class="card">
     <h2>게임 진행</h2>
 
     <div class="row controls">
-      <template v-if="s.status === 'running'">
+      <span v-if="s.status === 'setup'" class="mono"><strong>게임 설정 중</strong> · 아래 "게임 설정" 카드에서 초기셋팅완료</span>
+      <template v-else-if="s.status === 'ready'">
+        <span class="mono"><strong>게임 준비 중</strong> · 참가자 입장·팀 선택</span>
+        <button class="secondary" :disabled="busy" @click="modal = 'revert'">설정으로 되돌리기</button>
+        <button :disabled="busy || view.prep.noLeader.length > 0" :title="view.prep.noLeader.length ? '리더가 없는 팀이 있습니다' : ''" @click="modal = 'start'">게임 시작</button>
+      </template>
+      <template v-else-if="s.status === 'running'">
         <span class="mono">{{ s.day }}일차 / 총 {{ s.totalDays }}일 · <strong>{{ PHASE_LABELS[s.phase!] }}</strong></span>
         <button v-if="nextPhase" :disabled="busy" @click="modal = 'next'">다음 단계: {{ PHASE_LABELS[nextPhase] }} →</button>
         <button v-else-if="!isLastDay" :disabled="busy" @click="modal = 'next'">다음 날로 ({{ s.day + 1 }}일차) →</button>
@@ -143,6 +199,35 @@ function publish() {
       <button class="secondary" :disabled="busy" @click="modal = 'reset'">게임 리셋</button>
     </div>
     <p class="muted" style="min-height: 1.2em; margin: 6px 0 0">{{ status }}</p>
+
+    <!-- 준비: 팀별 입장 현황 · 리더 지정 -->
+    <template v-if="s.status === 'ready'">
+      <h3>팀 입장 현황</h3>
+      <table class="tbl">
+        <thead><tr><th>팀</th><th>입장 / 최대</th><th>리더</th></tr></thead>
+        <tbody>
+          <tr v-for="(g, i) in groups" :key="g.id">
+            <td><span class="mono letter">{{ teamLetter(i) }}</span> <TeamMark :color="g.color" />{{ g.name }}</td>
+            <td class="mono">{{ lobbyOf(g.id)?.count ?? 0 }} / {{ lobbyOf(g.id)?.capacity ?? 0 }}<span v-if="membersOf(g.id).some((u) => u.isTest)" class="muted"> + 테스트 {{ membersOf(g.id).filter((u) => u.isTest).length }}</span></td>
+            <td>
+              <span v-if="membersOf(g.id).length === 0" class="muted">팀원 없음</span>
+              <span v-else class="row" style="gap: 6px">
+                <span v-if="!leaderOf(g.id)" class="badge warn">리더 미지정</span>
+                <select :value="leaderOf(g.id)?.id ?? ''" :disabled="busy" @change="pickLeader">
+                  <option value="" disabled>리더 선택</option>
+                  <option v-for="u in membersOf(g.id)" :key="u.id" :value="u.id">{{ u.name }}{{ u.isTest ? ' (테스트)' : '' }}</option>
+                </select>
+              </span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="muted" style="margin: 8px 0 0">
+        팀을 고르지 않은 참가자 {{ view.prep.unassigned }}명<template v-if="view.prep.unassigned"> · 시작하면 비활성 처리됩니다</template>.
+        <template v-if="view.prep.noLeader.length"> 리더가 없는 팀이 있어 시작할 수 없습니다.</template>
+        팀 이동은 아래 "계정 관리"에서 할 수 있습니다.
+      </p>
+    </template>
 
     <!-- 리더 선출 -->
     <template v-if="s.status === 'running' && s.phase === 'leader'">
@@ -254,7 +339,7 @@ function publish() {
       :open="modal !== null"
       :title="modalText.title"
       :message="modalText.message"
-      :confirm-label="modal === 'reset' ? '리셋' : modal === 'end' ? '종료' : '확인'"
+      :confirm-label="modal === 'reset' ? '리셋' : modal === 'end' ? '종료' : modal === 'start' ? '시작' : '확인'"
       cancel-label="취소"
       :danger="modal === 'reset' || modal === 'end' || modal === 'cancelTrade'"
       :busy="busy"
@@ -271,6 +356,7 @@ h3 { font-size: 0.95rem; margin: 16px 0 6px; font-weight: 600; }
 .tbl { border-collapse: collapse; font-size: 0.92rem; }
 .tbl th, .tbl td { text-align: left; padding: 5px 12px 5px 0; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
 .tbl th { color: var(--muted); font-weight: 500; font-size: 0.8rem; }
+.letter { display: inline-block; min-width: 1.4em; font-weight: 600; }
 .trade { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
 button.small { padding: 4px 10px; font-size: 0.85rem; }
 </style>

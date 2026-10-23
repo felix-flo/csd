@@ -8,19 +8,25 @@ import LeaderVote from '../components/LeaderVote.vue'
 import TradePanel from '../components/TradePanel.vue'
 import LifeSubmit from '../components/LifeSubmit.vue'
 import ResultsBoard from '../components/ResultsBoard.vue'
+import ReadyLobby from '../components/ReadyLobby.vue'
 import { useAuthStore } from '../stores/auth'
 import { useRealtimeStore } from '../stores/realtime'
 import { useGameStore } from '../stores/game'
 import { api } from '../lib/api'
 import type { GroupInfo, PublicUser } from '../../../shared/types'
+import { isBeforeStart } from '../../../shared/game'
 
 const auth = useAuthStore()
 const rt = useRealtimeStore()
 const game = useGameStore()
 const group = ref<GroupInfo | null>(null)
 const members = ref<PublicUser[]>([])
+const s = computed(() => game.state)
+// 시작 전(설정·준비)에는 게임 화면 대신 준비 화면. 실제 팀 이름도 보이지 않는다. 상태를 모르면(로딩 중) 준비 화면으로 둔다
+const beforeStart = computed(() => !s.value || isBeforeStart(s.value.status))
 
 async function load() {
+  if (beforeStart.value) return
   try {
     const res = await api.get<{ group: GroupInfo; members: PublicUser[] }>('/api/group')
     group.value = res.group
@@ -36,7 +42,10 @@ watch(() => [rt.groupVersion, auth.user?.groupId], load)
 // 내 팀이 바뀌면 팀 게임 정보도 다시
 watch(() => auth.user?.groupId, () => game.load())
 
-const s = computed(() => game.state)
+// 게임이 시작되면 팀 정보를 받는다
+watch(beforeStart, (v) => {
+  if (!v) void load()
+})
 const phase = computed(() => (s.value?.status === 'running' ? s.value.phase : null))
 const isLeader = computed(() => !!auth.user?.isLeader)
 const phaseHint: Record<string, string> = {
@@ -47,8 +56,9 @@ const phaseHint: Record<string, string> = {
 
 <template>
   <div class="page">
-    <TopBar :title="group?.name ?? '팀'" :color="group?.color" />
+    <TopBar :title="beforeStart ? 'CSD' : group?.name ?? '팀'" :color="beforeStart ? null : group?.color" />
     <NameSetup v-if="auth.user && !auth.user.nameSet" />
+    <ReadyLobby v-else-if="beforeStart" />
     <template v-else>
     <ResultsBoard v-if="s?.status === 'ended' && s.results" :results="s.results" />
     <div class="card">

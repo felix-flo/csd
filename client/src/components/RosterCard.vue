@@ -1,10 +1,11 @@
 <script setup lang="ts">
 /**
- * 팀 · 인원 구성.
+ * 팀 · 진행자 구성.
  * - 팀: 추가(이름 + 팔레트 색), 이름·색 수정, 소속 참가자 0명일 때만 삭제.
- * - 인원: 팀별 목표 인원 / 진행자 수. **늘리기만** 가능 (참가자 삭제 없음). 빼려면 탈락 처리나 팀 이동.
+ * - 진행자 수: **늘리기만** 가능. 진행자는 게임 리셋 때 지워지므로 게임마다 다시 만든다.
+ * - 팀별 최대 인원(참가자 PIN 수)은 "게임 설정" 카드에서 정한다. 참가자는 준비 상태에서 직접 팀을 고른다.
  */
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { AdminUser, GroupInfo } from '../../../shared/types'
 import { TEAM_PALETTE } from '../../../shared/teams'
 import { api } from '../lib/api'
@@ -25,13 +26,8 @@ const countOf = computed(() => {
 })
 const currentStaff = computed(() => props.users.filter((u) => u.role === 'admin').length)
 
-const targets = reactive<Record<number, number>>({})
 const staff = ref(currentStaff.value)
-function resetInputs() {
-  for (const g of props.groups) targets[g.id] = countOf.value(g.id)
-  staff.value = currentStaff.value
-}
-watch(() => [props.groups, props.users], resetInputs, { immediate: true, deep: true })
+watch(currentStaff, (n) => { staff.value = n }, { immediate: true })
 
 async function run<T extends { users: AdminUser[]; teams?: GroupInfo[]; groups?: GroupInfo[] }>(label: string, fn: () => Promise<T>) {
   busy.value = true
@@ -48,20 +44,15 @@ async function run<T extends { users: AdminUser[]; teams?: GroupInfo[]; groups?:
   }
 }
 
-// ---- 인원 적용 ----
+// ---- 진행자 추가 ----
 async function apply() {
-  const teams: Record<string, number> = {}
-  for (const g of props.groups) {
-    const want = Math.max(targets[g.id] ?? 0, countOf.value(g.id), 1)
-    if (want !== countOf.value(g.id)) teams[String(g.id)] = want
-  }
   const staffWant = Math.max(staff.value, currentStaff.value)
-  if (Object.keys(teams).length === 0 && staffWant === currentStaff.value) {
+  if (staffWant === currentStaff.value) {
     status.value = '변경 없음'
     return
   }
-  const res = await run('', () => api.post<{ created: number; users: AdminUser[]; groups: GroupInfo[] }>('/api/admin/roster', { teams, staff: staffWant }))
-  if (res) status.value = `계정 ${res.created}명 생성`
+  const res = await run('', () => api.post<{ created: number; users: AdminUser[]; groups: GroupInfo[] }>('/api/admin/roster', { staff: staffWant }))
+  if (res) status.value = `진행자 ${res.created}명 생성`
 }
 
 // ---- 팀 추가 ----
@@ -97,15 +88,15 @@ async function removeTeam(g: GroupInfo) {
 
 <template>
   <div class="card">
-    <h2>팀 · 인원 구성</h2>
+    <h2>팀 · 진행자 구성</h2>
     <p class="muted">
-      팀 이름을 클릭하면 이름과 색을 바꿀 수 있습니다. 참가자는 랜덤 PIN 으로 생성되고 첫 로그인 때 본인이 이름을 입력합니다.
-      인원은 <strong>늘리기만</strong> 할 수 있습니다. 빼려면 아래 "계정 관리"에서 탈락 처리하거나 다른 팀으로 옮기세요.
+      팀 이름을 클릭하면 이름과 색을 바꿀 수 있습니다. 팀별 최대 인원은 "게임 설정" 카드에서 정하고, 참가자는 게임 준비 상태에서 직접 팀을 고릅니다.
+      진행자는 <strong>늘리기만</strong> 할 수 있고, 게임 리셋 때 삭제되므로 게임마다 다시 만듭니다.
     </p>
 
     <table class="teams">
       <thead>
-        <tr><th>팀</th><th>현재</th><th>인원</th><th></th></tr>
+        <tr><th>팀</th><th>현재 참가자</th><th></th></tr>
       </thead>
       <tbody>
         <tr v-for="g in groups" :key="g.id">
@@ -124,7 +115,6 @@ async function removeTeam(g: GroupInfo) {
             </template>
           </td>
           <td class="muted">{{ countOf(g.id) }}명</td>
-          <td><input v-model.number="targets[g.id]" type="number" :min="Math.max(countOf(g.id), 1)" max="50" style="width: 5em" /></td>
           <td>
             <button class="secondary small" :disabled="busy || countOf(g.id) > 0" :title="countOf(g.id) > 0 ? '소속 참가자가 있는 팀은 삭제할 수 없습니다' : ''" @click="removeTeam(g)">삭제</button>
           </td>
@@ -140,7 +130,7 @@ async function removeTeam(g: GroupInfo) {
 
     <form class="row" style="margin-top: 14px" @submit.prevent="apply">
       <label>진행자 <input v-model.number="staff" type="number" :min="currentStaff" max="20" style="width: 5em" /></label>
-      <button type="submit" :disabled="busy">인원 적용</button>
+      <button type="submit" :disabled="busy">진행자 추가</button>
       <span class="muted">진행자 {{ currentStaff }}명 · {{ status }}</span>
     </form>
   </div>

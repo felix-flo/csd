@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 게임 진행 표시줄. 모든 역할의 상단바 아래에 붙는다 (TopBar).
- * "2일차 / 총 5일 · 거래 활동 중" + 하루 흐름 5단계 중 현재 위치.
+ * "2일차 / 총 5일 · 거래 활동 중" + 하루 흐름 5단계 중 현재 위치. 준비 상태에서는 "게임 준비 중".
  */
 import { computed } from 'vue'
 import { useGameStore } from '../stores/game'
@@ -13,7 +13,7 @@ const s = computed(() => game.state)
 </script>
 
 <template>
-  <div v-if="s && s.status !== 'setup'" class="phase-bar" :class="{ large, ended: s.status === 'ended' }">
+  <div v-if="s && s.status !== 'setup'" class="phase-bar" :class="{ large, ended: s.status === 'ended', ready: s.status === 'ready' }">
     <template v-if="s.status === 'running' && s.phase">
       <div class="now">
         <span class="day mono">{{ s.day }}일차 <span class="muted">/ 총 {{ s.totalDays }}일</span></span>
@@ -25,6 +25,7 @@ const s = computed(() => game.state)
         </li>
       </ol>
     </template>
+    <div v-else-if="s.status === 'ready'" class="now"><strong>게임 준비 중</strong><span class="muted">참가자 입장·팀 선택</span></div>
     <div v-else class="now"><strong>게임 종료</strong><span v-if="!s.results" class="muted">등수 발표 대기 중</span></div>
   </div>
 </template>
@@ -44,6 +45,7 @@ const s = computed(() => game.state)
   border-radius: var(--radius);
 }
 .phase-bar.ended { border-left-color: var(--ink); }
+.phase-bar.ready { border-left-color: var(--line-strong); }
 .now { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
 .now strong { font-size: 1.1rem; }
 .day { font-size: 0.85rem; }

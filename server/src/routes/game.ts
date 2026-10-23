@@ -2,17 +2,19 @@
  * 게임 진행 API (docs/95.게임진행_설계.md). apiRouter 아래에 붙으므로 requireAuth 는 이미 적용돼 있다.
  * - 모든 역할: GET /game (일차·단계·초기 재화 합계·발표된 등수)
  * - 참가자  : GET /game/team, 투표, 라이프 제출(리더), 거래(리더)
- * - 관리자  : /admin/game/* 설정·시작·다음 단계·종료·등수 발표·리셋, 재화 조정, 원조, 동표 지정, 거래 강제 취소
+ * - 관리자  : /admin/game/* 설정·초기셋팅완료·설정으로 되돌리기·시작·다음 단계·종료·등수 발표·리셋, 재화 조정, 원조, 동표 지정, 거래 강제 취소
+ * - 참가자(준비 상태): POST /game/join 팀 선택. 시작 전에는 팀 게임 정보를 주지 않는다
  * 상태 변화는 events 에 기록 후 Socket.IO 로 알린다. 클라이언트는 game/trade 이벤트를 받으면 상태를 다시 조회한다.
  */
 import { Router, type Request, type Response } from 'express'
 import { z } from 'zod'
 import { requireRole } from '../auth/middleware.js'
 import { findGroupById, findUserById, listGroups } from '../db/users.js'
+import { isBeforeStart } from '../../../shared/game.js'
 import { GameError } from '../db/gameError.js'
 import {
-  activeMemberCount, advance, endGame, getGameRow, getGameState, getSettings, markAidUsed, publishResults, requireRunning,
-  resetGame, saveSettings, startGame, takeFromLifeReserve,
+  activeMemberCount, advance, endGame, getGameRow, getGameState, getPrep, getSettings, joinTeam, markAidUsed, prepareGame, publishResults,
+  requireRunning, resetGame, revertToSetup, saveSettings, startGame, takeFromLifeReserve,
 } from '../db/game.js'
 import { applyDeltas, describeDeltas, getAllResources, getTeamResources, listLedger, negate } from '../db/resources.js'
 import { allElectionsDone, castVote, getElection, resolveTie, type FinalizeResult } from '../db/election.js'
@@ -22,7 +24,7 @@ import {
 } from '../db/trades.js'
 import { db } from '../db/index.js'
 import { insertEvent } from '../db/events.js'
-import { disconnectUsers, publishEvent } from '../realtime/index.js'
+import { disconnectUsers, moveUserRooms, publishEvent, signalLobby } from '../realtime/index.js'
 import { revokeUserRefreshTokens } from '../auth/tokens.js'
 import { emptyResources, josa, PHASE_LABELS, PHASES, RESOURCE_KINDS } from '../../../shared/game.js'
 import type { AdminGameView, Resources, TeamGameView, TradeView } from '../../../shared/game.js'
@@ -62,7 +64,7 @@ function handle<T>(schema: z.ZodType<T> | null, fn: (req: Request, res: Response
   }
 }
 
-function emit(type: 'game' | 'trade', scope: EventScope, targetId: number | null, kind: GameKind | string, message: string, by: number, extra: Record<string, unknown> = {}) {
+function emit(type: 'game' | 'trade', scope: EventScope, targetId: number | null, kind: GameKind | string, message: string, by: number | null, extra: Record<string, unknown> = {}) {
   publishEvent(insertEvent({ type, scope, targetId, payload: { kind, message, ...extra }, createdBy: by }))
 }
 
@@ -115,12 +117,17 @@ gameRouter.get('/game', (_req, res) => {
 
 /** 내 팀 게임 정보 (재화·리더 투표·라이프 제출·거래). 팀은 토큰이 아니라 DB 기준 */
 gameRouter.get('/game/team', requireRole('member'), (req, res) => {
+  const g = getGameRow()
+  // 시작 전에는 게임 화면을 보지 못한다 ("게임 준비중 입니다.")
+  if (isBeforeStart(g.status)) {
+    res.status(409).json({ error: 'not_started' })
+    return
+  }
   const teamId = req.auth!.groupId
   if (!teamId) {
     res.status(404).json({ error: 'no_group' })
     return
   }
-  const g = getGameRow()
   const running = g.status === 'running'
   const body: TeamGameView = {
     resources: getTeamResources(teamId),
@@ -149,6 +156,7 @@ function adminView(): AdminGameView {
     aidUsed: g.aid_used === 1,
     trade: getActiveTrade(),
     ledger: listLedger(50),
+    prep: getPrep(),
   }
 }
 
@@ -160,15 +168,30 @@ gameRouter.get('/admin/game', requireRole('admin'), (_req, res) => {
 
 const settingsSchema = z.object({
   totalDays: z.number().int().min(1).max(30).nullable(),
+  capacity: z.record(z.string().regex(/^\d+$/), z.number().int().min(0).max(50)),
   includeTest: z.boolean(),
   lifeReserve: amount,
   initial: z.record(z.string().regex(/^\d+$/), resourcesSchema),
 })
 
 gameRouter.put('/admin/game/settings', requireRole('admin'), handle(settingsSchema, (req, res, body) => {
-  const deactivated = saveSettings(body)
-  endSessions(deactivated)
+  const ended = saveSettings(body)
+  endSessions(ended)
   emit('game', 'all', null, 'game.updated', '게임 설정이 변경되었습니다', req.auth!.sub, { silent: true })
+  signalLobby()
+  res.json(adminView())
+}))
+
+/** 초기셋팅완료: 준비 상태로. 참가자가 로그인해 팀을 고를 수 있게 된다 */
+gameRouter.post('/admin/game/prepare', requireRole('admin'), handle(null, (req, res) => {
+  endSessions(prepareGame())
+  emit('game', 'all', null, 'game.updated', '게임 준비 중입니다. 참가자는 로그인해 팀을 고르세요', req.auth!.sub, { silent: true })
+  res.json(adminView())
+}))
+
+gameRouter.post('/admin/game/revert', requireRole('admin'), handle(null, (req, res) => {
+  revertToSetup()
+  emit('game', 'all', null, 'game.updated', '게임 설정 단계로 돌아갔습니다', req.auth!.sub, { silent: true })
   res.json(adminView())
 }))
 
@@ -216,15 +239,15 @@ gameRouter.post('/admin/game/results', requireRole('admin'), handle(scoreSchema,
   res.json(adminView())
 }))
 
+/** 리셋: 참가자·진행자 계정 삭제, 기록·알림 전부 삭제 → 설정 단계. 리셋한 사람이 진행자면 본인 계정도 지워진다 */
 gameRouter.post('/admin/game/reset', requireRole('admin'), handle(null, (req, res) => {
-  const deactivated = resetGame()
-  endSessions(deactivated)
-  emit('game', 'all', null, 'game.reset', '게임이 초기화되었습니다', req.auth!.sub)
-  // 팀 구성이 바뀌었을 수 있으므로 팀 화면이 팀원 목록을 다시 받게 한다
-  for (const t of listGroups()) {
-    publishEvent(insertEvent({ type: 'system', scope: 'group', targetId: t.id, payload: { kind: 'members.active', message: '팀 구성이 게임 시작 시점으로 복원되었습니다' }, createdBy: req.auth!.sub }))
-  }
-  res.json(adminView())
+  const by = req.auth!.sub
+  const removed = resetGame()
+  const self = removed.includes(by)
+  // 남아 있는 화면(관리자·프레젠테이션)은 이 이벤트를 받고 피드를 비운다
+  emit('game', 'all', null, 'game.reset', '게임이 초기화되었습니다', self ? null : by, { silent: true })
+  res.json({ ...adminView(), removedSelf: self })
+  disconnectUsers(removed)
 }))
 
 // ---- 관리자: 재화 조정 / 원조 / 동표 지정 / 거래 강제 취소 ----
@@ -239,7 +262,7 @@ const adjustSchema = z.object({
 gameRouter.post('/admin/game/resources', requireRole('admin'), handle(adjustSchema, (req, res, body) => {
   const by = req.auth!.sub
   const g = getGameRow()
-  if (g.status === 'setup') throw new GameError('not_running', '시작 전에는 게임 설정의 초기 재화를 수정하세요')
+  if (isBeforeStart(g.status)) throw new GameError('not_running', '시작 전에는 게임 설정의 초기 재화를 수정하세요')
   if (!findGroupById(body.teamId)) throw new GameError('not_found', '', 404)
   const text = describeDeltas(body.deltas)
   if (!text) throw new GameError('no_change', '변경할 수량을 입력하세요', 400)
@@ -290,6 +313,15 @@ gameRouter.post('/admin/game/election', requireRole('admin'), handle(tieSchema, 
 gameRouter.post('/admin/game/trade/cancel', requireRole('admin'), handle(null, (req, res) => {
   announceCancelled(cancelActiveTrade(), '진행자에 의해', req.auth!.sub)
   res.json(adminView())
+}))
+
+// ---- 참가자: 팀 선택 (준비 상태) ----
+
+gameRouter.post('/game/join', requireRole('member'), handle(z.object({ teamId: z.number().int().positive() }), (req, res, body) => {
+  const team = joinTeam(req.auth!.sub, body.teamId)
+  moveUserRooms(req.auth!.sub, null, team.id)
+  signalLobby()
+  res.json({ user: findUserById(req.auth!.sub) })
 }))
 
 // ---- 참가자: 리더 투표 ----

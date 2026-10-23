@@ -29,7 +29,7 @@ onMounted(() => {
 })
 // 리더 선출·라이프 탈락·리셋 등으로 계정 상태가 바뀌면 다시 받는다
 watch(() => rt.groupVersion, loadUsers)
-// 게임 설정 저장(테스트 계정 포함 여부)·리셋은 계정 활성 상태를 바꾼다
+// 게임 설정 저장(테스트 계정 포함 여부)·초기셋팅완료·시작·리셋은 계정을 만들거나 지우거나 활성 상태를 바꾼다
 watch(() => [game.admin?.settings.includeTest, game.admin?.state.status], loadUsers)
 function onUpdated(u: AdminUser[], g?: GroupInfo[]) {
   users.value = u
@@ -76,11 +76,11 @@ async function send() {
 <template>
   <div class="page" style="max-width: 960px">
     <TopBar title="게임 진행자" />
-    <GameControlCard :users="users" :groups="groups" />
+    <GameControlCard :users="users" :groups="groups" @updated="onUpdated" />
     <GameResourcesCard :groups="groups" />
     <RulesEditor />
     <RosterCard :users="users" :groups="groups" @updated="onUpdated" />
-    <GameSetupCard :groups="groups" />
+    <GameSetupCard :groups="groups" @changed="loadUsers" />
     <UserAdmin :users="users" :groups="groups" @updated="onUpdated" />
     <div class="card">
       <h2>테스트 공지 보내기 <span class="muted">(개발용)</span></h2>
