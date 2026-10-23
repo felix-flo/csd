@@ -87,25 +87,32 @@ function endSessions(ids: number[]) {
   disconnectUsers(ids)
 }
 
-function announceElection(day: number, teamId: number, r: FinalizeResult, by: number) {
+/**
+ * 참가자의 행동으로 생긴 결과 알림(리더 선출 결과, 모든 팀 완료, 거래 완료 등)에 붙인다.
+ * 화면은 "내가 만든 알림은 팝업하지 않는다" 규칙을 쓰는데, 결과 알림은 마지막으로 행동한 사람에게도 팝업·소리가 가야 한다.
+ * 관리자 행동(단계 넘기기·동표 지정)으로 생긴 결과는 붙이지 않는다 (관리자 화면에 팀별 팝업이 쏟아지지 않게)
+ */
+const NOTIFY_SELF = { notifySelf: true } as const
+
+function announceElection(day: number, teamId: number, r: FinalizeResult, by: number, extra: Record<string, unknown> = {}) {
   if (r.status === 'tie') {
-    emit('game', 'group', teamId, 'election.tie', `리더 투표 동표 (${r.tied.map(userName).join(', ')}) — 진행자가 리더를 지정합니다`, by, { day })
+    emit('game', 'group', teamId, 'election.tie', `리더 투표 동표 (${r.tied.map(userName).join(', ')}) — 진행자가 리더를 지정합니다`, by, { day, ...extra })
     return
   }
   const who = r.leaderId != null ? `${userName(r.leaderId)} 님` : '없음'
   const how = r.changed ? `새 리더 ${who}` : `리더 ${who} 재신임`
-  emit('game', 'group', teamId, 'election.done', `리더 선출 결과: ${how}${r.votes ? ` (${r.votes}표)` : ''}`, by, { day, leaderId: r.leaderId })
+  emit('game', 'group', teamId, 'election.done', `리더 선출 결과: ${how}${r.votes ? ` (${r.votes}표)` : ''}`, by, { day, leaderId: r.leaderId, ...extra })
   // 팀 알림을 받지 않는 프레젠테이션의 팀 현황(리더 표시) 갱신
   signalLobby()
 }
 
-function announceAllLeaders(day: number, by: number) {
-  emit('game', 'all', null, 'election.all_done', '모든팀의 리더 선출이 완료되었습니다.', by, { day })
+function announceAllLeaders(day: number, by: number, extra: Record<string, unknown> = {}) {
+  emit('game', 'all', null, 'election.all_done', '모든팀의 리더 선출이 완료되었습니다.', by, { day, ...extra })
 }
 
-function announceTrade(t: TradeView, kind: string, messages: { from: string; to: string }, by: number) {
-  emit('trade', 'group', t.from.teamId, kind, messages.from, by, { tradeId: t.id, status: t.status })
-  emit('trade', 'group', t.to.teamId, kind, messages.to, by, { tradeId: t.id, status: t.status })
+function announceTrade(t: TradeView, kind: string, messages: { from: string; to: string }, by: number, extra: Record<string, unknown> = {}) {
+  emit('trade', 'group', t.from.teamId, kind, messages.from, by, { tradeId: t.id, status: t.status, ...extra })
+  emit('trade', 'group', t.to.teamId, kind, messages.to, by, { tradeId: t.id, status: t.status, ...extra })
 }
 
 function announceCancelled(t: TradeView | null, reason: string, by: number) {
@@ -398,8 +405,8 @@ gameRouter.post('/game/vote', requireRole('member'), handle(voteSchema, (req, re
   const result = castVote(g.day, teamId, by, body.candidateId)
   emit('game', 'group', teamId, 'election.progress', `${userName(by)} 님이 투표했습니다`, by, { silent: true })
   if (result) {
-    announceElection(g.day, teamId, result, by)
-    if (result.status === 'done' && allElectionsDone(g.day)) announceAllLeaders(g.day, by)
+    announceElection(g.day, teamId, result, by, NOTIFY_SELF)
+    if (result.status === 'done' && allElectionsDone(g.day)) announceAllLeaders(g.day, by, NOTIFY_SELF)
   }
   res.json({ election: getElection(g.day, teamId, by), user: findUserById(by) })
 }))
@@ -415,8 +422,8 @@ gameRouter.post('/game/life', requireRole('member'), handle(lifeSchema, (req, re
   const sub = submitLife(g.day, teamId, by, body.userIds)
   const dead = sub.eliminated.map(userName)
   const msg = `라이프 제출 완료: ${sub.saved.length}명 생존${dead.length ? ` · 탈락 ${dead.join(', ')}` : ''}`
-  emit('game', 'group', teamId, 'life.submitted', msg, by, { day: g.day, eliminated: sub.eliminated })
-  if (allLivesDone(g.day)) emit('game', 'all', null, 'life.all_done', '모든 팀의 라이프가 제출되었습니다.', by, { day: g.day })
+  emit('game', 'group', teamId, 'life.submitted', msg, by, { day: g.day, eliminated: sub.eliminated, ...NOTIFY_SELF })
+  if (allLivesDone(g.day)) emit('game', 'all', null, 'life.all_done', '모든 팀의 라이프가 제출되었습니다.', by, { day: g.day, ...NOTIFY_SELF })
   signalLobby() // 프레젠테이션 팀 현황(탈락 표시)
   // 응답을 먼저 보낸 뒤 세션을 끊는다 (리더 본인이 탈락한 경우에도 결과 화면을 받을 수 있게)
   res.json({ submission: sub })
@@ -491,7 +498,7 @@ gameRouter.post('/trade/:id/accept', requireRole('member'), handle(null, (req, r
   if (completed) {
     const give = (o: Resources | null) => describeDeltas(o ?? {}).replaceAll('+', '') || '없음'
     const msg = `거래 완료: ${teamName(t.from.teamId)} (${give(t.from.offer)}) ↔ ${teamName(t.to.teamId)} (${give(t.to.offer)})`
-    announceTrade(t, 'trade.completed', { from: msg, to: msg }, req.auth!.sub)
+    announceTrade(t, 'trade.completed', { from: msg, to: msg }, req.auth!.sub, NOTIFY_SELF)
   } else {
     const msg = `${josa(teamName(teamId), '이/가')} 제안을 수락했습니다`
     announceTrade(t, 'trade.updated', { from: msg, to: msg }, req.auth!.sub)

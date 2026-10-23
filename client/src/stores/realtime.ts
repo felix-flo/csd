@@ -193,7 +193,7 @@ export const useRealtimeStore = defineStore('realtime', {
     /**
      * 플로팅 팝업을 띄울지. 서버가 본인 수신분만 보내므로 범위는 따로 거르지 않는다.
      * - 공지(notice), 팀 이동·탈락/복귀·리더 지정 시스템 알림, 게임 진행·거래 알림. 룰 갱신은 배너가 있고, 그 외 시스템 메시지는 피드로 충분
-     * - 본인이 만든 이벤트(진행자가 직접 보낸 공지·처리)는 제외
+     * - 본인이 만든 이벤트(진행자가 직접 보낸 공지·처리)는 제외. 단 payload.notifySelf(참가자 행동의 결과 알림)는 본인에게도
      */
     shouldToast(ev: GameEvent): boolean {
       const popup =
@@ -204,6 +204,8 @@ export const useRealtimeStore = defineStore('realtime', {
       if (!popup) return false
       // 발행 요청은 관리자 화면이 요청 창(IssueAdminCard)으로 띄우므로 토스트는 겹치지 않게 뺀다
       if (ev.payload.kind === 'issue.requested' && useAuthStore().user?.role === 'admin') return false
+      // 결과 알림(모든 팀 완료·리더 선출 결과·거래 완료)은 마지막으로 행동한 본인에게도 띄운다 (서버가 notifySelf 로 표시)
+      if (ev.payload.notifySelf) return true
       const me = useAuthStore().user?.id
       return ev.createdBy == null || ev.createdBy !== me
     },
