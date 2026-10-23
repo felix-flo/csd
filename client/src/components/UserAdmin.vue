@@ -31,13 +31,31 @@ const showPins = ref(false)
 
 const members = computed(() => props.users.filter((u) => u.role === 'member'))
 const staff = computed(() => props.users.filter((u) => u.role !== 'member'))
-/** 팀 순서대로 [팀, 소속 참가자]. 팀 없는 참가자는 맨 뒤 */
-const byTeam = computed(() => {
-  const entries: [GroupInfo | null, AdminUser[]][] = props.groups.map((g) => [g, members.value.filter((u) => u.groupId === g.id)])
-  const orphans = members.value.filter((u) => u.groupId == null || !props.groups.some((g) => g.id === u.groupId))
-  if (orphans.length) entries.push([null, orphans])
-  return entries
+interface Section {
+  key: string
+  team: GroupInfo | null
+  title: string
+  list: AdminUser[]
+  /** 접을 수 있는 묶음 (시작 전의 팀 미선택·테스트 계정) */
+  collapsible: boolean
+}
+/**
+ * 팀 순서대로 소속 참가자. 팀 없는 참가자는 맨 뒤.
+ * 시작 전에는 팀 명단에 스스로 팀을 고른 참가자만 두고, 팀 미선택 PIN(→ "참가자 PIN" 카드)과 테스트 계정은 접힌 묶음으로 뺀다
+ * (PIN 이 팀에 묶여 있는 것처럼 보이지 않게).
+ */
+const sections = computed<Section[]>(() => {
+  const pre = beforeStart.value
+  const inTeam = (u: AdminUser, g: GroupInfo) => u.groupId === g.id && !(pre && u.isTest)
+  const result: Section[] = props.groups.map((g) => ({ key: `t${g.id}`, team: g, title: g.name, list: members.value.filter((u) => inTeam(u, g)), collapsible: false }))
+  const orphans = members.value.filter((u) => !(pre && u.isTest) && (u.groupId == null || !props.groups.some((g) => g.id === u.groupId)))
+  if (orphans.length) result.push({ key: 'none', team: null, title: '(팀 미선택)', list: orphans, collapsible: pre })
+  const tests = pre ? members.value.filter((u) => u.isTest) : []
+  if (tests.length) result.push({ key: 'test', team: null, title: '테스트 계정', list: tests, collapsible: true })
+  return result
 })
+const expanded = ref<Record<string, boolean>>({})
+const isOpen = (sec: Section) => !sec.collapsible || !!expanded.value[sec.key]
 
 async function run(label: string, fn: () => Promise<{ users: AdminUser[] } & Record<string, unknown>>) {
   busy.value = true
@@ -138,20 +156,24 @@ function copyList() {
           <td><button v-if="canResetPin(u)" :disabled="busy" class="secondary small" @click="resetPin(u)">PIN 리셋</button></td>
         </tr>
       </tbody>
-      <tbody v-for="[team, list] in byTeam" :key="team?.id ?? 'none'">
+      <tbody v-for="{ key, team, title, list, collapsible } in sections" :key="key">
         <tr class="group-head">
           <td colspan="4">
+            <button v-if="collapsible" class="toggle" type="button" @click="expanded[key] = !expanded[key]">{{ expanded[key] ? '▾' : '▸' }}</button>
             <span v-if="team && beforeStart" class="mono letter" title="참가자에게 보이는 이름">{{ letterOf(team.id) }}</span>
             <TeamMark v-if="team" :color="team.color" />
-            <strong>{{ team?.name ?? '(팀 미선택)' }}</strong>
-            <span class="muted">{{ list.filter((u) => u.active).length }}명 참가 중<template v-if="list.some((u) => !u.active)"> · 탈락 {{ list.filter((u) => !u.active).length }}명</template></span>
+            <strong>{{ title }}</strong>
+            <span class="muted">{{ list.filter((u) => u.active).length }}명<template v-if="key !== 'none'"> 참가 중</template><template v-if="list.some((u) => !u.active)"> · 탈락 {{ list.filter((u) => !u.active).length }}명</template></span>
+            <span v-if="key === 'none' && beforeStart" class="muted"> · PIN 상태는 "참가자 PIN" 카드</span>
+            <span v-if="key === 'test'" class="muted"> · 팀·리더가 미리 정해진 개발용 계정</span>
+            <span v-if="team && beforeStart && list.length === 0" class="muted"> · 아직 팀을 고른 참가자가 없습니다</span>
           </td>
           <td colspan="2" class="row" style="justify-content: flex-end">
             <button :disabled="busy" class="secondary small" @click="setActive(list.map((u) => u.id), true)">전체 복귀</button>
-            <button :disabled="busy" class="secondary small" @click="setActive(list.map((u) => u.id), false, team?.name)">전체 탈락</button>
+            <button :disabled="busy" class="secondary small" @click="setActive(list.map((u) => u.id), false, title)">전체 탈락</button>
           </td>
         </tr>
-        <tr v-for="u in list" :key="u.id" :class="{ inactive: !u.active }">
+        <tr v-for="u in isOpen({ key, team, title, list, collapsible }) ? list : []" :key="u.id" :class="{ inactive: !u.active }">
           <td class="muted">{{ u.id }}</td>
           <td>
             <template v-if="editingId === u.id">
@@ -191,11 +213,13 @@ function copyList() {
 .users th, .users td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
 .users th { color: var(--muted); font-weight: 500; font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.08em; }
 .users tr.group-head td { background: var(--bg-soft); padding-top: 10px; }
+.users tr.group-head strong { margin-right: 6px; }
 .users tr.inactive td { opacity: 0.55; }
 .users a { color: inherit; text-decoration: underline dotted; }
 .pin { font-family: var(--font-mono); letter-spacing: 0.15em; }
 .team-select { padding: 3px 6px; font-size: 0.85rem; }
 .letter { display: inline-block; min-width: 1.4em; font-weight: 600; }
+.toggle { padding: 0 6px; margin-right: 4px; background: none; border: none; color: var(--ink); font-size: 0.9rem; cursor: pointer; }
 button.small { padding: 4px 10px; font-size: 0.85rem; }
 button.small.danger { background: var(--surface); color: var(--red); border-color: var(--line); }
 </style>

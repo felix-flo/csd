@@ -9,6 +9,7 @@ import TeamMark from '../components/TeamMark.vue'
 import GameSetupCard from '../components/GameSetupCard.vue'
 import GameControlCard from '../components/GameControlCard.vue'
 import GameResourcesCard from '../components/GameResourcesCard.vue'
+import ParticipantPins from '../components/ParticipantPins.vue'
 import { api } from '../lib/api'
 import { useRealtimeStore } from '../stores/realtime'
 import { useGameStore } from '../stores/game'
@@ -77,6 +78,7 @@ async function send() {
   <div class="page" style="max-width: 960px">
     <TopBar title="게임 진행자" />
     <GameControlCard :users="users" :groups="groups" @updated="onUpdated" />
+    <ParticipantPins :users="users" :groups="groups" />
     <GameResourcesCard :groups="groups" />
     <RulesEditor />
     <RosterCard :users="users" :groups="groups" @updated="onUpdated" />

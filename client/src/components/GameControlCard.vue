@@ -39,11 +39,15 @@ const nextPhase = computed(() => {
   return i < PHASES.length - 1 ? PHASES[i + 1]! : null
 })
 
-async function run(label: string, fn: () => Promise<AdminGameView & { removedSelf?: boolean }>) {
+interface ResetSummary { members: number; staff: number; events: number; clearedSettings: boolean }
+
+async function run(label: string, fn: () => Promise<AdminGameView & { removedSelf?: boolean; reset?: ResetSummary }>) {
   busy.value = true
   status.value = ''
+  resetDone.value = null
   try {
     const res = await fn()
+    if (res.reset) resetDone.value = res.reset
     // 진행자가 리셋하면 본인 계정도 지워진다
     if (res.removedSelf) {
       auth.clear()
@@ -60,6 +64,10 @@ async function run(label: string, fn: () => Promise<AdminGameView & { removedSel
     modal.value = null
   }
 }
+
+// ---- 리셋: 설정값도 비울지 확인 팝업에서 고른다. 끝나면 지운 것/남은 것을 눈에 띄게 보여준다 ----
+const clearSettings = ref(false)
+const resetDone = ref<ResetSummary | null>(null)
 
 // ---- 확인 팝업 ----
 type ModalKind = 'next' | 'end' | 'reset' | 'cancelTrade' | 'start' | 'revert'
@@ -85,7 +93,7 @@ const modalText = computed(() => {
       return {
         title: '게임을 리셋할까요?',
         message: '참가자·진행자 계정을 모두 삭제하고(관리자·프레젠테이션 계정만 남음), 재화 이력·투표·거래·라이프 기록과 공지를 포함한 모든 알림을 지운 뒤 설정 단계로 돌아갑니다.\n'
-          + '팀 구성·룰 문서·게임 설정값은 남고 총 일수만 다시 입력합니다. 테스트 계정은 같은 PIN 으로 다시 만들어집니다.'
+          + '팀 구성·룰 문서는 남고 총 일수는 비웁니다. 테스트 계정은 같은 PIN 으로 다시 만들어집니다.'
           + (self ? '\n지금 로그인한 진행자 계정도 삭제되어 로그아웃됩니다.' : ''),
       }
     }
@@ -111,7 +119,7 @@ function onConfirm() {
     case 'end':
       return run('게임 종료', () => api.post('/api/admin/game/end'))
     case 'reset':
-      return run('리셋됨', () => api.post('/api/admin/game/reset'))
+      return run('', () => api.post('/api/admin/game/reset', { clearSettings: clearSettings.value }))
     case 'cancelTrade':
       return run('거래 취소됨', () => api.post('/api/admin/game/trade/cancel'))
     case 'start':
@@ -196,9 +204,16 @@ function publish() {
       </template>
       <span v-else class="mono"><strong>게임 종료</strong></span>
       <span class="spacer" />
-      <button class="secondary" :disabled="busy" @click="modal = 'reset'">게임 리셋</button>
+      <button class="secondary" :disabled="busy" @click="clearSettings = false; modal = 'reset'">게임 리셋</button>
     </div>
     <p class="muted" style="min-height: 1.2em; margin: 6px 0 0">{{ status }}</p>
+    <div v-if="resetDone" class="reset-done">
+      <strong>리셋 완료</strong> · 참가자 {{ resetDone.members }}명 · 진행자 {{ resetDone.staff }}명 · 알림 {{ resetDone.events }}건 삭제, 테스트 계정은 같은 PIN 으로 다시 생성.
+      <br />
+      <template v-if="resetDone.clearedSettings">게임 설정값(최대 인원·초기 재화·라이프 매장량)도 0 으로 비웠습니다.</template>
+      <template v-else>게임 설정값(최대 인원·초기 재화·라이프 매장량)은 이전 값을 남겼습니다. 아래 "게임 설정" 카드에서 수정하세요.</template>
+      <button class="secondary small" type="button" @click="resetDone = null">닫기</button>
+    </div>
 
     <!-- 준비: 팀별 입장 현황 · 리더 지정 -->
     <template v-if="s.status === 'ready'">
@@ -345,7 +360,12 @@ function publish() {
       :busy="busy"
       @confirm="onConfirm"
       @cancel="modal = null"
-    />
+    >
+      <label v-if="modal === 'reset'" class="row clear-opt">
+        <input v-model="clearSettings" type="checkbox" />
+        게임 설정값(팀별 최대 인원·초기 재화·라이프 매장량)도 0 으로 초기화
+      </label>
+    </ModalDialog>
   </div>
 </template>
 
@@ -359,4 +379,8 @@ h3 { font-size: 0.95rem; margin: 16px 0 6px; font-weight: 600; }
 .letter { display: inline-block; min-width: 1.4em; font-weight: 600; }
 .trade { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
 button.small { padding: 4px 10px; font-size: 0.85rem; }
+.reset-done { margin-top: 8px; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--blue); border-radius: var(--radius); background: var(--bg-soft); line-height: 1.6; }
+.reset-done button { margin-left: 8px; }
+.clear-opt { gap: 8px; align-items: flex-start; flex-wrap: nowrap; font-size: 0.92rem; cursor: pointer; }
+.clear-opt input { flex: none; margin-top: 3px; }
 </style>

@@ -2,7 +2,9 @@ import { Router } from 'express'
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
 import { z } from 'zod'
 import { config } from '../config.js'
-import { findUserById, findUserByPinHash } from '../db/users.js'
+import { findUserById, findUserByPinHash, touchLogin } from '../db/users.js'
+import { getGameRow } from '../db/game.js'
+import { signalLobby } from '../realtime/index.js'
 import { requireAuth } from '../auth/middleware.js'
 import {
   PIN_PATTERN,
@@ -56,6 +58,9 @@ authRouter.post('/login', loginLimiter, (req, res) => {
     res.status(401).json({ error: 'invalid_pin' })
     return
   }
+  touchLogin(user.id)
+  // 준비 상태에서 참가자가 들어오면 관리자 화면의 "참가자 PIN" 상태(접속함)를 바로 갱신
+  if (user.role === 'member' && getGameRow().status === 'ready') signalLobby()
   const refresh = issueRefreshToken(user.id)
   res.cookie(REFRESH_COOKIE, refresh, cookieOpts)
   const body: LoginResponse = { accessToken: signAccessToken(user), user }

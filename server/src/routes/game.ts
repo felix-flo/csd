@@ -239,14 +239,17 @@ gameRouter.post('/admin/game/results', requireRole('admin'), handle(scoreSchema,
   res.json(adminView())
 }))
 
-/** 리셋: 참가자·진행자 계정 삭제, 기록·알림 전부 삭제 → 설정 단계. 리셋한 사람이 진행자면 본인 계정도 지워진다 */
-gameRouter.post('/admin/game/reset', requireRole('admin'), handle(null, (req, res) => {
+/**
+ * 리셋: 참가자·진행자 계정 삭제, 기록·알림 전부 삭제 → 설정 단계. 리셋한 사람이 진행자면 본인 계정도 지워진다.
+ * clearSettings: 게임 설정값(최대 인원·초기 재화·매장량)도 0 으로. 응답 reset 에 삭제 건수를 담아 화면에 보여준다
+ */
+gameRouter.post('/admin/game/reset', requireRole('admin'), handle(z.object({ clearSettings: z.boolean().optional() }), (req, res, body) => {
   const by = req.auth!.sub
-  const removed = resetGame()
+  const { removed, ...summary } = resetGame(body.clearSettings ?? false)
   const self = removed.includes(by)
   // 남아 있는 화면(관리자·프레젠테이션)은 이 이벤트를 받고 피드를 비운다
   emit('game', 'all', null, 'game.reset', '게임이 초기화되었습니다', self ? null : by, { silent: true })
-  res.json({ ...adminView(), removedSelf: self })
+  res.json({ ...adminView(), removedSelf: self, reset: summary })
   disconnectUsers(removed)
 }))
 

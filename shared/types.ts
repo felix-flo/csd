@@ -24,6 +24,8 @@ export interface AdminUser extends PublicUser {
   isTest: boolean
   /** 리셋해도 남는 고정 계정 (관리자 1명 + 프레젠테이션). 진행자·참가자는 리셋 때 삭제 */
   isFixed: boolean
+  /** 마지막 로그인 시각 (UTC 'YYYY-MM-DD HH:MM:SS'). 한 번도 로그인하지 않았으면 null */
+  lastLoginAt: string | null
 }
 
 export interface GroupInfo {

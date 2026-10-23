@@ -54,6 +54,8 @@ apiRouter.post('/me/name', (req, res) => {
     res.status(409).json({ error: 'name_already_set' })
     return
   }
+  // 준비 상태: 관리자 화면의 "참가자 PIN" 상태(이름 입력함)를 바로 갱신
+  if (req.auth!.role === 'member' && getGameRow().status === 'ready') signalLobby()
   res.json({ user: findUserById(req.auth!.sub) })
 })
 

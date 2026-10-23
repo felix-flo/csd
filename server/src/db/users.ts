@@ -69,13 +69,13 @@ export function listGroupMembers(groupId: number): PublicUser[] {
 export function listAllUsers(): AdminUser[] {
   const rows = db
     .prepare(
-      `SELECT u.${selectCols.split(', ').join(', u.')}, u.pin, u.is_test, u.is_fixed,
+      `SELECT u.${selectCols.split(', ').join(', u.')}, u.pin, u.is_test, u.is_fixed, u.last_login_at,
               g.code AS group_code, g.name AS group_name, g.team_color AS group_color
        FROM users u LEFT JOIN groups g ON g.id = u.group_id
        ORDER BY CASE u.role WHEN 'admin' THEN 0 WHEN 'presenter' THEN 1 ELSE 2 END, g.id, u.is_leader DESC, u.id`,
     )
     .all() as (UserRow & {
-      pin: string | null; is_test: number; is_fixed: number; group_code: string | null; group_name: string | null; group_color: string | null
+      pin: string | null; is_test: number; is_fixed: number; last_login_at: string | null; group_code: string | null; group_name: string | null; group_color: string | null
     })[]
   return rows.map((r) => ({
     ...toPublic(r),
@@ -86,6 +86,7 @@ export function listAllUsers(): AdminUser[] {
     groupColor: r.group_color,
     isTest: r.is_test === 1,
     isFixed: r.is_fixed === 1,
+    lastLoginAt: r.last_login_at,
   }))
 }
 
@@ -97,6 +98,11 @@ export function setUsersActive(ids: number[], active: boolean): number {
     .prepare(`UPDATE users SET active = ? WHERE id IN (${placeholders})`)
     .run(active ? 1 : 0, ...ids)
   return info.changes
+}
+
+/** 로그인 성공 시각 기록 (준비 상태의 접속 여부 표시용) */
+export function touchLogin(id: number) {
+  db.prepare(`UPDATE users SET last_login_at = datetime('now') WHERE id = ?`).run(id)
 }
 
 export function updateUserName(id: number, name: string): boolean {

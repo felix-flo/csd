@@ -327,23 +327,46 @@ export function publishResults(rule: ScoreRule): GameResults {
  * - 참가자 전원과 진행자(고정 관리자 외 admin)를 삭제. refresh token·투표는 FK CASCADE 로 함께 지워진다
  * - 진행 기록(재화 이력·투표·거래·라이프)과 알림(공지 포함 모든 종류)을 비운다. events id 는 AUTOINCREMENT 라 재사용되지 않아 클라이언트 replay 가 꼬이지 않는다
  * - 시드 테스트 계정을 고정 PIN 으로 다시 만든다 (팀·리더 미리 배정)
- * - 팀 정의·룰 문서·설정값(최대 인원·초기 재화·매장량·테스트 계정 포함)은 유지. 총 일수만 비운다
+ * - 팀 정의·룰 문서는 유지. 총 일수는 비운다
+ * - 설정값(최대 인원·초기 재화·매장량·테스트 계정 포함)은 기본 유지. clearSettings 면 0 (테스트 계정은 포함) 으로 비운다
  */
-export function resetGame(): number[] {
+export interface ResetResult {
+  /** 지운 계정 id (접속 중인 소켓을 끊는다) */
+  removed: number[]
+  /** 지운 일반 참가자 수 (테스트 계정은 다시 만들어지므로 세지 않는다) */
+  members: number
+  staff: number
+  events: number
+  clearedSettings: boolean
+}
+
+export function resetGame(clearSettings = false): ResetResult {
   return db.transaction(() => {
-    const removed = (db.prepare(`SELECT id FROM users WHERE role = 'member' OR (role = 'admin' AND is_fixed = 0)`).all() as { id: number }[]).map((r) => r.id)
+    const rows = db.prepare(`SELECT id, role, is_test FROM users WHERE role = 'member' OR (role = 'admin' AND is_fixed = 0)`).all() as { id: number; role: string; is_test: number }[]
+    const removed = rows.map((r) => r.id)
     clearTrades()
     clearElections()
     clearLifeSubmissions()
     clearLedger()
-    db.prepare('DELETE FROM events').run()
+    const events = db.prepare('DELETE FROM events').run().changes
     if (removed.length) db.prepare(`DELETE FROM users WHERE id IN (${removed.map(() => '?').join(',')})`).run(...removed)
     createSeedUsers(TEST_USERS)
+    if (clearSettings) {
+      db.prepare('UPDATE groups SET capacity = 0').run()
+      db.prepare('UPDATE team_resources SET initial = 0').run()
+      updateGame('include_test = 1, life_reserve_initial = 0')
+    }
     resetAmountsToInitial()
     updateGame(`status = 'setup', total_days = NULL, day = 0, phase = NULL, life_reserve = life_reserve_initial, aid_used = 0,
                 results = NULL, started_at = NULL, ended_at = NULL`)
     applyTestAccounts(getGameRow().include_test === 1)
-    return removed
+    return {
+      removed,
+      members: rows.filter((r) => r.role === 'member' && r.is_test === 0).length,
+      staff: rows.filter((r) => r.role === 'admin').length,
+      events,
+      clearedSettings: clearSettings,
+    }
   })()
 }
 
