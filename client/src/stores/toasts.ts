@@ -5,6 +5,7 @@
  * - 알림음(lib/chime.ts): 프레젠테이션·참가자(리더/팀원)만 듣고 관리자는 듣지 않는다.
  *   울리는 경우는 shouldChime() 이 정한다 — 전체 범위 공지·시스템 알림만. 팀(이동·탈락·거래 등)·개인 알림은 팝업만 뜨고 소리는 없다.
  *   기기별로 끌 수 있다(muted). replay 로 여러 개가 한꺼번에 뜨면 한 번만 울린다.
+ * - held: 시작 인트로 이미지(IntroOverlay)가 덮고 있는 동안은 시간이 줄지 않는다 → 이미지가 사라진 뒤 온전히 보인다.
  */
 import { defineStore } from 'pinia'
 import type { GameEvent } from '../../../shared/types'
@@ -44,6 +45,8 @@ export const useToastStore = defineStore('toasts', {
     items: [] as Toast[],
     duration: 5000,
     paused: false,
+    /** 인트로 이미지가 덮고 있는 동안 (hover 의 paused 와 따로 둔다) */
+    held: false,
     timer: null as ReturnType<typeof setInterval> | null,
     /** 역할상 알림음 대상인지 (presenter, member) */
     sound: false,
@@ -92,10 +95,13 @@ export const useToastStore = defineStore('toasts', {
     setPaused(v: boolean) {
       this.paused = v
     },
+    setHeld(v: boolean) {
+      this.held = v
+    },
     ensureTimer() {
       if (this.timer) return
       this.timer = setInterval(() => {
-        if (this.paused) return
+        if (this.paused || this.held) return
         for (const t of this.items) t.remaining -= TICK
         this.items = this.items.filter((t) => t.remaining > 0)
         if (this.items.length === 0 && this.timer) {

@@ -11,6 +11,8 @@ import ResultsBoard from '../components/ResultsBoard.vue'
 import ReadyLobby from '../components/ReadyLobby.vue'
 import IssuePanel from '../components/IssuePanel.vue'
 import WarPanel from '../components/WarPanel.vue'
+import IntroOverlay from '../components/IntroOverlay.vue'
+import introUrl from '../assets/intro_image.webp'
 import { useAuthStore } from '../stores/auth'
 import { useRealtimeStore } from '../stores/realtime'
 import { useGameStore } from '../stores/game'
@@ -48,6 +50,16 @@ watch(() => auth.user?.groupId, () => game.load())
 watch(beforeStart, (v) => {
   if (!v) void load()
 })
+
+// 시작 인트로: 대기 화면에서 시작(시작 전 → 진행)을 실시간으로 받았을 때만. 시작 후 로그인·새로고침이면 띄우지 않는다.
+// 시작 순간 모두가 한꺼번에 받지 않도록 대기 화면에서 미리 받아 둔다
+const intro = ref(false)
+watch(() => s.value?.status, (now, before) => {
+  if (before && isBeforeStart(before) && now && !isBeforeStart(now)) intro.value = true
+})
+watch(beforeStart, (v) => {
+  if (v) new Image().src = introUrl
+}, { immediate: true })
 const phase = computed(() => (s.value?.status === 'running' ? s.value.phase : null))
 const isLeader = computed(() => !!auth.user?.isLeader)
 const phaseHint: Record<string, string> = {
@@ -58,6 +70,7 @@ const phaseHint: Record<string, string> = {
 
 <template>
   <div class="page">
+    <IntroOverlay v-if="intro" @done="intro = false" />
     <TopBar :title="beforeStart ? 'CSD' : group?.name ?? '팀'" :color="beforeStart ? null : group?.color" />
     <NameSetup v-if="auth.user && !auth.user.nameSet" />
     <ReadyLobby v-else-if="beforeStart" />

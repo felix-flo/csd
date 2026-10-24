@@ -28,7 +28,7 @@ import type {
 import type { GroupInfo } from '../../../shared/types.js'
 
 /** 게임 제목. 시작 전에는 공개하지 않는다 (GameState.title). 클라이언트 번들에 들어가지 않게 서버에만 둔다 */
-const GAME_TITLE = '더 트래픽 커뮤니티: 보이지 않는 손'
+const GAME_TITLE = '더 트래픽 커뮤니티 2 : 보이지 않는 손'
 
 interface GameRow {
   status: GameStatus
