@@ -360,14 +360,21 @@ export const LEDGER_REASON_LABELS: Record<LedgerReason, string> = {
   war_spoils: '전쟁 전리품',
 }
 
+/** 리더간 협의 원조 1건 */
+export interface CouncilAidView {
+  fromTeamId: number
+  toTeamId: number
+  amounts: Resources
+}
+
 export interface AdminGameView {
   state: GameState
   settings: GameSettings
   teams: AdminTeamRow[]
   /** 남은 라이프 매장량 */
   lifeReserve: number
-  /** 원조 사용 여부 (게임 전체 1회) */
-  aidUsed: boolean
+  /** 이번 라운드 원조 (주는 팀 라운드당 1회, docs/100 D2). 진행 중이 아니면 빈 배열 */
+  aidsToday: CouncilAidView[]
   trade: TradeView | null
   ledger: LedgerEntry[]
   /** 시작 전 점검 (준비 상태) */

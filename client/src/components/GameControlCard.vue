@@ -391,7 +391,7 @@ function publish() {
 
     <!-- 리더간 협의 -->
     <p v-if="s.status === 'running' && s.phase === 'council'" class="muted">
-      대가 없는 원조는 아래 "팀 재화" 카드의 원조 입력으로 처리합니다 (게임 전체 1회{{ view.aidUsed ? ' · 사용함' : '' }}).
+      대가 없는 원조는 아래 "팀 재화" 카드의 원조 입력으로 처리합니다 (주는 팀 라운드당 1회{{ view.aidsToday.length ? ` · 이번 라운드 ${view.aidsToday.length}건` : '' }}).
       제재 기능은 아직 없습니다. 전쟁은 거래 활동 단계에서 선포됩니다 (아래 "전쟁").
     </p>
 

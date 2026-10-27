@@ -19,6 +19,7 @@ import { allElectionsDone, clearElections, finalizeElection, openElections, type
 import { cancelActiveTrade, clearTrades } from './trades.js'
 import { allLivesDone, clearLifeSubmissions } from './life.js'
 import { cancelPendingIssues, clearIssues } from './issuance.js'
+import { clearCouncilActions } from './council.js'
 import { clearWars, getActiveWar, getPublicWar, getWarCost, setWarCost } from './war.js'
 import { GameError } from './gameError.js'
 import { DEFAULT_ISSUE_LIMITS, emptyResources, isBeforeStart, PHASES, rankTeams, sumResources, teamLetter } from '../../../shared/game.js'
@@ -268,6 +269,7 @@ export function startGame(by: number): number[] {
     clearTrades()
     clearLifeSubmissions()
     clearIssues()
+    clearCouncilActions()
     resetAmountsToInitial()
     recordInitialLedger(1, by)
     updateGame(`status = 'running', day = 1, phase = 'leader', life_reserve = life_reserve_initial, aid_used = 0, results = NULL,
@@ -381,6 +383,7 @@ export function resetGame(clearSettings = false): ResetResult {
     clearLifeSubmissions()
     clearIssues()
     clearWars()
+    clearCouncilActions()
     clearLedger()
     const events = db.prepare('DELETE FROM events').run().changes
     if (removed.length) db.prepare(`DELETE FROM users WHERE id IN (${removed.map(() => '?').join(',')})`).run(...removed)
@@ -410,12 +413,6 @@ export function takeFromLifeReserve(delta: number) {
   const g = getGameRow()
   if (delta > g.life_reserve) throw new GameError('reserve_exhausted', `라이프 매장량이 부족합니다 (남은 ${g.life_reserve})`)
   updateGame('life_reserve = life_reserve - ?', [delta])
-}
-
-/** 원조는 게임 전체 1회. 조건부 갱신으로 동시에 눌러도 한 번만 */
-export function markAidUsed() {
-  const ok = db.prepare('UPDATE game SET aid_used = 1 WHERE id = 1 AND aid_used = 0').run().changes === 1
-  if (!ok) throw new GameError('aid_used', '원조는 게임 전체에서 1회만 가능합니다')
 }
 
 /**

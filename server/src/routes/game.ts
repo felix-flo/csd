@@ -16,16 +16,17 @@ import { findGroupById, findUserById, listGroups } from '../db/users.js'
 import { isBeforeStart } from '../../../shared/game.js'
 import { GameError } from '../db/gameError.js'
 import {
-  activeMemberCount, advance, endGame, getGameRow, getGameState, getPrep, getPublicRoster, getSettings, joinTeam, markAidUsed, prepareGame, publishResults,
+  activeMemberCount, advance, endGame, getGameRow, getGameState, getPrep, getPublicRoster, getSettings, joinTeam, prepareGame, publishResults,
   requireRunning, resetGame, revertToSetup, saveSettings, startGame, takeFromLifeReserve,
 } from '../db/game.js'
-import { applyDeltas, describeDeltas, getAllResources, getTeamResources, listLedger, negate } from '../db/resources.js'
+import { applyDeltas, describeDeltas, getAllResources, getTeamResources, listLedger } from '../db/resources.js'
 import { allElectionsDone, castVote, getElection, resolveTie, type FinalizeResult } from '../db/election.js'
 import { allLivesDone, getLifeSubmission, submitLife } from '../db/life.js'
 import {
   acceptOffer, cancelActiveTrade, cancelTrade, getActiveTrade, getActiveTradeForTeam, payCredit, proposeOffer, requestTrade, respondTrade,
 } from '../db/trades.js'
 import { decideIssue, getAdminIssues, getTeamIssue, requestIssue } from '../db/issuance.js'
+import { listAids, recordAid } from '../db/council.js'
 import { declareWar, describeCost, getWarCost, getWarOfDay, resolveWar, setWarCost } from '../db/war.js'
 import { db } from '../db/index.js'
 import { insertEvent } from '../db/events.js'
@@ -177,7 +178,7 @@ function adminView(): AdminGameView {
       lifeSubmission: g.status === 'running' ? getLifeSubmission(g.day, t.id) : null,
     })),
     lifeReserve: g.life_reserve,
-    aidUsed: g.aid_used === 1,
+    aidsToday: g.status === 'running' ? listAids(g.day) : [],
     trade: getActiveTrade(),
     ledger: listLedger(50),
     prep: getPrep(),
@@ -321,19 +322,16 @@ const aidSchema = z.object({
   amounts: resourcesSchema,
 })
 
-/** 대가 없는 원조 (게임 전체 1회). 오프라인 협의 결과를 관리자가 입력 */
+/** 대가 없는 원조. 리더 협의 단계에서 오프라인 협의 결과를 관리자가 입력. 주는 팀 라운드당 1회 (docs/100 D2) */
 gameRouter.post('/admin/game/aid', requireRole('admin'), handle(aidSchema, (req, res, body) => {
   const by = req.auth!.sub
   const g = requireRunning()
+  if (g.phase !== 'council') throw new GameError('wrong_phase', '원조는 리더 협의 단계에서만 입력할 수 있습니다')
   if (body.fromTeamId === body.toTeamId) throw new GameError('same_team', '', 400)
   if (!findGroupById(body.fromTeamId) || !findGroupById(body.toTeamId)) throw new GameError('not_found', '', 404)
   const text = describeDeltas(body.amounts)
   if (!text) throw new GameError('no_change', '원조할 수량을 입력하세요', 400)
-  db.transaction(() => {
-    markAidUsed()
-    applyDeltas(body.fromTeamId, negate(body.amounts), { reason: 'aid', day: g.day, by })
-    applyDeltas(body.toTeamId, body.amounts, { reason: 'aid', day: g.day, by })
-  })()
+  recordAid(g.day, body.fromTeamId, body.toTeamId, body.amounts, by)
   const msg = `원조: ${teamName(body.fromTeamId)} → ${teamName(body.toTeamId)} (${describeDeltas(body.amounts).replaceAll('+', '')})`
   emit('game', 'group', body.fromTeamId, 'resources.updated', msg, by)
   emit('game', 'group', body.toTeamId, 'resources.updated', msg, by)
