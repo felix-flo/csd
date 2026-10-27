@@ -72,6 +72,7 @@ function askWar(result: WarResult) {
 /** 다음 단계/다음 날 버튼을 막는 이유 */
 const advanceBlocker = computed(() => {
   if (warActive.value) return '⚔️ 전쟁 결과를 먼저 정하세요'
+  if (!nextPhase.value && !isLastDay.value && view.value?.issues.pending.length) return '처리하지 않은 발행 요청이 있습니다. 수락 또는 거절해야 다음 날로 넘어갈 수 있습니다'
   if (!nextPhase.value && !isLastDay.value && !view.value?.war.nextCost) return `${(s.value?.day ?? 0) + 1}일차 전쟁 선포 비용을 아래 "전쟁" 에서 정해야 다음 날로 넘어갈 수 있습니다`
   return ''
 })

@@ -18,7 +18,7 @@ import {
 import { allElectionsDone, clearElections, finalizeElection, openElections, type FinalizeResult } from './election.js'
 import { cancelActiveTrade, clearTrades } from './trades.js'
 import { allLivesDone, clearLifeSubmissions } from './life.js'
-import { cancelPendingIssues, clearIssues } from './issuance.js'
+import { cancelPendingIssues, clearIssues, pendingIssueTeams } from './issuance.js'
 import { clearCouncilActions } from './council.js'
 import { clearWars, getActiveWar, getPublicWar, getWarCost, setWarCost } from './war.js'
 import { GameError } from './gameError.js'
@@ -313,6 +313,11 @@ export function advance(expect: { day: number; phase: Phase }): AdvanceResult {
     } else {
       if (g.day >= (g.total_days ?? 0)) throw new GameError('last_day', '마지막 날입니다. 게임 종료를 누르세요')
       if (!getWarCost(g.day + 1)) throw new GameError('no_war_cost', `${g.day + 1}일차 전쟁 선포 비용을 먼저 정하세요`)
+      // 발행은 라운드당 1회라 대기 요청을 다음 라운드로 넘기지 않는다 (docs/100 D3)
+      const pendingIssue = pendingIssueTeams()
+      if (pendingIssue.length) {
+        throw new GameError('issue_pending', `처리하지 않은 발행 요청이 있습니다 (${pendingIssue.map(teamLabel).join(', ')}). 수락 또는 거절하세요`)
+      }
       result.day = g.day + 1
       result.phase = 'leader'
       updateGame(`day = ?, phase = 'leader'`, [result.day])

@@ -30,7 +30,8 @@ const team = (id: number) => props.groups.find((g) => g.id === id)
 const label = (r: IssueRequestView) => `${RESOURCE_BY_KEY[r.kind].emoji} ${RESOURCE_LABELS[r.kind]} ${r.amount}개`
 const remainingText = (kind: 'gem' | 'gold') => {
   const v = issues.value?.remaining[kind]
-  return v == null ? '-' : `${v}개`
+  if (v == null) return '-'
+  return issues.value?.issuedToday[kind] ? `이번 라운드 발행함 (남은 한도 ${v}개)` : `${v}개`
 }
 
 function popupMessage(r: IssueRequestView): string {
@@ -64,6 +65,7 @@ function postpone(r: IssueRequestView) {
     <p class="muted">
       이번 일차 남은 발행 가능량 — 💎 보석 <strong>{{ remainingText('gem') }}</strong> (일차마다 한도, 이월 없음) ·
       🥇 골드 <strong>{{ remainingText('gold') }}</strong> (안 쓴 만큼 이월). 대기 중인 요청도 뺀 값입니다.
+      발행은 팀마다 라운드당 1회(거절은 횟수에 넣지 않음)이고, 대기 요청을 처리해야 다음 날로 넘어갈 수 있습니다.
     </p>
 
     <table v-if="issues.pending.length" class="list">

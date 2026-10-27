@@ -4,6 +4,9 @@
  *                     ├─관리자 거절──▶ rejected (한도 돌려줌)
  *                     └─게임 종료────▶ cancelled
  *
+ * 횟수 (docs/100 D3): 팀당 라운드(일차)당 수락된 발행 1회. 거절된 요청은 횟수에 넣지 않는다. 진행 중이면 단계와 관계없이 요청할 수 있다.
+ *   대기 요청이 남아 있으면 다음 라운드로 넘어가지 않는다 (game.ts advance) → 대기 요청은 항상 요청한 라운드 안에서 처리된다
+ *
  * 한도 (일차 = 턴): 대기 중·수락된 수량이 요청한 일차의 한도를 차지한다.
  * - 보석: 매 일차 gem_issue_limit 까지 (이월 없음)
  * - 골드: 매 일차 gold_issue_limit 씩 쌓임 → n일차 한도 = limit × n − 지금까지 사용량
@@ -12,12 +15,13 @@
  * - 팀당 대기 요청 1건은 idx_issue_one_pending (partial unique index) 이 보장한다. 리더가 두 번 눌러도 하나만 들어간다.
  * - 한도 확인과 INSERT 를 한 트랜잭션에서 하므로 한도를 넘는 요청이 끼어들 수 없다.
  * - 수락·거절은 `UPDATE … WHERE id = ? AND status = 'pending'` 의 changes 로 판정 → 관리자 두 명이 동시에 눌러도 한 번만 반영된다.
+ * - 라운드당 1회는 요청 때와 수락 때 같은 트랜잭션 안에서 확인한다 (better-sqlite3 는 동기 실행이라 사이에 끼어들 수 없다).
  */
 import { db } from './index.js'
 import { findGroupById, listGroups } from './users.js'
 import { applyDeltas } from './resources.js'
 import { GameError } from './gameError.js'
-import { ISSUE_PHASES, ISSUE_TEAM_CODE, issueKindOfTeam, issueRemaining, RESOURCE_LABELS } from '../../../shared/game.js'
+import { ISSUE_TEAM_CODE, issueKindOfTeam, issueRemaining, RESOURCE_LABELS } from '../../../shared/game.js'
 import type { IssueKind, IssueRequestView, IssueStatus, Phase, TeamIssueView } from '../../../shared/game.js'
 
 /** game.ts 가 이 모듈을 불러 쓰므로(종료·리셋) 순환 import 를 피해 필요한 열만 직접 읽는다 */
@@ -80,6 +84,16 @@ export function remainingFor(teamId: number, kind: IssueKind): number {
   return issueRemaining(kind, getLimit(kind), day, used)
 }
 
+/** 이 라운드에 수락된 발행이 있는지 (라운드당 1회) */
+function issuedOn(teamId: number, day: number): boolean {
+  return !!db.prepare(`SELECT 1 FROM issue_requests WHERE group_id = ? AND day = ? AND status = 'approved'`).get(teamId, day)
+}
+
+/** 대기 요청이 있는 발행 팀 id (다음 라운드로 넘기기 전 확인) */
+export function pendingIssueTeams(): number[] {
+  return (db.prepare(`SELECT DISTINCT group_id FROM issue_requests WHERE status = 'pending' ORDER BY group_id`).all() as { group_id: number }[]).map((r) => r.group_id)
+}
+
 function teamKind(teamId: number): IssueKind | null {
   return issueKindOfTeam(findGroupById(teamId)?.code)
 }
@@ -101,7 +115,8 @@ export function getTeamIssue(teamId: number): TeamIssueView | null {
   const recent = listFor('r.group_id = ?', [teamId], 10)
   return {
     kind,
-    phaseOpen: g.status === 'running' && !!g.phase && ISSUE_PHASES.includes(g.phase),
+    open: g.status === 'running',
+    issuedToday: g.status === 'running' && issuedOn(teamId, g.day),
     remaining: g.status === 'running' ? remainingFor(teamId, kind) : 0,
     pending: recent.find((r) => r.status === 'pending') ?? null,
     recent,
@@ -110,15 +125,21 @@ export function getTeamIssue(teamId: number): TeamIssueView | null {
 
 /** 관리자 화면용 */
 export function getAdminIssues() {
-  const running = getGameRow().status === 'running'
+  const g = getGameRow()
+  const running = g.status === 'running'
   const remaining = (kind: IssueKind) => {
     const teamId = issueTeamId(kind)
     return teamId != null && running ? remainingFor(teamId, kind) : null
+  }
+  const issued = (kind: IssueKind) => {
+    const teamId = issueTeamId(kind)
+    return teamId != null && running && issuedOn(teamId, g.day)
   }
   return {
     pending: (db.prepare(`${SELECT} WHERE r.status = 'pending' ORDER BY r.id`).all() as IssueRow[]).map(toView),
     recent: listFor('1 = 1', [], 20),
     remaining: { gem: remaining('gem'), gold: remaining('gold') },
+    issuedToday: { gem: issued('gem'), gold: issued('gold') },
   }
 }
 
@@ -127,9 +148,9 @@ export function requestIssue(teamId: number, amount: number, by: number): IssueR
   return db.transaction(() => {
     const g = getGameRow()
     if (g.status !== 'running') throw new GameError('not_running', '게임이 진행 중이 아닙니다')
-    if (!g.phase || !ISSUE_PHASES.includes(g.phase)) throw new GameError('wrong_phase', '발행 요청은 거래 활동부터 라이프 제출 단계까지 할 수 있습니다')
     const kind = teamKind(teamId)
     if (!kind) throw new GameError('not_issuer', '발행 요청을 할 수 없는 팀입니다', 403)
+    if (issuedOn(teamId, g.day)) throw new GameError('issued_today', '이번 라운드에는 이미 발행했습니다 (라운드당 1회)')
     const pending = db.prepare(`SELECT 1 FROM issue_requests WHERE group_id = ? AND status = 'pending'`).get(teamId)
     if (pending) throw new GameError('issue_pending', '수락을 기다리는 요청이 있습니다')
     const left = remainingFor(teamId, kind)
@@ -159,6 +180,11 @@ export function decideIssue(id: number, accept: boolean, by: number): IssueReque
       throw new GameError('already_decided', '이미 처리된 요청입니다')
     }
     const r = getIssue(id)!
+    // 라운드당 1회: 같은 라운드에 이미 수락된 발행이 있으면 되돌린다 (정상 흐름에선 대기 1건이라 생기지 않음)
+    const approved = db.prepare(`SELECT COUNT(*) AS n FROM issue_requests WHERE group_id = ? AND day = ? AND status = 'approved'`)
+    if (accept && (approved.get(r.teamId, r.day) as { n: number }).n > 1) {
+      throw new GameError('issued_today', '이번 라운드에는 이미 발행했습니다 (라운드당 1회)')
+    }
     if (accept) applyDeltas(r.teamId, { [r.kind]: r.amount }, { reason: 'issue', day: g.day, refId: r.id, by })
     return r
   })()

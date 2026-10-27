@@ -265,9 +265,6 @@ export function issueKindOfTeam(code: string | null | undefined): IssueKind | nu
   return null
 }
 
-/** 요청할 수 있는 단계: 매 일차 거래 활동부터 라이프 제출까지 */
-export const ISSUE_PHASES: readonly Phase[] = ['trade', 'council', 'life']
-
 export type IssueStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
 
 export const ISSUE_STATUS_LABELS: Record<IssueStatus, string> = {
@@ -303,8 +300,10 @@ export function issueRemaining(kind: IssueKind, limit: number, day: number, used
 /** 화이트·옐로우팀 화면의 발행 정보 (그 팀만) */
 export interface TeamIssueView {
   kind: IssueKind
-  /** 지금 단계에서 요청할 수 있는지 (단계만. 리더 여부·대기 요청은 따로) */
-  phaseOpen: boolean
+  /** 게임 진행 중인지 (진행 중이면 단계와 관계없이 요청할 수 있다. 리더 여부·대기 요청·이번 라운드 발행은 따로) */
+  open: boolean
+  /** 이번 라운드(일차)에 수락된 발행이 있는지. 라운드당 1회라 있으면 더 요청할 수 없다 (거절은 횟수에 넣지 않음) */
+  issuedToday: boolean
   /** 이번 일차 남은 발행 가능량 (대기 중 요청도 뺀 값) */
   remaining: number
   pending: IssueRequestView | null
@@ -392,6 +391,8 @@ export interface AdminGameView {
     recent: IssueRequestView[]
     /** 이번 일차 남은 발행 가능량 (해당 팀이 없으면 null) */
     remaining: Record<IssueKind, number | null>
+    /** 이번 라운드에 수락된 발행이 있는지 (라운드당 1회) */
+    issuedToday: Record<IssueKind, boolean>
   }
   /** 전쟁 */
   war: {

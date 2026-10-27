@@ -2,7 +2,8 @@
 /**
  * 보석·골드 발행 요청 (화이트팀 = 보석, 옐로우팀 = 골드). 요청은 리더만, 팀원은 진행 상황만 본다.
  * 수량 입력 → "발행 요청" → 확인 팝업 → 확정하면 되돌릴 수 없다 → 관리자가 수락하면 팀 재화에 더해진다.
- * 매 일차 거래 활동부터 라이프 제출까지 요청할 수 있다. 남은 발행 가능량은 대기 중 요청도 뺀 값이다.
+ * 게임 진행 중이면 원하는 때 요청할 수 있고, 라운드(일차)당 수락된 발행 1회 (거절되면 다시 요청 가능. docs/100 D3).
+ * 남은 발행 가능량은 대기 중 요청도 뺀 값이다.
  */
 import { computed, ref } from 'vue'
 import { ISSUE_STATUS_LABELS, RESOURCE_LABELS, type TeamIssueView } from '../../../shared/game'
@@ -21,10 +22,11 @@ const confirmOpen = ref(false)
 const label = computed(() => RESOURCE_LABELS[props.issue.kind])
 const emoji = computed(() => RESOURCE_BY_KEY[props.issue.kind].emoji)
 const valid = computed(() => Number.isInteger(amount.value) && amount.value! >= 1 && amount.value! <= props.issue.remaining)
-const canRequest = computed(() => props.isLeader && props.issue.phaseOpen && !props.issue.pending && props.issue.remaining > 0)
+const canRequest = computed(() => props.isLeader && props.issue.open && !props.issue.issuedToday && !props.issue.pending && props.issue.remaining > 0)
 const hint = computed(() => {
   if (props.issue.pending) return '진행자의 수락을 기다리는 요청이 있습니다.'
-  if (!props.issue.phaseOpen) return '발행 요청은 거래 활동부터 라이프 제출 단계까지 할 수 있습니다.'
+  if (!props.issue.open) return '게임이 진행 중일 때 발행을 요청할 수 있습니다.'
+  if (props.issue.issuedToday) return '이번 라운드 발행을 마쳤습니다. 발행은 라운드당 1회입니다.'
   if (props.issue.remaining <= 0) return '이번 일차에는 더 발행할 수 없습니다.'
   return props.isLeader ? '' : '리더가 발행을 요청할 수 있습니다.'
 })
@@ -61,6 +63,7 @@ async function submit() {
       {{ label }} <strong>{{ issue.pending.amount }}</strong>개 발행을 요청했습니다. 진행자가 수락하면 팀 재화에 더해집니다.
     </p>
 
+    <p v-if="canRequest" class="muted once">발행은 라운드당 1회입니다. 진행자가 거절하면 다시 요청할 수 있습니다.</p>
     <form v-if="canRequest" class="row" @submit.prevent="valid && (confirmOpen = true)">
       <input v-model.number="amount" type="number" min="1" :max="issue.remaining" :placeholder="`1 ~ ${issue.remaining}`" style="width: 8em" />
       <span>개</span>
@@ -99,4 +102,5 @@ async function submit() {
 .history { list-style: none; padding: 0; margin: 12px 0 0; font-size: 0.9rem; }
 .history li { padding: 3px 0; border-top: 1px solid var(--line-soft); display: flex; gap: 8px; align-items: center; }
 .error { margin: 8px 0 0; }
+.once { margin: 0 0 8px; font-size: 0.85rem; }
 </style>
