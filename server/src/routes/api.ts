@@ -191,7 +191,7 @@ apiRouter.post('/admin/users/active', requireRole('admin'), (req, res) => {
   if (!active) {
     // 탈락: 재로그인 불가 + 이미 로그인된 세션도 즉시 종료 → 팀 재화·알림을 받지 못한다
     revokeUserRefreshTokens(ids)
-    disconnectUsers(ids)
+    disconnectUsers(ids, 'eliminated')
   }
   // 팀별로 묶어 리더 승계 + 팀원들에게 알림 1건
   const byTeam = new Map<number, typeof targets>()

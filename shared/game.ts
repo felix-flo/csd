@@ -233,10 +233,20 @@ export function isLifeExempt(activeMembers: number): boolean {
   return activeMembers === 1
 }
 
+/**
+ * 라이프 제출로 살릴 수 있는 최대 인원 (= 쓸 수 있는 라이프 최대). 최소는 1.
+ * 자진 탈락이면 리더를 뺀 팀원 수까지. 라이프가 0개면 0 (숫자 입력 없이 1명만 생존, 라이프 소모 없음)
+ */
+export function lifeSubmitMax(activeMembers: number, lives: number, selfEliminate: boolean): number {
+  return Math.max(0, Math.min(lives, selfEliminate ? activeMembers - 1 : activeMembers))
+}
+
 export interface LifeSubmissionView {
   saved: number[]
   eliminated: number[]
   livesUsed: number
+  /** 리더 자진 탈락 (리더 외 팀원 중 무작위로 생존자를 정함) */
+  selfEliminated: boolean
   createdAt: string
 }
 

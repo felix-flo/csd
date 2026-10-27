@@ -67,10 +67,13 @@ export function initRealtime(httpServer: HttpServer): IO {
   return io
 }
 
-/** 해당 유저들의 소켓을 강제 종료 (계정 비활성화 시) */
-export function disconnectUsers(userIds: number[]) {
+/** 해당 유저들의 소켓을 강제 종료 (계정 비활성화 시). reason 이 있으면 끊기 직전에 사유를 보낸다 (같은 소켓이라 순서 보장) */
+export function disconnectUsers(userIds: number[], reason?: 'eliminated') {
   if (!io) return
-  for (const id of userIds) io.in(rooms.user(id)).disconnectSockets(true)
+  for (const id of userIds) {
+    if (reason) io.to(rooms.user(id)).emit('session:ended', reason)
+    io.in(rooms.user(id)).disconnectSockets(true)
+  }
 }
 
 /**

@@ -404,7 +404,10 @@ function publish() {
             <td><TeamMark :color="team(t.teamId)?.color ?? ''" />{{ team(t.teamId)?.name }}</td>
             <td>
               <template v-if="t.lifeSubmission">
-                제출 · 생존 {{ t.lifeSubmission.saved.length }}명 (라이프 {{ t.lifeSubmission.livesUsed }})
+                제출 · 생존 {{ t.lifeSubmission.saved.map(nameOf).join(', ') }}
+                <template v-if="t.lifeSubmission.livesUsed">(라이프 {{ t.lifeSubmission.livesUsed }})</template>
+                <template v-else>(라이프 0 · 1명 생존)</template>
+                <span v-if="t.lifeSubmission.selfEliminated" class="badge">리더 자진 탈락</span>
                 <span v-if="t.lifeSubmission.eliminated.length" class="error"> · 탈락 {{ t.lifeSubmission.eliminated.map(nameOf).join(', ') }}</span>
               </template>
               <span v-else-if="t.activeMembers === 0" class="muted">활성 팀원 없음</span>

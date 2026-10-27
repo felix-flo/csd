@@ -3,12 +3,17 @@ import type { LoginResponse, PublicUser, RefreshResponse } from '../../../shared
 import { api } from '../lib/api'
 import { useRealtimeStore } from './realtime'
 
+/** 탈락 화면을 보여주는 시간 */
+const ELIMINATED_MS = 5000
+
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     accessToken: null as string | null,
     user: null as PublicUser | null,
     ready: false,
     bootstrapping: null as Promise<void> | null,
+    /** 탈락 통보를 받음 → "탈락되었습니다" 화면을 5초 보여준 뒤 로그아웃. 그동안 401·연결 끊김으로 먼저 로그아웃하지 않는다 */
+    eliminated: false,
   }),
   getters: {
     isLoggedIn: (s) => !!s.accessToken && !!s.user,
@@ -74,6 +79,17 @@ export const useAuthStore = defineStore('auth', {
       useRealtimeStore().disconnect()
       this.accessToken = null
       this.user = null
+    },
+    /** 서버의 탈락 통보 (session:ended 'eliminated'). 5초 뒤 로그아웃하고 로그인 화면으로 */
+    eliminate() {
+      if (this.eliminated) return
+      this.eliminated = true
+      setTimeout(async () => {
+        this.clear()
+        this.eliminated = false
+        const { router } = await import('../router')
+        void router.replace('/login')
+      }, ELIMINATED_MS)
     },
   },
 })

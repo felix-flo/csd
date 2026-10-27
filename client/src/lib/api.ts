@@ -27,7 +27,8 @@ async function request<T>(method: string, url: string, body?: unknown, retry = t
   if (res.status === 401 && retry && !url.startsWith('/api/auth/')) {
     const ok = await auth.refresh()
     if (ok) return request<T>(method, url, body, false)
-    auth.clear()
+    // 탈락 통보를 받았으면 탈락 화면이 끝날 때 로그아웃한다
+    if (!auth.eliminated) auth.clear()
   }
   if (!res.ok) {
     let code = 'error'

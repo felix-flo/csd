@@ -83,10 +83,10 @@ function userName(id: number | null | undefined): string {
 }
 
 /** 탈락 처리된 계정의 세션 종료 (라이프 탈락·테스트 계정 제외·리셋 복원) */
-function endSessions(ids: number[]) {
+function endSessions(ids: number[], reason?: 'eliminated') {
   if (ids.length === 0) return
   revokeUserRefreshTokens(ids)
-  disconnectUsers(ids)
+  disconnectUsers(ids, reason)
 }
 
 /**
@@ -462,21 +462,26 @@ gameRouter.post('/game/vote', requireRole('member'), handle(voteSchema, (req, re
 
 // ---- 참가자(리더): 라이프 제출 ----
 
-const lifeSchema = z.object({ userIds: z.array(z.number().int().positive()).max(100) })
+/** count = 살릴 인원 (라이프 0개 팀은 0). 생존자는 서버가 무작위로 정한다 */
+const lifeSchema = z.object({ count: z.number().int().min(0).max(100), selfEliminate: z.boolean() })
 
 gameRouter.post('/game/life', requireRole('member'), handle(lifeSchema, (req, res, body) => {
   const g = requireRunning('life')
   const teamId = requireLeader(req)
   const by = req.auth!.sub
-  const sub = submitLife(g.day, teamId, by, body.userIds)
+  const sub = submitLife(g.day, teamId, by, body)
+  const alive = sub.saved.map(userName)
   const dead = sub.eliminated.map(userName)
-  const msg = `라이프 제출 완료: ${sub.saved.length}명 생존${dead.length ? ` · 탈락 ${dead.join(', ')}` : ''}`
+  const self = sub.selfEliminated ? ' · 리더 자진 탈락' : ''
+  const msg = `라이프 제출 완료: 라이프 ${sub.livesUsed}개 사용${self} · 생존 ${alive.join(', ') || '없음'}${dead.length ? ` · 탈락 ${dead.join(', ')}` : ''}`
   emit('game', 'group', teamId, 'life.submitted', msg, by, { day: g.day, eliminated: sub.eliminated, ...NOTIFY_SELF })
+  // 탈락자 이름은 전체 공지 (사용 개수는 팀만)
+  if (dead.length) emit('game', 'all', null, 'life.eliminated', `${teamName(teamId)} 탈락: ${dead.join(', ')}`, by, { day: g.day, teamId })
   if (allLivesDone(g.day)) emit('game', 'all', null, 'life.all_done', '모든 팀의 라이프가 제출되었습니다.', by, { day: g.day, ...NOTIFY_SELF })
   signalLobby() // 프레젠테이션 팀 현황(탈락 표시)
-  // 응답을 먼저 보낸 뒤 세션을 끊는다 (리더 본인이 탈락한 경우에도 결과 화면을 받을 수 있게)
+  // 응답을 먼저 보낸 뒤 세션을 끊는다. 탈락자 화면은 "탈락되었습니다" 를 5초 보여주고 로그아웃한다
   res.json({ submission: sub })
-  endSessions(sub.eliminated)
+  endSessions(sub.eliminated, 'eliminated')
 }))
 
 // ---- 참가자(리더): 보석·골드 발행 요청 ----

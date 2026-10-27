@@ -28,4 +28,27 @@ onMounted(() => {
     <RouterView />
     <ToastHost />
   </template>
+  <!-- 탈락 통보: 5초 보여준 뒤 로그아웃 (auth.eliminate) -->
+  <div v-if="auth.eliminated" class="eliminated" role="alertdialog" aria-live="assertive">
+    <p class="title">탈락되었습니다</p>
+  </div>
 </template>
+
+<style scoped>
+.eliminated {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: color-mix(in srgb, var(--ink) 88%, transparent);
+}
+.eliminated .title {
+  margin: 0;
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 9vw, 4rem);
+  text-align: center;
+}
+</style>

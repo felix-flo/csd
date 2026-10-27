@@ -1,13 +1,14 @@
 <script setup lang="ts">
 /**
- * 라이프 제출 (리더). 팀 라이프(💙)를 팀원 카드로 끌어다 놓으면 그 팀원이 팀 색으로 활성화된다.
- * - 드래그는 pointer 이벤트로 직접 구현 (HTML5 drag&drop 은 모바일 터치에서 동작하지 않음). 카드를 탭해도 할당/해제된다.
- * - 제출 → "정말로 제출하겠습니까?" 확인 → 라이프를 못 받은 팀원은 즉시 탈락(로그인 차단·세션 종료).
+ * 라이프 제출 (리더). 살릴 인원 수(= 쓸 라이프 수)와 자진 탈락 여부만 정한다 (docs/100.최종룰_차이_결정사항.md D1).
+ * - 자진 탈락 안 함: 리더 생존 + 리더 외 팀원 중 무작위 (N−1)명. 자진 탈락: 리더 외 팀원 중 무작위 N명
+ * - 범위 1 ~ min(팀 라이프, 살릴 수 있는 인원). 라이프 0개 팀은 숫자 없이 1명만 생존 (라이프 소모 없음)
+ * - 제출 → "정말로 제출하겠습니까?" 확인 → 서버가 무작위로 정하고, 살지 못한 팀원은 즉시 탈락(로그인 차단·세션 종료).
  * 팀원은 진행 상황만 본다. 활성 팀원이 1명뿐이면 제출하지 않는다 (자동 생존, 라이프 소모 없음).
  */
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { PublicUser } from '../../../shared/types'
-import { isLifeExempt, type LifeSubmissionView } from '../../../shared/game'
+import { isLifeExempt, lifeSubmitMax, type LifeSubmissionView } from '../../../shared/game'
 import { api, ApiError } from '../lib/api'
 import { useAuthStore } from '../stores/auth'
 import { useGameStore } from '../stores/game'
@@ -23,62 +24,82 @@ const props = defineProps<{
 const auth = useAuthStore()
 const game = useGameStore()
 
-const assigned = ref<number[]>([])
-const remaining = computed(() => props.lives - assigned.value.length)
+const selfEliminate = ref(false)
+const noLives = computed(() => props.lives === 0)
+const max = computed(() => lifeSubmitMax(props.members.length, props.lives, selfEliminate.value))
+const count = ref(1)
+const text = ref('1')
+const note = ref('')
 const busy = ref(false)
 const error = ref('')
 const confirmOpen = ref(false)
 const result = ref<LifeSubmissionView | null>(null)
 const shown = computed(() => props.submission ?? result.value)
 
-function toggle(id: number) {
-  if (!props.isLeader || shown.value) return
-  if (assigned.value.includes(id)) assigned.value = assigned.value.filter((x) => x !== id)
-  else if (remaining.value > 0) assigned.value = [...assigned.value, id]
+function setCount(n: number) {
+  count.value = Math.min(max.value, Math.max(1, n))
+  text.value = String(count.value)
+}
+// 자진 탈락을 켜거나 라이프·인원이 줄면 최대에 맞춘다
+watch(max, (m) => {
+  if (count.value > m) {
+    setCount(m)
+    note.value = `최대 ${m}명까지 살릴 수 있어 ${m}(으)로 맞췄습니다`
+  }
+})
+
+/** 숫자 입력: 숫자만 남기고(앞자리 0 정리), 최대를 넘으면 최대로. 비우면 입력 중에는 빈칸, 칸을 벗어나면 1 */
+function onInput(e: Event) {
+  const el = e.target as HTMLInputElement
+  let digits = el.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '')
+  let n = digits === '' ? 0 : Number(digits)
+  if (n > max.value) {
+    n = max.value
+    digits = String(n)
+    note.value = `최대 ${n}명까지 살릴 수 있습니다`
+  } else note.value = ''
+  text.value = digits
+  el.value = digits
+  count.value = n
+}
+function onBlur() {
+  if (count.value < 1) setCount(1)
+}
+/** 숫자·편집 키 외에는 막는다 (-, ., e, + 등) */
+function onKeydown(e: KeyboardEvent) {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.key.length > 1) return
+  if (!/^[0-9]$/.test(e.key)) e.preventDefault()
 }
 
-// ---- pointer 드래그 ----
-const drag = ref<{ x: number; y: number; over: number | null } | null>(null)
-function memberAt(x: number, y: number): number | null {
-  const el = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-member-id]')
-  return el ? Number(el.dataset.memberId) : null
-}
-function onDown(e: PointerEvent) {
-  if (!props.isLeader || shown.value || remaining.value <= 0) return
-  e.preventDefault()
-  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-  drag.value = { x: e.clientX, y: e.clientY, over: null }
-}
-function onMove(e: PointerEvent) {
-  if (!drag.value) return
-  drag.value = { x: e.clientX, y: e.clientY, over: memberAt(e.clientX, e.clientY) }
-}
-function onUp(e: PointerEvent) {
-  if (!drag.value) return
-  const id = memberAt(e.clientX, e.clientY)
-  drag.value = null
-  if (id != null && !assigned.value.includes(id) && remaining.value > 0) assigned.value = [...assigned.value, id]
-}
-function onCancel() {
-  drag.value = null
-}
-onBeforeUnmount(onCancel)
-
-const savedNames = computed(() => props.members.filter((m) => assigned.value.includes(m.id)).map((m) => m.name))
-const lostNames = computed(() => props.members.filter((m) => !assigned.value.includes(m.id)).map((m) => m.name))
+const others = computed(() => props.members.length - 1)
+/** 제출 전 미리보기 */
+const preview = computed(() => {
+  if (noLives.value) {
+    return selfEliminate.value
+      ? `리더 외 팀원 ${others.value}명 중 무작위 1명만 생존 · ${props.members.length - 1}명 탈락 (리더 포함)`
+      : `리더만 생존 · ${others.value}명 탈락`
+  }
+  const n = count.value
+  const lost = props.members.length - n
+  if (selfEliminate.value) return `리더 외 팀원 ${others.value}명 중 무작위 ${n}명 생존 · ${lost}명 탈락 (리더 포함)`
+  const alive = n === 1 ? '리더만 생존' : n - 1 === others.value ? '전원 생존' : `리더 + 무작위 ${n - 1}명 생존`
+  return lost ? `${alive} · ${lost}명 탈락` : `${alive} · 탈락 없음`
+})
+const valid = computed(() => noLives.value || (count.value >= 1 && count.value <= max.value))
 const confirmMessage = computed(() =>
-  `라이프 ${assigned.value.length}개를 사용합니다.\n생존: ${savedNames.value.join(', ') || '없음'}\n탈락: ${lostNames.value.join(', ') || '없음'}\n\n제출하면 되돌릴 수 없고, 탈락한 팀원은 바로 접속이 끊깁니다.`,
+  `${noLives.value ? '라이프가 없어 1명만 생존합니다 (라이프 소모 없음).' : `라이프 ${count.value}개를 사용합니다.`}\n${preview.value}\n\n` +
+  '리더 외 생존자는 제출하는 순간 무작위로 정해집니다. 제출하면 되돌릴 수 없고, 탈락한 팀원은 바로 접속이 끊깁니다.',
 )
 
 async function submit() {
   busy.value = true
   error.value = ''
   try {
-    const res = await api.post<{ submission: LifeSubmissionView }>('/api/game/life', { userIds: assigned.value })
+    const body = { count: noLives.value ? 0 : count.value, selfEliminate: selfEliminate.value }
+    const res = await api.post<{ submission: LifeSubmissionView }>('/api/game/life', body)
     result.value = res.submission
-    // 리더 본인이 탈락했으면 세션이 끊기므로 다음 요청에서 로그인 화면으로 간다
-    if (res.submission.eliminated.includes(auth.user?.id ?? -1)) setTimeout(() => auth.clear(), 4000)
-    else void game.load()
+    // 리더 본인이 탈락했으면 서버가 탈락을 통보하고 세션을 끊는다 ("탈락되었습니다" 5초 후 로그아웃, App.vue)
+    if (!res.submission.eliminated.includes(auth.user?.id ?? -1)) void game.load()
   } catch (e) {
     error.value = e instanceof ApiError && e.detail ? e.detail : (e as Error).message
   } finally {
@@ -95,10 +116,9 @@ const nameOf = (id: number) => props.members.find((m) => m.id === id)?.name ?? `
     <h2>라이프 제출</h2>
 
     <template v-if="shown">
-      <p>제출 완료 · 라이프 {{ shown.livesUsed }}개 사용</p>
+      <p>제출 완료 · 라이프 {{ shown.livesUsed }}개 사용<template v-if="shown.selfEliminated"> · 리더 자진 탈락</template></p>
       <p>생존: <strong>{{ shown.saved.map(nameOf).join(', ') || '없음' }}</strong></p>
       <p v-if="shown.eliminated.length" class="error">탈락: {{ shown.eliminated.map(nameOf).join(', ') }}</p>
-      <p v-if="shown.eliminated.includes(auth.user?.id ?? -1)" class="muted">라이프를 받지 못해 탈락했습니다. 곧 접속이 종료됩니다.</p>
     </template>
 
     <template v-else-if="isLifeExempt(members.length)">
@@ -106,47 +126,52 @@ const nameOf = (id: number) => props.members.find((m) => m.id === id)?.name ?? `
     </template>
 
     <template v-else-if="!isLeader">
-      <p class="muted">리더가 라이프를 받을 팀원을 고르는 중입니다. 라이프를 받지 못한 팀원은 탈락합니다.</p>
+      <p class="muted">리더가 살릴 인원 수를 정하는 중입니다. 리더 외 생존자는 무작위로 정해지고, 나머지 팀원은 탈락합니다.</p>
     </template>
 
     <template v-else>
-      <p class="muted">💙 를 팀원 카드로 끌어다 놓거나 카드를 눌러 라이프를 줍니다. 다시 누르면 회수합니다. 본인도 포함됩니다.</p>
-      <div class="tokens" :class="{ empty: remaining <= 0 }">
-        <span class="label">남은 라이프 {{ remaining }} / {{ lives }}</span>
-        <span
-          v-for="i in Math.max(remaining, 0)"
-          :key="i"
-          class="token"
-          @pointerdown="onDown"
-          @pointermove="onMove"
-          @pointerup="onUp"
-          @pointercancel="onCancel"
-        >💙</span>
+      <p class="muted">
+        팀 라이프 <strong class="mono">{{ lives }}</strong> · 팀원 <strong class="mono">{{ members.length }}</strong>명 (본인 포함).
+        살릴 인원 수만 정하면 리더는 생존하고, 나머지 자리는 리더 외 팀원 중 무작위로 정해집니다.
+      </p>
+
+      <p v-if="noLives" class="warn">라이프가 없어 1명만 생존합니다 (라이프 소모 없음).</p>
+      <div v-else class="stepper">
+        <span>💙 살릴 인원 <span class="muted">/ 최대 {{ max }}</span></span>
+        <span class="row" style="gap: 4px">
+          <button class="secondary sq" type="button" :disabled="busy || count <= 1" @click="setCount(count - 1); note = ''">−</button>
+          <input
+            class="mono num"
+            type="text"
+            inputmode="numeric"
+            pattern="[0-9]*"
+            autocomplete="off"
+            :aria-label="`살릴 인원 (1~${max})`"
+            :value="text"
+            :disabled="busy"
+            @keydown="onKeydown"
+            @input="onInput"
+            @blur="onBlur"
+            @focus="($event.target as HTMLInputElement).select()"
+          />
+          <button class="secondary sq" type="button" :disabled="busy || count >= max" @click="setCount(count + 1); note = ''">+</button>
+        </span>
+        <span v-if="note" class="note">{{ note }}</span>
       </div>
-      <ul class="members">
-        <li
-          v-for="m in members"
-          :key="m.id"
-          :data-member-id="m.id"
-          class="member"
-          :class="{ on: assigned.includes(m.id), over: drag?.over === m.id }"
-          :style="{ '--team': teamColor }"
-          @click="toggle(m.id)"
-        >
-          <span class="heart">{{ assigned.includes(m.id) ? '💙' : '♡' }}</span>
-          <span class="name">{{ m.name }}<span v-if="m.id === auth.user?.id" class="muted"> (나)</span></span>
-          <span v-if="m.isLeader" class="badge">리더</span>
-        </li>
-      </ul>
+
+      <label class="self">
+        <input v-model="selfEliminate" type="checkbox" :disabled="busy" />
+        리더 자진 탈락 <span class="muted">(리더도 탈락하고, 생존자를 모두 리더 외 팀원 중 무작위로 정합니다)</span>
+      </label>
+
+      <p class="preview" :style="{ '--team': teamColor }">{{ preview }}</p>
+
       <div class="row" style="margin-top: 12px">
-        <button :disabled="busy" @click="confirmOpen = true">제출</button>
-        <span class="muted">생존 {{ assigned.length }}명 · 탈락 {{ members.length - assigned.length }}명</span>
+        <button :disabled="busy || !valid" @click="confirmOpen = true">제출</button>
       </div>
     </template>
 
     <p v-if="error" class="error">{{ error }}</p>
-
-    <div v-if="drag" class="ghost" :style="{ left: `${drag.x}px`, top: `${drag.y}px` }">💙</div>
 
     <ModalDialog
       :open="confirmOpen"
@@ -163,56 +188,18 @@ const nameOf = (id: number) => props.members.find((m) => m.id === id)?.name ?? `
 </template>
 
 <style scoped>
-.tokens {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-  padding: 10px;
-  margin-bottom: 10px;
-  border: 1px dashed var(--line-strong);
+.stepper { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; padding: 4px 0; font-size: 1.05rem; }
+.note { flex-basis: 100%; text-align: right; color: var(--amber, #b7791f); font-size: 0.8rem; }
+.sq { width: 34px; height: 34px; padding: 0; font-size: 1.1rem; }
+.num { width: 3.6em; text-align: center; font-size: 1.05rem; padding: 4px 6px; }
+.warn { color: var(--amber, #b7791f); font-weight: 600; }
+.self { display: flex; gap: 8px; align-items: baseline; margin: 10px 0 0; cursor: pointer; }
+.preview {
+  margin: 12px 0 0;
+  padding: 10px 12px;
   border-radius: var(--radius);
-  min-height: 52px;
-}
-.tokens.empty { border-style: solid; border-color: var(--line-soft); }
-.tokens .label { margin-right: 6px; }
-.token {
-  font-size: 1.7rem;
-  line-height: 1;
-  cursor: grab;
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-}
-.members { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
-.member {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  padding: 14px 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-left: 4px solid color-mix(in srgb, var(--team) 70%, var(--ink));
   background: var(--bg-soft);
-  color: var(--muted);
-  cursor: pointer;
-  user-select: none;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-}
-.member .name { flex: 1; }
-.member.over { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-bg); }
-/* 라이프 받은 팀원: 팀 색으로 활성화 (화이트 팀은 흰 바탕이라 진한 테두리) */
-.member.on {
-  background: color-mix(in srgb, var(--team) 22%, var(--surface));
-  border-color: color-mix(in srgb, var(--team) 70%, var(--ink));
-  color: var(--ink);
   font-weight: 600;
-}
-.heart { font-size: 1.2rem; }
-.ghost {
-  position: fixed;
-  z-index: 950;
-  font-size: 2rem;
-  pointer-events: none;
-  transform: translate(-50%, -60%);
 }
 </style>

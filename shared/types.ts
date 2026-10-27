@@ -95,7 +95,8 @@ export type EventType = 'notice' | 'system' | 'document.updated' | 'game' | 'tra
  * - election.tie       : 동표 → 관리자 지정 대기 (scope=group)
  * - election.all_done  : 모든 팀 리더 선출 완료 (scope=all)
  * - resources.updated  : 팀 재화 변동 (scope=group)
- * - life.submitted     : 팀 라이프 제출 (scope=group)
+ * - life.submitted     : 팀 라이프 제출 — 사용 개수·생존·탈락 (scope=group)
+ * - life.eliminated    : 팀 탈락자 이름 (scope=all, 탈락자가 있을 때만)
  * - life.all_done      : 모든 팀 라이프 제출 완료 (scope=all)
  * - issue.requested    : 보석·골드 발행 요청 (scope=role admin, 팝업 대신 관리자 화면의 요청 창)
  * - issue.decided      : 발행 수락/거절 (보석은 화이트팀만 scope=group, 골드 수락은 scope=all 로 공개, 거절은 옐로우팀만)
@@ -109,7 +110,7 @@ export type EventType = 'notice' | 'system' | 'document.updated' | 'game' | 'tra
 export type GameKind =
   | 'game.updated' | 'game.reset' | 'game.results'
   | 'election.progress' | 'election.done' | 'election.tie' | 'election.all_done'
-  | 'resources.updated' | 'life.submitted' | 'life.all_done'
+  | 'resources.updated' | 'life.submitted' | 'life.eliminated' | 'life.all_done'
   | 'issue.requested' | 'issue.decided' | 'issue.cancelled'
   | 'war.declared' | 'war.resolved' | 'war.spoils' | 'war.lost'
 
@@ -146,6 +147,8 @@ export interface ServerToClientEvents {
    * 놓쳐도 재접속 때 상태를 다시 받으므로 outbox(events) 에 남기지 않는다
    */
   'signal': (kind: 'lobby') => void
+  /** 서버가 세션을 끊기 직전에 사유를 알린다. 'eliminated' = 탈락 (라이프 제출·관리자 탈락 처리) → "탈락되었습니다" 5초 후 로그아웃 */
+  'session:ended': (reason: 'eliminated') => void
 }
 
 /** Socket.IO 클라이언트 -> 서버 */

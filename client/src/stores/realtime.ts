@@ -75,6 +75,8 @@ export const useRealtimeStore = defineStore('realtime', {
         this.connected = false
         // 서버가 끊은 경우(탈락·PIN 리셋·게임 리셋으로 계정 삭제): 세션이 살아 있으면 다시 연결, 아니면 로그인 화면으로
         if (reason !== 'io server disconnect') return
+        // 탈락: 탈락 화면(5초)이 끝나면 auth.eliminate() 가 로그아웃한다
+        if (auth.eliminated) return
         if (await auth.refresh()) {
           socket?.connect()
           return
@@ -89,6 +91,10 @@ export const useRealtimeStore = defineStore('realtime', {
           const ok = await auth.refresh()
           if (!ok) auth.clear()
         }
+      })
+      // 서버가 끊기 직전에 보내는 사유. 탈락이면 "탈락되었습니다" 5초 후 로그아웃
+      socket.on('session:ended', (reason) => {
+        if (reason === 'eliminated') auth.eliminate()
       })
       socket.on('event', (ev) => this.push(ev))
       // 팀 구성 변경 (기록 없는 신호): 게임 상태를 다시 받고, 관리자는 계정 목록도 (프레젠테이션 팀 현황은 게임 상태 갱신에 맞춰 다시 받음)

@@ -1,46 +1,72 @@
 /**
- * 라이프 제출. 리더가 팀원(본인 포함) 중 라이프로 살릴 사람을 고르면
- * - 고른 인원만큼 팀 라이프를 소모하고
- * - 고르지 않은 활성 팀원은 바로 탈락(비활성) 처리한다. 세션 종료(refresh 폐기·소켓 끊기)는 라우터가 한다.
- * - 리더가 탈락하면 남은 활성 팀원 중 id 최소가 리더를 잇는다 (ensureLeader).
+ * 라이프 제출 (docs/100.최종룰_차이_결정사항.md D1). 리더가 살릴 인원 수(= 쓸 라이프 수)와 자진 탈락 여부만 정하면
+ * - 자진 탈락 안 함: 리더는 생존, 나머지 (N−1)자리는 리더 외 팀원 중 무작위
+ * - 자진 탈락: N자리 모두 리더 외 팀원 중 무작위
+ * - 라이프 0개 팀: 숫자 없이 1명만 생존 (리더, 자진 탈락이면 리더 외 무작위 1명). 라이프 소모 없음
+ * 쓴 개수만큼 팀 라이프를 소모하고, 살지 못한 활성 팀원은 바로 탈락(비활성) 처리한다. 세션 종료(refresh 폐기·소켓 끊기)는 라우터가 한다.
+ * 리더가 탈락하면 남은 활성 팀원 중 id 최소가 리더를 잇는다 (ensureLeader).
  * 팀별·일차별 1회. 활성 팀원이 1명뿐인 팀은 제출하지 않는다 (isLifeExempt: 자동 생존, 라이프 소모 없음).
  */
+import { randomInt } from 'node:crypto'
 import { db } from './index.js'
 import { listGroupMembers, listGroups, setUsersActive } from './users.js'
 import { ensureLeader } from './teams.js'
 import { applyDeltas, getTeamResources } from './resources.js'
 import { GameError } from './gameError.js'
-import { isLifeExempt } from '../../../shared/game.js'
+import { isLifeExempt, lifeSubmitMax } from '../../../shared/game.js'
 import type { LifeSubmissionView } from '../../../shared/game.js'
 
 interface SubmissionRow {
   saved: string
   eliminated: string
   lives_used: number
+  self_eliminated: number
   created_at: string
 }
 
 export function getLifeSubmission(day: number, teamId: number): LifeSubmissionView | null {
-  const r = db.prepare('SELECT saved, eliminated, lives_used, created_at FROM life_submissions WHERE day = ? AND group_id = ?').get(day, teamId) as
+  const r = db.prepare('SELECT saved, eliminated, lives_used, self_eliminated, created_at FROM life_submissions WHERE day = ? AND group_id = ?').get(day, teamId) as
     | SubmissionRow
     | undefined
-  return r ? { saved: JSON.parse(r.saved), eliminated: JSON.parse(r.eliminated), livesUsed: r.lives_used, createdAt: r.created_at } : null
+  return r
+    ? { saved: JSON.parse(r.saved), eliminated: JSON.parse(r.eliminated), livesUsed: r.lives_used, selfEliminated: r.self_eliminated === 1, createdAt: r.created_at }
+    : null
 }
 
-export function submitLife(day: number, teamId: number, by: number, savedIds: number[]): LifeSubmissionView {
+/** 무작위로 n명 (Fisher–Yates, crypto 난수) */
+function pickRandom(ids: number[], n: number): number[] {
+  const a = [...ids]
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1)
+    ;[a[i], a[j]] = [a[j]!, a[i]!]
+  }
+  return a.slice(0, n)
+}
+
+export function submitLife(day: number, teamId: number, leaderId: number, input: { count: number; selfEliminate: boolean }): LifeSubmissionView {
   return db.transaction(() => {
     if (getLifeSubmission(day, teamId)) throw new GameError('already_submitted', '이미 제출했습니다')
-    const members = listGroupMembers(teamId).map((m) => m.id)
+    const members = listGroupMembers(teamId)
     if (isLifeExempt(members.length)) throw new GameError('not_required', '팀원이 1명이라 라이프 제출이 없습니다')
-    const saved = [...new Set(savedIds)]
-    if (saved.some((id) => !members.includes(id))) throw new GameError('bad_member', '현재 팀원만 선택할 수 있습니다', 400)
+    if (!members.some((m) => m.id === leaderId && m.isLeader)) throw new GameError('not_leader', '리더만 할 수 있습니다', 403)
+    const others = members.filter((m) => m.id !== leaderId).map((m) => m.id)
     const lives = getTeamResources(teamId).life
-    if (saved.length > lives) throw new GameError('insufficient', `라이프가 부족합니다 (보유 ${lives})`)
-    const eliminated = members.filter((id) => !saved.includes(id))
-    if (saved.length > 0) applyDeltas(teamId, { life: -saved.length }, { reason: 'life', day, by })
+    const { count, selfEliminate } = input
+
+    let saved: number[]
+    if (lives === 0) {
+      if (count !== 0) throw new GameError('bad_count', '라이프가 없어 1명만 생존합니다', 400)
+      saved = selfEliminate ? pickRandom(others, 1) : [leaderId]
+    } else {
+      const max = lifeSubmitMax(members.length, lives, selfEliminate)
+      if (count < 1 || count > max) throw new GameError('bad_count', `살릴 인원은 1~${max}명입니다`, 400)
+      saved = selfEliminate ? pickRandom(others, count) : [leaderId, ...pickRandom(others, count - 1)]
+      applyDeltas(teamId, { life: -count }, { reason: 'life', day, by: leaderId })
+    }
+    const eliminated = members.map((m) => m.id).filter((id) => !saved.includes(id))
     setUsersActive(eliminated, false)
-    db.prepare('INSERT INTO life_submissions (day, group_id, saved, eliminated, lives_used, submitted_by) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(day, teamId, JSON.stringify(saved), JSON.stringify(eliminated), saved.length, by)
+    db.prepare('INSERT INTO life_submissions (day, group_id, saved, eliminated, lives_used, self_eliminated, submitted_by) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(day, teamId, JSON.stringify(saved), JSON.stringify(eliminated), lives === 0 ? 0 : count, selfEliminate ? 1 : 0, leaderId)
     ensureLeader(teamId)
     return getLifeSubmission(day, teamId)!
   })()
