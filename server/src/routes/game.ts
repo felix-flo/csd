@@ -239,7 +239,7 @@ gameRouter.post('/admin/game/start', requireRole('admin'), handle(null, (req, re
   const deactivated = startGame(req.auth!.sub)
   endSessions(deactivated)
   const g = getGameRow()
-  emit('game', 'all', null, 'game.updated', `게임이 시작되었습니다 · 1일차 / 총 ${g.total_days}일 · 리더 선출 중`, req.auth!.sub, { day: 1, phase: 'leader' })
+  emit('game', 'all', null, 'game.updated', `게임이 시작되었습니다 · 1일차 / 총 ${g.total_days}일 · 리더 선출 중 · ${todayCostText(1)}`, req.auth!.sub, { day: 1, phase: 'leader' })
   res.json(adminView())
 }))
 
@@ -252,8 +252,9 @@ gameRouter.post('/admin/game/next', requireRole('admin'), handle(advanceSchema, 
   for (const f of r.finalized) announceElection(body.day, f.teamId, f.result, by)
   if (body.phase === 'leader' && !leadersWereDone && r.finalized.length > 0) announceAllLeaders(body.day, by)
   announceCancelled(r.cancelledTrade, '거래 활동 종료로', by)
+  // 날이 바뀔 때마다 오늘 전쟁 선포 비용을 전체에 알린다 (바뀌지 않아도. docs/100 D6-b). 단계만 바뀔 때는 붙이지 않는다
   const message = r.day !== body.day
-    ? `${r.day}일차가 시작되었습니다 · ${PHASE_LABELS[r.phase]} 중`
+    ? `${r.day}일차가 시작되었습니다 · ${PHASE_LABELS[r.phase]} 중 · ${todayCostText(r.day)}`
     : `${r.day}일차 · ${PHASE_LABELS[r.phase]} 중입니다`
   emit('game', 'all', null, 'game.updated', message, by, { day: r.day, phase: r.phase })
   // 모든 팀이 제출 불필요(팀원 1명 이하)면 라이프 제출 단계에 들어가자마자 완료
@@ -362,6 +363,13 @@ gameRouter.post('/admin/game/trade/cancel', requireRole('admin'), handle(null, (
 
 // ---- 보석·골드 발행 ----
 
+/** 날 시작 알림에 붙이는 오늘 선포 비용 (docs/100 D6-b) */
+function todayCostText(day: number): string {
+  const c = getWarCost(day)
+  const text = c ? describeCost(c) : '미정'
+  return `⚔️ 오늘 전쟁 선포 비용: ${text === '없음' ? '없음 (무료)' : text}`
+}
+
 function issueText(r: IssueRequestView): string {
   return `${RESOURCE_LABELS[r.kind]} ${r.amount}개`
 }
@@ -410,7 +418,7 @@ const warResultSchema = z.object({ result: z.enum(['attacker', 'defender', 'draw
 
 /**
  * 관리자 결과 지정 (오프라인 게임 결과). 승패면 패배팀 재화 4종의 절반(내림)을 승리팀이 가져간다.
- * 결과(승리팀 이름)는 전체에, 빼앗은 수량은 승리팀(+진행자)에게만, 패배팀에는 수량 없이 패배만 알린다
+ * 결과(승리팀 이름)는 전체에, 오간 수량은 승리팀·패배팀(+진행자)에게만 (docs/100 D6-a). 룰 04 대로 "거래를 다시 시작합니다" 를 붙인다
  */
 gameRouter.post('/admin/war/:id/resolve', requireRole('admin'), handle(warResultSchema, (req, res, body) => {
   const g = requireRunning()
@@ -420,11 +428,12 @@ gameRouter.post('/admin/war/:id/resolve', requireRole('admin'), handle(warResult
   const r = resolveWar(id, body.result, g.day, by)
   const pair = `${teamName(r.war.attacker)} → ${teamName(r.war.defender)}`
   if (r.winner != null && r.loser != null) {
-    emit('game', 'all', null, 'war.resolved', `⚔️ 전쟁 종료: ${josa(teamName(r.winner), '이/가')} 승리했습니다 (${pair})`, by, { war: true, warId: id })
-    emit('game', 'group', r.winner, 'war.spoils', `⚔️ 전리품: ${describeDeltas(r.spoils ?? {}) || '없음 (상대 팀 재화 0)'}`, by, { war: true, warId: id })
-    emit('game', 'group', r.loser, 'war.lost', '⚔️ 전쟁에서 패배했습니다', by, { war: true, warId: id })
+    emit('game', 'all', null, 'war.resolved', `⚔️ 전쟁 종료: ${josa(teamName(r.winner), '이/가')} 승리했습니다 (${pair}). 거래를 다시 시작합니다`, by, { war: true, warId: id })
+    const amounts = describeCost(r.spoils ?? {})
+    emit('game', 'group', r.winner, 'war.spoils', `⚔️ 전리품: ${amounts === '없음' ? '없음 (상대 팀 재화 0)' : amounts}`, by, { war: true, warId: id })
+    emit('game', 'group', r.loser, 'war.lost', amounts === '없음' ? '⚔️ 전쟁 패배: 빼앗긴 재화 없음 (보유 0)' : `⚔️ 전쟁 패배: ${amounts} 을 빼앗겼습니다`, by, { war: true, warId: id })
   } else {
-    const msg = body.result === 'draw' ? `⚔️ 전쟁 종료: 무승부 (${pair})` : `⚔️ 전쟁이 취소되었습니다 (${pair})`
+    const msg = body.result === 'draw' ? `⚔️ 전쟁 종료: 무승부 (${pair}). 거래를 다시 시작합니다` : `⚔️ 전쟁이 취소되었습니다 (${pair}). 거래를 다시 시작합니다`
     emit('game', 'all', null, 'war.resolved', msg, by, { war: true, warId: id })
   }
   res.json(adminView())
