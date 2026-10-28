@@ -86,6 +86,8 @@ export interface GameState {
   title: string | null
   /** 전쟁 (진행 중일 때만 의미 있음). 모든 화면 상단 "⚔️ 전쟁 중" 띠, 거래 금지 표시에 쓴다 */
   war: PublicWarState
+  /** 현황판 공개: 마지막 라운드 전까지 수락된 골드 발행 합계 (docs/100 D5). 시작 전은 null. 마지막 라운드 발행은 최종장 때 공개 */
+  goldIssued: number | null
 }
 
 // ---- 전쟁 (docs/99.전쟁.md) ----
@@ -113,6 +115,8 @@ export interface PublicWarState {
   usedToday: boolean
   /** 오늘 선포 비용 (게임 진행 중에만) */
   cost: WarCost | null
+  /** 오늘 전쟁 기록 (현황판 공개용, docs/100 D5). 전리품은 넣지 않는다 */
+  today: { attacker: number; defender: number; status: WarStatus } | null
 }
 
 /** 관리자용 전쟁 기록. spoils 는 승리팀이 빼앗은 재화 (관리자·승리팀만 안다) */

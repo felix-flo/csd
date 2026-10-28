@@ -140,6 +140,14 @@ export function getTeamIssue(teamId: number): TeamIssueView | null {
   }
 }
 
+/** 현황판 공개용: 마지막 라운드 전까지 수락된 골드 발행 합계 (docs/100 D5). 마지막 라운드 발행은 최종장 때 공개 */
+export function publicGoldIssued(totalDays: number | null): number {
+  const row = db
+    .prepare(`SELECT COALESCE(SUM(amount), 0) AS n FROM issue_requests WHERE kind = 'gold' AND status = 'approved' AND day < ?`)
+    .get(totalDays ?? Number.MAX_SAFE_INTEGER) as { n: number }
+  return row.n
+}
+
 /** 그 라운드에 수락된 발행량 (마지막 라운드 비공개 집계) */
 function lastRoundAmounts(day: number): Record<IssueKind, number> {
   const rows = db.prepare(`SELECT kind, SUM(amount) AS n FROM issue_requests WHERE day = ? AND status = 'approved' GROUP BY kind`).all(day) as { kind: IssueKind; n: number }[]

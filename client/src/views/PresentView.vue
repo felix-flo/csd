@@ -3,6 +3,7 @@
  * 프레젠테이션 (빔 출력). 준비 상태에서는 팀 입장 현황(A 3/5 …, 실제 팀 이름 비공개)과 접속 QR. 게임 중에는 일차·단계와 모든 팀 초기 재화 합계만 공개한다 (이후 변동은 비공개).
  * 모든 팀 리더 선출 / 라이프 제출 완료는 큰 알림으로, 게임 종료 후에는 발표된 등수를 보여준다.
  * 게임 시작 후에는 팀 현황(팀별 팀원 명단, 리더, 탈락자 흐리게)도 보여준다. 재화는 공개하지 않는다.
+ * 현황판 (docs/100 D5): 골드 발행 누적(마지막 라운드 전까지)과 오늘 전쟁 선포 비용·전쟁 상태. 보석 발행량은 공개하지 않는다.
  * 명단은 게임 상태가 갱신될 때마다(단계 전환, 팀 구성 변경 신호 lobby) 다시 받는다.
  * 제목: 시작 전에는 "스위칭데이"만. 게임 제목은 서버가 시작 후에만 보내고(state.title), 시작 순간 열려 있던 화면은 리졸브 효과로 공개한다.
  *       시작 후 새로 열거나 새로고침하면 효과 없이 바로 제목.
@@ -16,8 +17,9 @@ import ResultsBoard from '../components/ResultsBoard.vue'
 import TeamMark from '../components/TeamMark.vue'
 import ResolveText from '../components/ResolveText.vue'
 import { useGameStore } from '../stores/game'
+import { useTeamsStore } from '../stores/teams'
 import { api } from '../lib/api'
-import { isBeforeStart, type RosterTeam } from '../../../shared/game'
+import { isBeforeStart, RESOURCE_LABELS, WAR_COST_KINDS, WAR_STATUS_LABELS, type RosterTeam, type WarCost } from '../../../shared/game'
 
 const game = useGameStore()
 onMounted(() => void game.load())
@@ -48,6 +50,21 @@ async function loadRoster() {
 }
 watch(s, loadRoster, { immediate: true })
 const alive = (t: RosterTeam) => t.members.filter((m) => !m.eliminated).length
+
+// ---- 현황판: 골드 발행 누적 · 전쟁 (docs/100 D5) ----
+const teams = useTeamsStore()
+const nameOf = (id: number) => teams.byId(id)?.name ?? `#${id}`
+const isLastRound = computed(() => !!s.value && s.value.status === 'running' && s.value.day >= (s.value.totalDays ?? 0))
+const costText = (c: WarCost) => WAR_COST_KINDS.filter((k) => c[k] > 0).map((k) => `${RESOURCE_LABELS[k]} ${c[k]}`).join(', ') || '없음 (무료)'
+/** 전쟁 줄: 선포 전 비용 → 전쟁 중 → 오늘 결과 */
+const warLine = computed(() => {
+  const w = s.value?.war
+  if (!w || s.value?.status !== 'running') return null
+  const pair = w.today ? `${nameOf(w.today.attacker)} → ${nameOf(w.today.defender)}` : ''
+  if (w.today?.status === 'declared') return { text: `전쟁 중: ${pair}`, hot: true }
+  if (w.today) return { text: `오늘 전쟁: ${pair} · ${WAR_STATUS_LABELS[w.today.status]}`, hot: false }
+  return { text: w.cost ? `오늘 선포 비용: ${costText(w.cost)}` : '오늘 선포 비용 미정', hot: false }
+})
 </script>
 
 <template>
@@ -64,7 +81,7 @@ const alive = (t: RosterTeam) => t.members.filter((m) => !m.eliminated).length
       {{ s.phase === 'leader' ? '모든팀의 리더 선출이 완료되었습니다.' : '모든 팀의 라이프가 제출되었습니다.' }}
     </div>
     <div class="present-grid">
-      <div v-if="s?.status === 'ready' && s.lobby" class="card">
+      <div v-if="s?.status === 'ready' && s.lobby" class="card span2">
         <h2>팀 입장 현황</h2>
         <div class="lobby">
           <div v-for="t in s.lobby" :key="t.teamId" class="lobby-team" :class="{ full: t.count >= t.capacity }">
@@ -74,10 +91,16 @@ const alive = (t: RosterTeam) => t.members.filter((m) => !m.eliminated).length
         </div>
         <p class="muted" style="margin: 12px 0 0">QR 로 접속해 PIN 으로 로그인한 뒤 이름을 입력하고 팀을 고르세요.</p>
       </div>
-      <div v-else class="card">
+      <div v-else class="card" :class="{ span2: !s || isBeforeStart(s.status) }">
         <h2>초기 재화 <span class="muted">모든 팀 합계</span></h2>
         <ResourceRow large show-label :amounts="s?.initialTotals" />
         <p class="muted" style="margin: 12px 0 0">게임 시작 시점의 전체 재화입니다. 이후 변동은 공개하지 않습니다.</p>
+      </div>
+      <div v-if="s && !isBeforeStart(s.status)" class="card board">
+        <h2>현황판</h2>
+        <p class="gold">🥇 골드 발행 누적 <strong class="mono">{{ s.goldIssued ?? 0 }}</strong>개</p>
+        <p v-if="isLastRound" class="muted">마지막 라운드 발행은 최종장에 공개됩니다.</p>
+        <p v-if="warLine" class="war" :class="{ hot: warLine.hot }">⚔️ {{ warLine.text }}</p>
       </div>
       <div class="card">
         <h2>접속 주소</h2>
@@ -106,8 +129,10 @@ const alive = (t: RosterTeam) => t.members.filter((m) => !m.eliminated).length
 </template>
 
 <style scoped>
-.present-grid { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: start; }
-@media (max-width: 720px) { .present-grid { grid-template-columns: 1fr; } }
+/* 초기 재화 · 현황판 · QR. 준비 상태는 입장 현황이 두 칸을 차지한다 */
+.present-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: start; }
+.present-grid .span2 { grid-column: span 2; }
+@media (max-width: 900px) { .present-grid { grid-template-columns: 1fr; } .present-grid .span2 { grid-column: auto; } }
 .lobby { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
 .lobby-team { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); font-size: 1.4rem; }
 .lobby-team.full { opacity: 0.4; }
@@ -123,5 +148,9 @@ const alive = (t: RosterTeam) => t.members.filter((m) => !m.eliminated).length
 .roster-team ul { list-style: none; margin: 0; padding: 0; font-size: 1.15rem; }
 .roster-team li { padding: 4px 0; border-top: 1px solid var(--line-soft); }
 .roster-team li.out { opacity: 0.45; text-decoration: line-through; }
+.board .gold { margin: 0; font-size: 1.3rem; }
+.board .gold strong { font-size: 2rem; }
+.board .war { margin: 10px 0 0; font-size: 1.15rem; }
+.board .war.hot { color: var(--red); font-weight: 700; font-size: 1.4rem; }
 .done-banner { font-family: var(--font-display); font-size: 2.4rem; line-height: 1.2; border-left: 3px solid var(--blue); }
 </style>

@@ -18,7 +18,7 @@ import {
 import { allElectionsDone, clearElections, finalizeElection, openElections, type FinalizeResult } from './election.js'
 import { cancelActiveTrade, clearTrades } from './trades.js'
 import { allLivesDone, clearLifeSubmissions } from './life.js'
-import { cancelPendingIssues, clearIssues, pendingIssueTeams } from './issuance.js'
+import { cancelPendingIssues, clearIssues, pendingIssueTeams, publicGoldIssued } from './issuance.js'
 import { clearCouncilActions } from './council.js'
 import { clearWars, getActiveWar, getPublicWar, getWarCost, setWarCost } from './war.js'
 import { GameError } from './gameError.js'
@@ -71,6 +71,7 @@ export function getGameState(): GameState {
     lobby: g.status === 'ready' ? getLobby() : null,
     title: isBeforeStart(g.status) ? null : GAME_TITLE,
     war: getPublicWar(g.day, g.status === 'running'),
+    goldIssued: isBeforeStart(g.status) ? null : publicGoldIssued(g.total_days),
   }
 }
 

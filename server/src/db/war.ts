@@ -68,10 +68,12 @@ export function getWarOfDay(day: number): WarView | null {
 
 export function getPublicWar(day: number, running: boolean): PublicWarState {
   const active = getActiveWar()
+  const today = running ? getWarOfDay(day) : null
   return {
     active: active ? { id: active.id, attacker: active.attacker, defender: active.defender } : null,
     usedToday: running && !!getWarOfDay(day),
     cost: running ? getWarCost(day) : null,
+    today: today ? { attacker: today.attacker, defender: today.defender, status: today.status } : null,
   }
 }
 
