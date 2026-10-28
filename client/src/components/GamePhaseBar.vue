@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 게임 진행 표시줄. 모든 역할의 상단바 아래에 붙는다 (TopBar).
- * "2일차 / 총 5일 · 거래 활동 중" + 하루 흐름 5단계 중 현재 위치. 준비 상태에서는 "게임 준비 중".
+ * "2라운드 / 총 6라운드 · 거래 중" + 라운드 흐름 5단계 중 현재 위치. 준비 상태에서는 "게임 준비 중".
  * 전쟁 중(선포~결과)에는 아래에 "⚔️ 전쟁 중: 공격팀 → 방어팀 · 모든 거래 중지" 띠를 붙인다.
  */
 import { computed } from 'vue'
@@ -21,7 +21,7 @@ const nameOf = (id: number) => teams.byId(id)?.name ?? `#${id}`
   <div v-if="s && s.status !== 'setup'" class="phase-bar" :class="{ large, ended: s.status === 'ended', ready: s.status === 'ready' }">
     <template v-if="s.status === 'running' && s.phase">
       <div class="now">
-        <span class="day mono">{{ s.day }}일차 <span class="muted">/ 총 {{ s.totalDays }}일</span></span>
+        <span class="day mono">{{ s.day }}라운드 <span class="muted">/ 총 {{ s.totalDays }}라운드</span></span>
         <strong>{{ PHASE_LABELS[s.phase] }} 중</strong>
       </div>
       <ol class="steps">

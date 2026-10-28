@@ -235,7 +235,7 @@ export function prepareGame(): number[] {
   return db.transaction(() => {
     const g = getGameRow()
     if (g.status !== 'setup') throw new GameError('not_setup', '설정 단계에서만 할 수 있습니다')
-    if (!g.total_days) throw new GameError('no_days', '총 일수를 먼저 설정하세요')
+    if (!g.total_days) throw new GameError('no_days', '총 라운드 수를 먼저 설정하세요')
     if (listGroups().length === 0) throw new GameError('no_teams', '팀이 없습니다')
     const empty = listGroups().filter((t) => capacityOf(t.id) < 1)
     if (empty.length) throw new GameError('no_capacity', `최대 인원을 정하세요: ${empty.map((t) => t.name).join(', ')}`)
@@ -293,7 +293,7 @@ export function startGame(by: number): number[] {
   return db.transaction(() => {
     const g = getGameRow()
     if (g.status !== 'ready') throw new GameError('not_ready', '초기셋팅완료 후 준비 상태에서 시작할 수 있습니다')
-    if (!g.total_days) throw new GameError('no_days', '총 일수를 먼저 설정하세요')
+    if (!g.total_days) throw new GameError('no_days', '총 라운드 수를 먼저 설정하세요')
     const deactivated = applyTestAccounts(g.include_test === 1)
     // 팀을 고르지 않은 참가자는 비활성 (관리자가 나중에 팀에 넣고 복귀시킬 수 있다)
     const unassigned = (db.prepare(`SELECT id FROM users WHERE role = 'member' AND active = 1 AND group_id IS NULL`).all() as { id: number }[]).map((r) => r.id)
@@ -301,7 +301,7 @@ export function startGame(by: number): number[] {
     deactivated.push(...unassigned)
     const { noLeader } = getPrep()
     if (noLeader.length) throw new GameError('no_leader', `리더를 지정하세요: ${noLeader.map(teamLabel).join(', ')}`)
-    if (!getWarCost(1)) throw new GameError('no_war_cost', '게임 설정에서 1일차 전쟁 선포 비용을 저장하세요')
+    if (!getWarCost(1)) throw new GameError('no_war_cost', '게임 설정에서 1라운드 전쟁 선포 비용을 저장하세요')
     clearWars()
     clearLedger()
     clearElections()
@@ -351,8 +351,8 @@ export function advance(expect: { day: number; phase: Phase }): AdvanceResult {
       result.phase = PHASES[idx + 1]!
       updateGame('phase = ?', [result.phase])
     } else {
-      if (g.day >= (g.total_days ?? 0)) throw new GameError('last_day', '마지막 날입니다. 게임 종료를 누르세요')
-      if (!getWarCost(g.day + 1)) throw new GameError('no_war_cost', `${g.day + 1}일차 전쟁 선포 비용을 먼저 정하세요`)
+      if (g.day >= (g.total_days ?? 0)) throw new GameError('last_day', '마지막 라운드입니다. 게임 종료를 누르세요')
+      if (!getWarCost(g.day + 1)) throw new GameError('no_war_cost', `${g.day + 1}라운드 전쟁 선포 비용을 먼저 정하세요`)
       // 발행은 라운드당 1회라 대기 요청을 다음 라운드로 넘기지 않는다 (docs/100 D3)
       const pendingIssue = pendingIssueTeams()
       if (pendingIssue.length) {
@@ -374,10 +374,10 @@ export function advance(expect: { day: number; phase: Phase }): AdvanceResult {
 export function endGame(): { trade: TradeView | null; issues: IssueRequestView[] } {
   return db.transaction(() => {
     const g = requireRunning()
-    if (g.day < (g.total_days ?? 0)) throw new GameError('not_last_day', '마지막 날에만 종료할 수 있습니다')
+    if (g.day < (g.total_days ?? 0)) throw new GameError('not_last_day', '마지막 라운드에만 종료할 수 있습니다')
     if (getActiveWar()) throw new GameError('war_active', '전쟁 결과를 먼저 정하세요')
     if (g.phase !== 'life' || !allLivesDone(g.day)) {
-      throw new GameError('not_finished', '마지막 날 라이프 제출 단계에서 모든 팀이 제출해야 종료할 수 있습니다')
+      throw new GameError('not_finished', '마지막 라운드 라이프 제출 단계에서 모든 팀이 제출해야 종료할 수 있습니다')
     }
     guardLastRoundIssue(g, null)
     const trade = cancelActiveTrade()

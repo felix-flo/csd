@@ -62,8 +62,8 @@ const warLine = computed(() => {
   if (!w || s.value?.status !== 'running') return null
   const pair = w.today ? `${nameOf(w.today.attacker)} → ${nameOf(w.today.defender)}` : ''
   if (w.today?.status === 'declared') return { text: `전쟁 중: ${pair}`, hot: true }
-  if (w.today) return { text: `오늘 전쟁: ${pair} · ${WAR_STATUS_LABELS[w.today.status]}`, hot: false }
-  return { text: w.cost ? `오늘 선포 비용: ${costText(w.cost)}` : '오늘 선포 비용 미정', hot: false }
+  if (w.today) return { text: `이번 라운드 전쟁: ${pair} · ${WAR_STATUS_LABELS[w.today.status]}`, hot: false }
+  return { text: w.cost ? `이번 라운드 선포 비용: ${costText(w.cost)}` : '이번 라운드 선포 비용 미정', hot: false }
 })
 </script>
 

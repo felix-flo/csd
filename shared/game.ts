@@ -1,7 +1,8 @@
 /**
  * 게임 진행 정의 (서버/클라이언트 공용). 설계·결정 경위: docs/95.게임진행_설계.md
  * - 게임 상태: setup(설정) → ready(준비: 참가자 입장·팀 선택) → running(진행, day/phase) → ended(종료, 등수 발표)
- * - 하루 흐름: 리더 선출 → 생산 활동 → 거래 활동 → 리더간 협의 → 라이프 제출. 단계 전환은 관리자 버튼으로만.
+ * - 라운드 흐름: 리더 선출 → 생산게임 → 거래 → 리더 협의 → 라이프 제출. 단계 전환은 관리자 버튼으로만.
+ * - 용어: 화면·알림은 "N라운드" (코드·DB·API 의 day 는 그대로. docs/100 §5)
  */
 
 export const RESOURCE_KINDS = ['gem', 'gold', 'life', 'credit'] as const
@@ -19,9 +20,9 @@ export type Phase = (typeof PHASES)[number]
 
 export const PHASE_LABELS: Record<Phase, string> = {
   leader: '리더 선출',
-  production: '생산 활동',
-  trade: '거래 활동',
-  council: '리더간 협의',
+  production: '생산게임',
+  trade: '거래',
+  council: '리더 협의',
   life: '라이프 제출',
 }
 

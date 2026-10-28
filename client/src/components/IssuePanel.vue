@@ -29,11 +29,11 @@ const hint = computed(() => {
   // 마지막 라운드 허용 단계 안내는 위 배너가 보여 준다
   if (!props.issue.open) return props.issue.lastRoundPhases ? '' : '게임이 진행 중일 때 발행을 요청할 수 있습니다.'
   if (props.issue.issuedToday) return '이번 라운드 발행을 마쳤습니다. 발행은 라운드당 1회입니다.'
-  if (props.issue.remaining <= 0) return '이번 일차에는 더 발행할 수 없습니다.'
+  if (props.issue.remaining <= 0) return '이번 라운드에는 더 발행할 수 없습니다.'
   return props.isLeader ? '' : '리더가 발행을 요청할 수 있습니다.'
 })
 const lastPhases = computed(() => (props.issue.lastRoundPhases ?? []).map((p) => PHASE_LABELS[p]).join(', '))
-const carryNote = computed(() => (props.issue.kind === 'gold' ? '안 쓴 만큼 다음 일차로 이월됩니다.' : '일차마다 새로 정해지며 이월되지 않습니다.'))
+const carryNote = computed(() => (props.issue.kind === 'gold' ? '안 쓴 만큼 다음 라운드로 이월됩니다.' : '라운드마다 새로 정해지며 이월되지 않습니다.'))
 
 async function submit() {
   if (!valid.value) return
@@ -57,7 +57,7 @@ async function submit() {
   <div class="card">
     <h2>{{ emoji }} {{ label }} 발행</h2>
     <p class="remain">
-      이번 일차 남은 발행 가능량 <strong>{{ issue.remaining }}</strong>개
+      이번 라운드 남은 발행 가능량 <strong>{{ issue.remaining }}</strong>개
       <span class="muted">· {{ carryNote }}</span>
     </p>
 
@@ -81,7 +81,7 @@ async function submit() {
 
     <ul v-if="issue.recent.length" class="history">
       <li v-for="r in issue.recent" :key="r.id">
-        <span class="muted">{{ r.day }}일차</span>
+        <span class="muted">{{ r.day }}라운드</span>
         {{ label }} {{ r.amount }}개
         <span class="badge" :class="{ on: r.status === 'approved', warn: r.status === 'pending', off: r.status === 'rejected' || r.status === 'cancelled' }">
           {{ ISSUE_STATUS_LABELS[r.status] }}

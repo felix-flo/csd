@@ -239,7 +239,7 @@ gameRouter.post('/admin/game/start', requireRole('admin'), handle(null, (req, re
   const deactivated = startGame(req.auth!.sub)
   endSessions(deactivated)
   const g = getGameRow()
-  emit('game', 'all', null, 'game.updated', `게임이 시작되었습니다 · 1일차 / 총 ${g.total_days}일 · 리더 선출 중 · ${todayCostText(1)}`, req.auth!.sub, { day: 1, phase: 'leader' })
+  emit('game', 'all', null, 'game.updated', `게임이 시작되었습니다 · 1라운드 / 총 ${g.total_days}라운드 · 리더 선출 중 · ${todayCostText(1)}`, req.auth!.sub, { day: 1, phase: 'leader' })
   res.json(adminView())
 }))
 
@@ -251,11 +251,11 @@ gameRouter.post('/admin/game/next', requireRole('admin'), handle(advanceSchema, 
   const r = advance(body)
   for (const f of r.finalized) announceElection(body.day, f.teamId, f.result, by)
   if (body.phase === 'leader' && !leadersWereDone && r.finalized.length > 0) announceAllLeaders(body.day, by)
-  announceCancelled(r.cancelledTrade, '거래 활동 종료로', by)
+  announceCancelled(r.cancelledTrade, '거래 단계 종료로', by)
   // 날이 바뀔 때마다 오늘 전쟁 선포 비용을 전체에 알린다 (바뀌지 않아도. docs/100 D6-b). 단계만 바뀔 때는 붙이지 않는다
   const message = r.day !== body.day
-    ? `${r.day}일차가 시작되었습니다 · ${PHASE_LABELS[r.phase]} 중 · ${todayCostText(r.day)}`
-    : `${r.day}일차 · ${PHASE_LABELS[r.phase]} 중입니다`
+    ? `${r.day}라운드가 시작되었습니다 · ${PHASE_LABELS[r.phase]} 중 · ${todayCostText(r.day)}`
+    : `${r.day}라운드 · ${PHASE_LABELS[r.phase]} 중입니다`
   emit('game', 'all', null, 'game.updated', message, by, { day: r.day, phase: r.phase })
   // 모든 팀이 제출 불필요(팀원 1명 이하)면 라이프 제출 단계에 들어가자마자 완료
   if (r.phase === 'life' && allLivesDone(r.day)) emit('game', 'all', null, 'life.all_done', '모든 팀의 라이프가 제출되었습니다.', by, { day: r.day })
@@ -367,7 +367,7 @@ gameRouter.post('/admin/game/trade/cancel', requireRole('admin'), handle(null, (
 function todayCostText(day: number): string {
   const c = getWarCost(day)
   const text = c ? describeCost(c) : '미정'
-  return `⚔️ 오늘 전쟁 선포 비용: ${text === '없음' ? '없음 (무료)' : text}`
+  return `⚔️ 이번 라운드 전쟁 선포 비용: ${text === '없음' ? '없음 (무료)' : text}`
 }
 
 function issueText(r: IssueRequestView): string {
@@ -404,12 +404,12 @@ const warCostSchema = z.object({ gem: amount, gold: amount, credit: amount })
 /** 다음 날 선포 비용. 이걸 정해야 "다음 날로" 넘어갈 수 있다 (마지막 날에는 다음 날이 없다) */
 gameRouter.post('/admin/war/cost', requireRole('admin'), handle(warCostSchema, (req, res, body) => {
   const g = requireRunning()
-  if (g.day >= (g.total_days ?? 0)) throw new GameError('last_day', '마지막 날에는 다음 날 비용이 필요 없습니다')
+  if (g.day >= (g.total_days ?? 0)) throw new GameError('last_day', '마지막 라운드에는 다음 라운드 비용이 필요 없습니다')
   setWarCost(g.day + 1, body)
   // 다른 진행자 화면 갱신용 (진행자만)
   publishEvent(insertEvent({
     type: 'game', scope: 'role', targetRole: 'admin', createdBy: req.auth!.sub,
-    payload: { kind: 'game.updated', message: `${g.day + 1}일차 전쟁 선포 비용: ${describeCost(body)}`, silent: true },
+    payload: { kind: 'game.updated', message: `${g.day + 1}라운드 전쟁 선포 비용: ${describeCost(body)}`, silent: true },
   }))
   res.json(adminView())
 }))

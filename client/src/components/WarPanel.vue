@@ -35,8 +35,8 @@ const short = computed(() => {
 })
 const blocker = computed(() => {
   if (war.value?.active) return '전쟁이 진행 중입니다.'
-  if (war.value?.usedToday) return '오늘은 이미 전쟁이 선포되었습니다 (하루 1회).'
-  if (!cost.value) return '오늘 선포 비용이 정해지지 않았습니다.'
+  if (war.value?.usedToday) return '이번 라운드에는 이미 전쟁이 선포되었습니다 (라운드당 1회).'
+  if (!cost.value) return '이번 라운드 선포 비용이 정해지지 않았습니다.'
   if (short.value.length) return `${short.value.map((k) => RESOURCE_LABELS[k]).join(', ')}이(가) 부족해 선포할 수 없습니다.`
   return ''
 })
@@ -67,7 +67,7 @@ async function declare() {
     </p>
     <template v-else>
       <p class="muted">
-        오늘 선포 비용: <strong>{{ costText }}</strong> · 하루에 한 번, 먼저 선포한 팀만. 낸 비용은 돌려받지 못하고,
+        이번 라운드 선포 비용: <strong>{{ costText }}</strong> · 라운드에 한 번, 먼저 선포한 팀만. 낸 비용은 돌려받지 못하고,
         선포하면 결과가 나올 때까지 모든 팀이 거래할 수 없습니다. 이기면 상대 팀 재화의 절반을 가져옵니다.
       </p>
       <template v-if="isLeader && !blocker">

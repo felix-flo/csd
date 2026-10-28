@@ -42,7 +42,7 @@ function popupMessage(r: IssueRequestView): string {
     : lastRound
       ? '마지막 라운드라 골드 발행량은 공개되지 않습니다 (옐로우팀과 진행자만 압니다).'
       : '수락하면 전체에 "골드 발행" 이 수량과 함께 공개됩니다.'
-  return `${who} 님이 ${RESOURCE_LABELS[r.kind]} ${r.amount}개 발행을 요청했습니다 (${r.day}일차).\n${reveal}`
+  return `${who} 님이 ${RESOURCE_LABELS[r.kind]} ${r.amount}개 발행을 요청했습니다 (${r.day}라운드).\n${reveal}`
 }
 
 async function decide(r: IssueRequestView, accept: boolean) {
@@ -68,9 +68,9 @@ function postpone(r: IssueRequestView) {
   <div v-if="visible && issues" class="card">
     <h2>보석 · 골드 발행 <span v-if="issues.pending.length" class="badge warn">대기 {{ issues.pending.length }}</span></h2>
     <p class="muted">
-      이번 일차 남은 발행 가능량 — 💎 보석 <strong>{{ remainingText('gem') }}</strong> (일차마다 한도, 이월 없음) ·
+      이번 라운드 남은 발행 가능량 — 💎 보석 <strong>{{ remainingText('gem') }}</strong> (라운드마다 한도, 이월 없음) ·
       🥇 골드 <strong>{{ remainingText('gold') }}</strong> (안 쓴 만큼 이월). 대기 중인 요청도 뺀 값입니다.
-      발행은 팀마다 라운드당 1회(거절은 횟수에 넣지 않음)이고, 대기 요청을 처리해야 다음 날로 넘어갈 수 있습니다.
+      발행은 팀마다 라운드당 1회(거절은 횟수에 넣지 않음)이고, 대기 요청을 처리해야 다음 라운드로 넘어갈 수 있습니다.
     </p>
     <p v-if="issues.lastRound" class="last-round">
       🔒 마지막 라운드 발행 (비공개) — 💎 보석 <strong>{{ issues.lastRound.gem }}</strong>개 · 🥇 골드 <strong>{{ issues.lastRound.gold }}</strong>개
@@ -81,7 +81,7 @@ function postpone(r: IssueRequestView) {
         <tr v-for="r in issues.pending" :key="r.id">
           <td class="nowrap"><TeamMark v-if="team(r.teamId)" :color="team(r.teamId)!.color" />{{ team(r.teamId)?.name }}</td>
           <td><strong>{{ label(r) }}</strong></td>
-          <td class="muted">{{ r.day }}일차 · {{ r.requestedByName }}</td>
+          <td class="muted">{{ r.day }}라운드 · {{ r.requestedByName }}</td>
           <td class="actions">
             <button class="secondary small" :disabled="busy" @click="decide(r, false)">거절</button>
             <button class="small" :disabled="busy" @click="decide(r, true)">수락</button>
@@ -99,7 +99,7 @@ function postpone(r: IssueRequestView) {
           <tr v-for="r in issues.recent" :key="r.id">
             <td class="nowrap"><TeamMark v-if="team(r.teamId)" :color="team(r.teamId)!.color" />{{ team(r.teamId)?.name }}</td>
             <td>{{ label(r) }}</td>
-            <td class="muted">{{ r.day }}일차 · {{ r.requestedByName }}</td>
+            <td class="muted">{{ r.day }}라운드 · {{ r.requestedByName }}</td>
             <td><span class="badge" :class="{ on: r.status === 'approved', warn: r.status === 'pending', off: r.status === 'rejected' || r.status === 'cancelled' }">{{ ISSUE_STATUS_LABELS[r.status] }}</span></td>
           </tr>
         </tbody>

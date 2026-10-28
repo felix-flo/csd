@@ -190,7 +190,7 @@ export function requestIssue(teamId: number, amount: number, by: number): IssueR
     const pending = db.prepare(`SELECT 1 FROM issue_requests WHERE group_id = ? AND status = 'pending'`).get(teamId)
     if (pending) throw new GameError('issue_pending', '수락을 기다리는 요청이 있습니다')
     const left = remainingFor(teamId, kind)
-    if (amount > left) throw new GameError('limit_exceeded', `이번 일차 남은 ${RESOURCE_LABELS[kind]} 발행 가능량은 ${left}개입니다`)
+    if (amount > left) throw new GameError('limit_exceeded', `이번 라운드 남은 ${RESOURCE_LABELS[kind]} 발행 가능량은 ${left}개입니다`)
     try {
       const info = db
         .prepare('INSERT INTO issue_requests (day, phase, group_id, kind, amount, requested_by) VALUES (?, ?, ?, ?, ?, ?)')

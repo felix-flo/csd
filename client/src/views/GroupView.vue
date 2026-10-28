@@ -63,7 +63,7 @@ watch(beforeStart, (v) => {
 const phase = computed(() => (s.value?.status === 'running' ? s.value.phase : null))
 const isLeader = computed(() => !!auth.user?.isLeader)
 const phaseHint: Record<string, string> = {
-  production: '오프라인 미니게임으로 생산 활동을 합니다. 결과에 따라 진행자가 팀 재화를 지급합니다.',
+  production: '오프라인 미니게임(생산게임)을 합니다. 결과에 따라 진행자가 팀 재화를 지급합니다.',
   council: '리더들이 대가 없는 원조를 협의합니다 (팀마다 라운드당 1회 줄 수 있음). 원조는 진행자가 재화를 조정합니다.',
 }
 </script>

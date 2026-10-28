@@ -127,7 +127,7 @@ async function prepare() {
   <div v-if="isBeforeStart(status)" class="card">
     <h2>게임 설정 <span v-if="status === 'ready'" class="badge on">준비 중</span></h2>
     <p v-if="status === 'setup'" class="muted">
-      총 일수와 팀별 최대 인원, 초기 재화를 정한 뒤 <strong>초기셋팅완료</strong>를 누르세요. 최대 인원 합계만큼 팀 없는 PIN 이 만들어지고,
+      총 라운드 수와 팀별 최대 인원, 초기 재화를 정한 뒤 <strong>초기셋팅완료</strong>를 누르세요. 최대 인원 합계만큼 팀 없는 PIN 이 만들어지고,
       참가자가 로그인해 이름을 입력하고 팀(A, B, C…)을 직접 고릅니다. 진행자 계정은 "팀 · 진행자 구성" 카드에서 만듭니다.
     </p>
     <p v-else class="muted">
@@ -136,13 +136,13 @@ async function prepare() {
     </p>
 
     <div class="row" style="margin-bottom: 10px">
-      <label>총 일수 <input v-model.number="totalDays" type="number" min="1" max="30" placeholder="일" style="width: 5em" /></label>
+      <label>총 라운드 수 <input v-model.number="totalDays" type="number" min="1" max="30" placeholder="6" style="width: 5em" /></label>
       <label>라이프 매장량 <input v-model.number="lifeReserve" type="number" min="0" style="width: 6em" /></label>
       <label class="row" style="gap: 6px"><input v-model="includeTest" type="checkbox" /> 팀별 테스트 계정(리더 1·팀원 1) 포함</label>
     </div>
     <div class="row" style="margin-bottom: 10px">
-      <label>💎 보석 발행 한도 <input v-model.number="issueLimit.gem" type="number" min="0" style="width: 6em" /> /일차</label>
-      <label>🥇 골드 발행 한도 <input v-model.number="issueLimit.gold" type="number" min="0" style="width: 6em" /> /일차 (이월)</label>
+      <label>💎 보석 발행 한도 <input v-model.number="issueLimit.gem" type="number" min="0" style="width: 6em" /> /라운드</label>
+      <label>🥇 골드 발행 한도 <input v-model.number="issueLimit.gold" type="number" min="0" style="width: 6em" /> /라운드 (이월)</label>
     </div>
     <div class="row" style="margin-bottom: 10px">
       <span>마지막 라운드 발행 단계</span>
@@ -150,16 +150,16 @@ async function prepare() {
       <span v-if="!lastIssuePhases.length" class="error" style="font-size: 0.85rem">1개 이상 고르세요</span>
     </div>
     <div class="row" style="margin-bottom: 10px">
-      <span>⚔️ 1일차 전쟁 선포 비용</span>
+      <span>⚔️ 1라운드 전쟁 선포 비용</span>
       <label>보석 <input v-model.number="warCost.gem" type="number" min="0" style="width: 5em" /></label>
       <label>골드 <input v-model.number="warCost.gold" type="number" min="0" style="width: 5em" /></label>
       <label>크레딧 <input v-model.number="warCost.credit" type="number" min="0" style="width: 5em" /></label>
       <span v-if="!settings?.warCost" class="error" style="font-size: 0.85rem">저장해야 게임을 시작할 수 있습니다</span>
     </div>
     <p class="muted" style="margin-top: 0">
-      라이프 매장량: 생산 활동으로 지급할 수 있는 라이프 총량. 테스트 계정은 팀·리더가 미리 정해져 있고 최대 인원에 들어가지 않습니다. 빼면 탈락(로그인 차단) 처리됩니다.
-      전쟁 선포 비용: 2일차부터는 게임 진행 카드에서 전날 끝나기 전에 정합니다(0 이면 무료).
-      발행 한도: 화이트팀 리더는 보석을 일차마다 한도까지(이월 없음), 옐로우팀 리더는 골드를 일차마다 한도씩 쌓아서(안 쓴 만큼 이월) 발행 요청할 수 있습니다.
+      라이프 매장량: 생산게임으로 지급할 수 있는 라이프 총량. 테스트 계정은 팀·리더가 미리 정해져 있고 최대 인원에 들어가지 않습니다. 빼면 탈락(로그인 차단) 처리됩니다.
+      전쟁 선포 비용: 2라운드부터는 게임 진행 카드에서 전 라운드가 끝나기 전에 정합니다(0 이면 무료).
+      발행 한도: 화이트팀 리더는 보석을 라운드마다 한도까지(이월 없음), 옐로우팀 리더는 골드를 라운드마다 한도씩 쌓아서(안 쓴 만큼 이월) 발행 요청할 수 있습니다.
     </p>
 
     <table class="res-table">

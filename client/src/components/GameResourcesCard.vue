@@ -147,7 +147,7 @@ async function applyAid() {
       <table class="tbl ledger">
         <tbody>
           <tr v-for="l in view.ledger" :key="l.id">
-            <td class="mono muted">{{ l.day }}일차</td>
+            <td class="mono muted">{{ l.day }}라운드</td>
             <td><TeamMark :color="team(l.teamId)?.color ?? ''" />{{ team(l.teamId)?.name }}</td>
             <td>{{ LEDGER_REASON_LABELS[l.reason] }}</td>
             <td class="mono">{{ RESOURCE_LABELS[l.kind] }} {{ l.delta > 0 ? '+' : '' }}{{ l.delta }} → {{ l.amountAfter }}</td>
