@@ -22,7 +22,7 @@ import { cancelPendingIssues, clearIssues, pendingIssueTeams } from './issuance.
 import { clearCouncilActions } from './council.js'
 import { clearWars, getActiveWar, getPublicWar, getWarCost, setWarCost } from './war.js'
 import { GameError } from './gameError.js'
-import { DEFAULT_ISSUE_LIMITS, emptyResources, isBeforeStart, PHASES, rankTeams, sumResources, teamLetter } from '../../../shared/game.js'
+import { DEFAULT_ISSUE_LIMITS, DEFAULT_LAST_ISSUE_PHASES, emptyResources, isBeforeStart, PHASE_LABELS, PHASES, rankTeams, sortPhases, sumResources, teamLetter } from '../../../shared/game.js'
 import type {
   GameResults, GameSettings, GameState, GameStatus, IssueLimits, IssueRequestView, LobbyTeam, Phase, Resources, RosterTeam, ScoreRule, TradeView, WarCost,
 } from '../../../shared/game.js'
@@ -43,6 +43,8 @@ interface GameRow {
   results: string | null
   gem_issue_limit: number
   gold_issue_limit: number
+  /** 마지막 라운드 발행 허용 단계 Phase[] JSON (docs/100 D4) */
+  last_issue_phases: string
 }
 
 export function getGameRow(): GameRow {
@@ -97,7 +99,40 @@ export function getSettings(): GameSettings {
     initial: Object.fromEntries(listGroups().map((t) => [t.id, initial.get(t.id) ?? emptyResources()])),
     issueLimit: { gem: g.gem_issue_limit, gold: g.gold_issue_limit },
     warCost: getWarCost(1),
+    lastIssuePhases: parsePhases(g.last_issue_phases),
   }
+}
+
+function parsePhases(json: string): Phase[] {
+  return JSON.parse(json) as Phase[]
+}
+
+/** 진행 중 마지막 라운드인지 */
+function isLastRound(g: GameRow): boolean {
+  return g.status === 'running' && g.day >= (g.total_days ?? Infinity)
+}
+
+/**
+ * 마지막 라운드 발행 허용 단계 저장 (docs/100 D4). 시작 전, 또는 진행 중 마지막 라운드 전날까지.
+ * 마지막 라운드가 시작되면 고정
+ */
+export function setLastIssuePhases(phases: Phase[]) {
+  const g = getGameRow()
+  if (g.status === 'ended') throw new GameError('ended', '게임이 끝났습니다')
+  if (isLastRound(g)) throw new GameError('last_round_locked', '마지막 라운드가 시작되어 발행 단계를 바꿀 수 없습니다')
+  const sorted = sortPhases(phases)
+  if (!sorted.length) throw new GameError('no_phase', '발행을 허용할 단계를 1개 이상 고르세요', 400)
+  updateGame('last_issue_phases = ?', [JSON.stringify(sorted)])
+}
+
+/** 마지막 라운드에 대기 발행 요청이 있으면 허용 단계를 벗어나지 못하게 한다 (next = 넘어갈 단계, 종료면 null) */
+function guardLastRoundIssue(g: GameRow, next: Phase | null) {
+  if (!isLastRound(g)) return
+  if (next && parsePhases(g.last_issue_phases).includes(next)) return
+  const pending = pendingIssueTeams()
+  if (!pending.length) return
+  const where = next ? `${PHASE_LABELS[next]} 단계에서는 발행할 수 없습니다` : '게임을 종료하면 처리할 수 없습니다'
+  throw new GameError('issue_pending', `처리하지 않은 발행 요청이 있습니다 (${pending.map(teamLabel).join(', ')}). ${where}. 수락 또는 거절하세요`)
 }
 
 export function requireRunning(phase?: Phase): GameRow {
@@ -130,6 +165,8 @@ export function saveSettings(input: {
   issueLimit?: IssueLimits
   /** 1일차 전쟁 선포 비용. 없으면 기존 값 유지 */
   warCost?: WarCost
+  /** 마지막 라운드 발행 허용 단계. 없으면 기존 값 유지 */
+  lastIssuePhases?: Phase[]
 }): number[] {
   return db.transaction(() => {
     const status = getGameRow().status
@@ -152,6 +189,7 @@ export function saveSettings(input: {
       input.totalDays, input.includeTest ? 1 : 0, input.lifeReserve, input.lifeReserve,
     ])
     if (input.warCost) setWarCost(1, input.warCost)
+    if (input.lastIssuePhases) setLastIssuePhases(input.lastIssuePhases)
     if (input.issueLimit) updateGame('gem_issue_limit = ?, gold_issue_limit = ?', [input.issueLimit.gem, input.issueLimit.gold])
     const ended = applyTestAccounts(input.includeTest)
     if (status === 'ready') ended.push(...syncParticipantPins().deleted)
@@ -308,6 +346,7 @@ export function advance(expect: { day: number; phase: Phase }): AdvanceResult {
     if (g.phase === 'trade') result.cancelledTrade = cancelActiveTrade()
     const idx = PHASES.indexOf(g.phase!)
     if (idx < PHASES.length - 1) {
+      guardLastRoundIssue(g, PHASES[idx + 1]!)
       result.phase = PHASES[idx + 1]!
       updateGame('phase = ?', [result.phase])
     } else {
@@ -339,6 +378,7 @@ export function endGame(): { trade: TradeView | null; issues: IssueRequestView[]
     if (g.phase !== 'life' || !allLivesDone(g.day)) {
       throw new GameError('not_finished', '마지막 날 라이프 제출 단계에서 모든 팀이 제출해야 종료할 수 있습니다')
     }
+    guardLastRoundIssue(g, null)
     const trade = cancelActiveTrade()
     const issues = cancelPendingIssues()
     updateGame(`status = 'ended', phase = NULL, ended_at = datetime('now')`)
@@ -396,7 +436,9 @@ export function resetGame(clearSettings = false): ResetResult {
     if (clearSettings) {
       db.prepare('UPDATE groups SET capacity = 0').run()
       db.prepare('UPDATE team_resources SET initial = 0').run()
-      updateGame('include_test = 1, life_reserve_initial = 0, gem_issue_limit = ?, gold_issue_limit = ?', [DEFAULT_ISSUE_LIMITS.gem, DEFAULT_ISSUE_LIMITS.gold])
+      updateGame('include_test = 1, life_reserve_initial = 0, gem_issue_limit = ?, gold_issue_limit = ?, last_issue_phases = ?', [
+        DEFAULT_ISSUE_LIMITS.gem, DEFAULT_ISSUE_LIMITS.gold, JSON.stringify(DEFAULT_LAST_ISSUE_PHASES),
+      ])
       setWarCost(1, { gem: 0, gold: 0, credit: 0 })
     }
     resetAmountsToInitial()

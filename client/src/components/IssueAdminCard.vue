@@ -36,7 +36,12 @@ const remainingText = (kind: 'gem' | 'gold') => {
 
 function popupMessage(r: IssueRequestView): string {
   const who = `${team(r.teamId)?.name ?? '알 수 없는 팀'} 리더 ${r.requestedByName ?? ''}`.trim()
-  const reveal = r.kind === 'gold' ? '수락하면 전체에 "골드 발행" 이 수량과 함께 공개됩니다.' : '보석 발행은 화이트팀과 진행자만 압니다.'
+  const lastRound = !!issues.value?.lastRound
+  const reveal = r.kind === 'gem'
+    ? '보석 발행은 화이트팀과 진행자만 압니다.'
+    : lastRound
+      ? '마지막 라운드라 골드 발행량은 공개되지 않습니다 (옐로우팀과 진행자만 압니다).'
+      : '수락하면 전체에 "골드 발행" 이 수량과 함께 공개됩니다.'
   return `${who} 님이 ${RESOURCE_LABELS[r.kind]} ${r.amount}개 발행을 요청했습니다 (${r.day}일차).\n${reveal}`
 }
 
@@ -66,6 +71,9 @@ function postpone(r: IssueRequestView) {
       이번 일차 남은 발행 가능량 — 💎 보석 <strong>{{ remainingText('gem') }}</strong> (일차마다 한도, 이월 없음) ·
       🥇 골드 <strong>{{ remainingText('gold') }}</strong> (안 쓴 만큼 이월). 대기 중인 요청도 뺀 값입니다.
       발행은 팀마다 라운드당 1회(거절은 횟수에 넣지 않음)이고, 대기 요청을 처리해야 다음 날로 넘어갈 수 있습니다.
+    </p>
+    <p v-if="issues.lastRound" class="last-round">
+      🔒 마지막 라운드 발행 (비공개) — 💎 보석 <strong>{{ issues.lastRound.gem }}</strong>개 · 🥇 골드 <strong>{{ issues.lastRound.gold }}</strong>개
     </p>
 
     <table v-if="issues.pending.length" class="list">
@@ -114,6 +122,7 @@ function postpone(r: IssueRequestView) {
 </template>
 
 <style scoped>
+.last-round { margin: 0 0 10px; padding: 8px 10px; border-radius: var(--radius); background: var(--bg-soft); }
 .list { border-collapse: collapse; font-size: 0.9rem; width: 100%; margin-top: 6px; }
 .list td { padding: 5px 8px 5px 0; border-bottom: 1px solid var(--line-soft); }
 .actions { text-align: right; white-space: nowrap; }

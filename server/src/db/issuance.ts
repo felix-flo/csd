@@ -6,6 +6,8 @@
  *
  * 횟수 (docs/100 D3): 팀당 라운드(일차)당 수락된 발행 1회. 거절된 요청은 횟수에 넣지 않는다. 진행 중이면 단계와 관계없이 요청할 수 있다.
  *   대기 요청이 남아 있으면 다음 라운드로 넘어가지 않는다 (game.ts advance) → 대기 요청은 항상 요청한 라운드 안에서 처리된다
+ * 마지막 라운드 (docs/100 D4): 관리자가 정한 단계(game.last_issue_phases)에서만 요청할 수 있다. 골드 발행량도 공개하지 않는다 (라우터).
+ *   허용 단계를 벗어나거나 게임을 종료할 때 대기 요청이 있으면 막는다 (game.ts)
  *
  * 한도 (일차 = 턴): 대기 중·수락된 수량이 요청한 일차의 한도를 차지한다.
  * - 보석: 매 일차 gem_issue_limit 까지 (이월 없음)
@@ -21,15 +23,29 @@ import { db } from './index.js'
 import { findGroupById, listGroups } from './users.js'
 import { applyDeltas } from './resources.js'
 import { GameError } from './gameError.js'
-import { ISSUE_TEAM_CODE, issueKindOfTeam, issueRemaining, RESOURCE_LABELS } from '../../../shared/game.js'
+import { ISSUE_TEAM_CODE, issueKindOfTeam, issueRemaining, PHASE_LABELS, RESOURCE_LABELS } from '../../../shared/game.js'
 import type { IssueKind, IssueRequestView, IssueStatus, Phase, TeamIssueView } from '../../../shared/game.js'
 
 /** game.ts 가 이 모듈을 불러 쓰므로(종료·리셋) 순환 import 를 피해 필요한 열만 직접 읽는다 */
 function getGameRow() {
-  return db.prepare('SELECT status, day, phase, gem_issue_limit, gold_issue_limit FROM game WHERE id = 1').get() as {
-    status: string; day: number; phase: Phase | null; gem_issue_limit: number; gold_issue_limit: number
+  return db.prepare('SELECT status, day, phase, total_days, gem_issue_limit, gold_issue_limit, last_issue_phases FROM game WHERE id = 1').get() as {
+    status: string; day: number; phase: Phase | null; total_days: number | null; gem_issue_limit: number; gold_issue_limit: number; last_issue_phases: string
   }
 }
+
+/** 진행 중 마지막 라운드면 발행 허용 단계, 아니면 null */
+function lastRoundPhases(g: ReturnType<typeof getGameRow>): Phase[] | null {
+  if (g.status !== 'running' || g.day < (g.total_days ?? Infinity)) return null
+  return JSON.parse(g.last_issue_phases) as Phase[]
+}
+
+/** 지금 단계에서 발행을 요청할 수 있는지 */
+function phaseOpen(g: ReturnType<typeof getGameRow>): boolean {
+  if (g.status !== 'running') return false
+  const last = lastRoundPhases(g)
+  return !last || (!!g.phase && last.includes(g.phase))
+}
+
 
 interface IssueRow {
   id: number
@@ -115,12 +131,19 @@ export function getTeamIssue(teamId: number): TeamIssueView | null {
   const recent = listFor('r.group_id = ?', [teamId], 10)
   return {
     kind,
-    open: g.status === 'running',
+    open: phaseOpen(g),
+    lastRoundPhases: lastRoundPhases(g),
     issuedToday: g.status === 'running' && issuedOn(teamId, g.day),
     remaining: g.status === 'running' ? remainingFor(teamId, kind) : 0,
     pending: recent.find((r) => r.status === 'pending') ?? null,
     recent,
   }
+}
+
+/** 그 라운드에 수락된 발행량 (마지막 라운드 비공개 집계) */
+function lastRoundAmounts(day: number): Record<IssueKind, number> {
+  const rows = db.prepare(`SELECT kind, SUM(amount) AS n FROM issue_requests WHERE day = ? AND status = 'approved' GROUP BY kind`).all(day) as { kind: IssueKind; n: number }[]
+  return { gem: rows.find((r) => r.kind === 'gem')?.n ?? 0, gold: rows.find((r) => r.kind === 'gold')?.n ?? 0 }
 }
 
 /** 관리자 화면용 */
@@ -140,6 +163,7 @@ export function getAdminIssues() {
     recent: listFor('1 = 1', [], 20),
     remaining: { gem: remaining('gem'), gold: remaining('gold') },
     issuedToday: { gem: issued('gem'), gold: issued('gold') },
+    lastRound: lastRoundPhases(g) ? lastRoundAmounts(g.day) : null,
   }
 }
 
@@ -150,6 +174,10 @@ export function requestIssue(teamId: number, amount: number, by: number): IssueR
     if (g.status !== 'running') throw new GameError('not_running', '게임이 진행 중이 아닙니다')
     const kind = teamKind(teamId)
     if (!kind) throw new GameError('not_issuer', '발행 요청을 할 수 없는 팀입니다', 403)
+    const last = lastRoundPhases(g)
+    if (last && !phaseOpen(g)) {
+      throw new GameError('wrong_phase', `마지막 라운드에는 ${last.map((p) => PHASE_LABELS[p]).join(', ')} 단계에서만 발행할 수 있습니다`)
+    }
     if (issuedOn(teamId, g.day)) throw new GameError('issued_today', '이번 라운드에는 이미 발행했습니다 (라운드당 1회)')
     const pending = db.prepare(`SELECT 1 FROM issue_requests WHERE group_id = ? AND status = 'pending'`).get(teamId)
     if (pending) throw new GameError('issue_pending', '수락을 기다리는 요청이 있습니다')

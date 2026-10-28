@@ -150,6 +150,8 @@ export interface GameSettings {
   issueLimit: IssueLimits
   /** 1일차 전쟁 선포 비용 (설정 전이면 null — 시작 조건) */
   warCost: WarCost | null
+  /** 마지막 라운드에 발행을 허용할 단계 (docs/100 D4). 마지막 라운드가 시작되면 고정 */
+  lastIssuePhases: Phase[]
 }
 
 export type ScoreMode = 'gem' | 'gold' | 'ratio'
@@ -265,6 +267,14 @@ export function issueKindOfTeam(code: string | null | undefined): IssueKind | nu
   return null
 }
 
+/** 마지막 라운드 발행 허용 단계 기본값: 룰의 "리더 협의 뒤" = 라이프 제출 */
+export const DEFAULT_LAST_ISSUE_PHASES: readonly Phase[] = ['life']
+
+/** 단계 목록을 PHASES 순서로 정리 (중복 제거) */
+export function sortPhases(phases: readonly Phase[]): Phase[] {
+  return PHASES.filter((p) => phases.includes(p))
+}
+
 export type IssueStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
 
 export const ISSUE_STATUS_LABELS: Record<IssueStatus, string> = {
@@ -300,8 +310,10 @@ export function issueRemaining(kind: IssueKind, limit: number, day: number, used
 /** 화이트·옐로우팀 화면의 발행 정보 (그 팀만) */
 export interface TeamIssueView {
   kind: IssueKind
-  /** 게임 진행 중인지 (진행 중이면 단계와 관계없이 요청할 수 있다. 리더 여부·대기 요청·이번 라운드 발행은 따로) */
+  /** 지금 단계에서 요청할 수 있는지. 진행 중이면 모든 단계, 마지막 라운드는 관리자가 정한 단계만 (리더 여부·대기 요청·이번 라운드 발행은 따로) */
   open: boolean
+  /** 마지막 라운드일 때만: 발행 허용 단계 (안내용). 마지막 라운드 발행량은 공개되지 않는다 */
+  lastRoundPhases: Phase[] | null
   /** 이번 라운드(일차)에 수락된 발행이 있는지. 라운드당 1회라 있으면 더 요청할 수 없다 (거절은 횟수에 넣지 않음) */
   issuedToday: boolean
   /** 이번 일차 남은 발행 가능량 (대기 중 요청도 뺀 값) */
@@ -393,6 +405,8 @@ export interface AdminGameView {
     remaining: Record<IssueKind, number | null>
     /** 이번 라운드에 수락된 발행이 있는지 (라운드당 1회) */
     issuedToday: Record<IssueKind, boolean>
+    /** 마지막 라운드일 때만: 그 라운드에 수락된 발행량 (비공개, 관리자 전용) */
+    lastRound: Record<IssueKind, number> | null
   }
   /** 전쟁 */
   war: {

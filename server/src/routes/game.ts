@@ -16,7 +16,7 @@ import { findGroupById, findUserById, listGroups } from '../db/users.js'
 import { isBeforeStart } from '../../../shared/game.js'
 import { GameError } from '../db/gameError.js'
 import {
-  activeMemberCount, advance, endGame, getGameRow, getGameState, getPrep, getPublicRoster, getSettings, joinTeam, prepareGame, publishResults,
+  activeMemberCount, advance, endGame, getGameRow, getGameState, getPrep, getPublicRoster, getSettings, joinTeam, prepareGame, setLastIssuePhases, publishResults,
   requireRunning, resetGame, revertToSetup, saveSettings, startGame, takeFromLifeReserve,
 } from '../db/game.js'
 import { applyDeltas, describeDeltas, getAllResources, getTeamResources, listLedger } from '../db/resources.js'
@@ -205,6 +205,7 @@ const settingsSchema = z.object({
   initial: z.record(z.string().regex(/^\d+$/), resourcesSchema),
   issueLimit: z.object({ gem: amount, gold: amount }).optional(),
   warCost: z.object({ gem: amount, gold: amount, credit: amount }).optional(),
+  lastIssuePhases: z.array(z.enum(PHASES)).min(1).max(PHASES.length).optional(),
 })
 
 gameRouter.put('/admin/game/settings', requireRole('admin'), handle(settingsSchema, (req, res, body) => {
@@ -212,6 +213,12 @@ gameRouter.put('/admin/game/settings', requireRole('admin'), handle(settingsSche
   endSessions(ended)
   emit('game', 'all', null, 'game.updated', '게임 설정이 변경되었습니다', req.auth!.sub, { silent: true })
   signalLobby()
+  res.json(adminView())
+}))
+
+/** 마지막 라운드 발행 허용 단계 (docs/100 D4). 진행 중에는 마지막 라운드 전날까지만 바꿀 수 있다. 참가자에게 알리지 않는다 */
+gameRouter.put('/admin/game/last-issue', requireRole('admin'), handle(z.object({ phases: z.array(z.enum(PHASES)).min(1).max(PHASES.length) }), (_req, res, body) => {
+  setLastIssuePhases(body.phases)
   res.json(adminView())
 }))
 
@@ -363,6 +370,7 @@ function issueText(r: IssueRequestView): string {
  * 관리자 수락/거절. 알림은 모두 무음(muted).
  * - 보석: 화이트팀만 (다른 팀·프레젠테이션은 모른다)
  * - 골드: 수락하면 이번 발행 수량을 전체에 1회 공개, 거절은 옐로우팀만
+ *   마지막 라운드 골드는 공개하지 않는다 (옐로우팀만, docs/100 D4). 공개는 최종장(N2) 때
  */
 gameRouter.post('/admin/issue/:id/decide', requireRole('admin'), handle(z.object({ accept: z.boolean() }), (req, res, body) => {
   const id = Number(req.params.id)
@@ -371,6 +379,8 @@ gameRouter.post('/admin/issue/:id/decide', requireRole('admin'), handle(z.object
   const extra = { issueId: r.id, status: r.status, muted: true }
   if (!body.accept) {
     emit('game', 'group', r.teamId, 'issue.decided', `${issueText(r)} 발행 요청이 거절되었습니다`, req.auth!.sub, extra)
+  } else if (r.kind === 'gold' && r.day >= (getGameRow().total_days ?? Infinity)) {
+    emit('game', 'group', r.teamId, 'issue.decided', `${issueText(r)} 발행이 수락되었습니다 (골드 +${r.amount} · 마지막 라운드라 공개되지 않습니다)`, req.auth!.sub, extra)
   } else if (r.kind === 'gold') {
     emit('game', 'all', null, 'issue.decided', `${josa(teamName(r.teamId), '이/가')} 골드 ${r.amount}개를 발행했습니다`, req.auth!.sub, extra)
   } else {

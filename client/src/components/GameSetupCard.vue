@@ -1,17 +1,18 @@
 <script setup lang="ts">
 /**
- * 게임 설정 (시작 전: 설정·준비 상태): 총 일수, 팀별 최대 인원, 테스트 계정 포함 여부, 라이프 매장량, 발행 한도, 팀별 초기 재화.
+ * 게임 설정 (시작 전: 설정·준비 상태): 총 일수, 팀별 최대 인원, 테스트 계정 포함 여부, 라이프 매장량, 발행 한도, 마지막 라운드 발행 단계, 팀별 초기 재화.
  * - 설정 상태: "초기셋팅완료" → 준비 상태 (최대 인원 합계만큼 팀 없는 PIN 생성, 참가자가 로그인해 팀 선택)
  * - 준비 상태: 계속 수정 가능. 최대 인원을 늘리면 PIN 이 추가되고, 줄이면 쓰지 않은 PIN 이 지워진다. 게임 시작은 "게임 진행" 카드
  * 리셋하면 총 일수만 비워지고 나머지 설정은 유지된다.
  */
 import { computed, reactive, ref, watch } from 'vue'
 import type { GroupInfo } from '../../../shared/types'
-import { DEFAULT_ISSUE_LIMITS, RESOURCE_KINDS, emptyResources, isBeforeStart, teamLetter, type AdminGameView, type Resources } from '../../../shared/game'
+import { DEFAULT_ISSUE_LIMITS, DEFAULT_LAST_ISSUE_PHASES, RESOURCE_KINDS, emptyResources, isBeforeStart, teamLetter, type AdminGameView, type Phase, type Resources } from '../../../shared/game'
 import { RESOURCES } from '../lib/resources'
 import { api } from '../lib/api'
 import { useGameStore } from '../stores/game'
 import TeamMark from './TeamMark.vue'
+import PhaseChecks from './PhaseChecks.vue'
 import ModalDialog from './ModalDialog.vue'
 
 const props = defineProps<{ groups: GroupInfo[] }>()
@@ -26,6 +27,8 @@ const capacity = reactive<Record<number, number>>({})
 const includeTest = ref(true)
 const lifeReserve = ref(0)
 const issueLimit = reactive({ ...DEFAULT_ISSUE_LIMITS })
+/** 마지막 라운드 발행 허용 단계 (진행 중에는 게임 진행 카드에서 마지막 라운드 전날까지 바꿀 수 있다) */
+const lastIssuePhases = ref<Phase[]>([...DEFAULT_LAST_ISSUE_PHASES])
 /** 1일차 전쟁 선포 비용 (저장해야 게임 시작 가능. 2일차부터는 게임 진행 카드에서 전날 정한다) */
 const warCost = reactive({ gem: 0, gold: 0, credit: 0 })
 const initial = reactive<Record<number, Resources>>({})
@@ -42,6 +45,7 @@ function resetInputs() {
   includeTest.value = s.includeTest
   lifeReserve.value = s.lifeReserve
   Object.assign(issueLimit, s.issueLimit)
+  lastIssuePhases.value = [...s.lastIssuePhases]
   Object.assign(warCost, s.warCost ?? { gem: 0, gold: 0, credit: 0 })
   for (const g of props.groups) {
     initial[g.id] = { ...(s.initial[g.id] ?? emptyResources()) }
@@ -68,6 +72,7 @@ const dirty = computed(() => {
     lifeReserve.value !== s.lifeReserve ||
     issueLimit.gem !== s.issueLimit.gem ||
     issueLimit.gold !== s.issueLimit.gold ||
+    lastIssuePhases.value.join() !== s.lastIssuePhases.join() ||
     !s.warCost ||
     (['gem', 'gold', 'credit'] as const).some((k) => warCost[k] !== s.warCost![k]) ||
     props.groups.some((g) => (capacity[g.id] ?? 0) !== (s.capacity[g.id] ?? 0)) ||
@@ -85,6 +90,7 @@ async function save(): Promise<boolean> {
       includeTest: includeTest.value,
       lifeReserve: Math.max(0, lifeReserve.value || 0),
       issueLimit: { gem: Math.max(0, issueLimit.gem || 0), gold: Math.max(0, issueLimit.gold || 0) },
+      lastIssuePhases: lastIssuePhases.value,
       warCost: { gem: Math.max(0, warCost.gem || 0), gold: Math.max(0, warCost.gold || 0), credit: Math.max(0, warCost.credit || 0) },
       initial: Object.fromEntries(props.groups.map((g) => [String(g.id), initial[g.id]])),
     }
@@ -139,6 +145,11 @@ async function prepare() {
       <label>🥇 골드 발행 한도 <input v-model.number="issueLimit.gold" type="number" min="0" style="width: 6em" /> /일차 (이월)</label>
     </div>
     <div class="row" style="margin-bottom: 10px">
+      <span>마지막 라운드 발행 단계</span>
+      <PhaseChecks v-model="lastIssuePhases" :disabled="busy" />
+      <span v-if="!lastIssuePhases.length" class="error" style="font-size: 0.85rem">1개 이상 고르세요</span>
+    </div>
+    <div class="row" style="margin-bottom: 10px">
       <span>⚔️ 1일차 전쟁 선포 비용</span>
       <label>보석 <input v-model.number="warCost.gem" type="number" min="0" style="width: 5em" /></label>
       <label>골드 <input v-model.number="warCost.gold" type="number" min="0" style="width: 5em" /></label>
@@ -180,7 +191,7 @@ async function prepare() {
     <p class="muted" style="margin: 6px 0 0">참가자 PIN {{ totalCapacity }}개 · 참가자에게는 팀 이름 대신 A, B, C… 로 보입니다.</p>
 
     <div class="row" style="margin-top: 12px">
-      <button :class="status === 'setup' ? 'secondary' : ''" :disabled="busy || !dirty" @click="save">설정 저장</button>
+      <button :class="status === 'setup' ? 'secondary' : ''" :disabled="busy || !dirty || !lastIssuePhases.length" @click="save">설정 저장</button>
       <button v-if="status === 'setup'" :disabled="busy || !canPrepare" @click="confirmPrepare = true">초기셋팅완료</button>
       <span class="muted">{{ message }}<template v-if="dirty"> · 저장하지 않은 변경 있음</template></span>
     </div>

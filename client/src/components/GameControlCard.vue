@@ -10,8 +10,8 @@
 import { computed, reactive, ref, watch } from 'vue'
 import type { AdminUser, GroupInfo } from '../../../shared/types'
 import {
-  PHASE_LABELS, PHASES, RESOURCE_LABELS, WAR_COST_KINDS, WAR_STATUS_LABELS, isLifeExempt, josa, rankTeams, teamLetter,
-  type AdminGameView, type Resources, type ScoreMode, type TradeView, type WarCost, type WarResult,
+  PHASE_LABELS, PHASES, RESOURCE_LABELS, DEFAULT_LAST_ISSUE_PHASES, WAR_COST_KINDS, WAR_STATUS_LABELS, isLifeExempt, josa, rankTeams, teamLetter,
+  type AdminGameView, type Phase, type Resources, type ScoreMode, type TradeView, type WarCost, type WarResult,
 } from '../../../shared/game'
 import { useRouter } from 'vue-router'
 import { api } from '../lib/api'
@@ -20,6 +20,7 @@ import { useAuthStore } from '../stores/auth'
 import TeamMark from './TeamMark.vue'
 import ModalDialog from './ModalDialog.vue'
 import ResourceRow from './ResourceRow.vue'
+import PhaseChecks from './PhaseChecks.vue'
 
 const props = defineProps<{ users: AdminUser[]; groups: GroupInfo[] }>()
 const emit = defineEmits<{ updated: [users: AdminUser[]] }>()
@@ -39,7 +40,8 @@ const isLastDay = computed(() => !!s.value && s.value.day >= (s.value.totalDays 
  * 게임 종료: 마지막 날에는 버튼을 계속 보여 주되, 그날 턴이 모두 끝나야(라이프 제출 단계 + 모든 팀 제출) 활성.
  * 서버도 같은 조건으로 막는다 (409 not_finished). 0·1명 팀은 제출 불필요라 완료로 본다
  */
-const canEnd = computed(() => isLastDay.value && s.value?.phase === 'life' && !!s.value.livesDone && !warActive.value)
+const pendingIssues = computed(() => view.value?.issues.pending.length ?? 0)
+const canEnd = computed(() => isLastDay.value && s.value?.phase === 'life' && !!s.value.livesDone && !warActive.value && !pendingIssues.value)
 /** 아직 라이프를 제출하지 않은(제출 대상인) 팀 이름 */
 const lifePending = computed(() =>
   (view.value?.teams ?? []).filter((t) => !t.lifeSubmission && t.activeMembers > 0 && !isLifeExempt(t.activeMembers)).map((t) => team(t.teamId)?.name ?? `#${t.teamId}`),
@@ -47,6 +49,7 @@ const lifePending = computed(() =>
 const endBlocker = computed(() => {
   if (!isLastDay.value || canEnd.value) return ''
   if (warActive.value) return '전쟁 결과를 먼저 정하세요'
+  if (pendingIssues.value) return '처리하지 않은 발행 요청이 있습니다. 수락 또는 거절해야 종료할 수 있습니다'
   if (s.value?.phase !== 'life') return '마지막 날 라이프 제출 단계에서 모든 팀이 제출하면 종료할 수 있습니다'
   return `라이프 미제출: ${lifePending.value.join(', ')} — 모든 팀이 제출하면 종료할 수 있습니다`
 })
@@ -59,6 +62,17 @@ const costText = (c: WarCost | null | undefined) =>
 /** 다음 날 선포 비용 입력 (저장해야 "다음 날로" 가 눌린다) */
 const nextCost = reactive<WarCost>({ gem: 0, gold: 0, credit: 0 })
 watch(() => view.value?.war.nextCost, (c) => Object.assign(nextCost, c ?? { gem: 0, gold: 0, credit: 0 }), { immediate: true })
+// ---- 마지막 라운드 발행 단계 (docs/100 D4): 마지막 라운드 전날까지 변경, 시작되면 고정 ----
+const lastPhases = ref<Phase[]>([...DEFAULT_LAST_ISSUE_PHASES])
+watch(() => view.value?.settings.lastIssuePhases, (p) => (lastPhases.value = [...(p ?? DEFAULT_LAST_ISSUE_PHASES)]), { immediate: true })
+const lastPhasesText = (p: readonly Phase[] | undefined) => (p ?? []).map((x) => PHASE_LABELS[x]).join(', ')
+const lastPhasesDirty = computed(() => lastPhases.value.join() !== (view.value?.settings.lastIssuePhases ?? []).join())
+function saveLastPhases() {
+  return run('마지막 라운드 발행 단계 저장', () => api.put('/api/admin/game/last-issue', { phases: lastPhases.value }))
+}
+/** 다음으로 넘어가는 단계가 마지막 라운드 발행 허용 단계가 아닌지 */
+const leavingIssuePhases = computed(() => isLastDay.value && !!nextPhase.value && !view.value?.settings.lastIssuePhases.includes(nextPhase.value))
+
 function saveNextCost() {
   const day = (s.value?.day ?? 0) + 1
   const body = Object.fromEntries(WAR_COST_KINDS.map((k) => [k, Math.max(0, Math.floor(nextCost[k] || 0))]))
@@ -72,7 +86,8 @@ function askWar(result: WarResult) {
 /** 다음 단계/다음 날 버튼을 막는 이유 */
 const advanceBlocker = computed(() => {
   if (warActive.value) return '⚔️ 전쟁 결과를 먼저 정하세요'
-  if (!nextPhase.value && !isLastDay.value && view.value?.issues.pending.length) return '처리하지 않은 발행 요청이 있습니다. 수락 또는 거절해야 다음 날로 넘어갈 수 있습니다'
+  if (leavingIssuePhases.value && pendingIssues.value) return `처리하지 않은 발행 요청이 있습니다. ${PHASE_LABELS[nextPhase.value!]} 단계에서는 발행할 수 없어 수락 또는 거절해야 넘어갈 수 있습니다`
+  if (!nextPhase.value && !isLastDay.value && pendingIssues.value) return '처리하지 않은 발행 요청이 있습니다. 수락 또는 거절해야 다음 날로 넘어갈 수 있습니다'
   if (!nextPhase.value && !isLastDay.value && !view.value?.war.nextCost) return `${(s.value?.day ?? 0) + 1}일차 전쟁 선포 비용을 아래 "전쟁" 에서 정해야 다음 날로 넘어갈 수 있습니다`
   return ''
 })
@@ -129,10 +144,15 @@ const modalText = computed(() => {
         return { title: `${PHASE_LABELS[nextPhase.value]} 단계로 넘길까요?`, message: `${st.day}일차 · ${PHASE_LABELS[st.phase!]} → ${PHASE_LABELS[nextPhase.value]}${warn}` }
       }
       const warn = st.livesDone ? '' : '\n아직 라이프를 제출하지 않은 팀이 있습니다. 미제출 팀은 라이프 소모·탈락 없이 넘어갑니다.'
-      return { title: `${st.day + 1}일차로 넘길까요?`, message: `하루가 지나고 ${st.day + 1}일차 리더 선출이 시작됩니다.${warn}` }
+      // 마지막 라운드로 넘어갈 때: 발행 허용 단계를 한 번 더 보여 준다 (넘어가면 바꿀 수 없다)
+      const last = st.day + 1 >= (st.totalDays ?? 0)
+        ? `\n\n${st.day + 1}일차는 마지막 라운드입니다. 발행 허용 단계: ${lastPhasesText(view.value?.settings.lastIssuePhases)}` +
+          '\n마지막 라운드가 시작되면 바꿀 수 없습니다. 바꾸려면 취소하고 아래 "마지막 라운드 발행 단계"에서 저장하세요.'
+        : ''
+      return { title: last ? `마지막 라운드(${st.day + 1}일차)로 넘길까요?` : `${st.day + 1}일차로 넘길까요?`, message: `하루가 지나고 ${st.day + 1}일차 리더 선출이 시작됩니다.${warn}${last}` }
     }
     case 'end':
-      return { title: '게임을 종료할까요?', message: `${st.day}일차 모든 팀의 라이프 제출이 끝났습니다. 종료하면 더 이상 진행할 수 없고, 수락 대기 중인 발행 요청은 취소됩니다.\n환산 규칙을 골라 등수를 발표할 수 있습니다.` }
+      return { title: '게임을 종료할까요?', message: `${st.day}일차 모든 팀의 라이프 제출이 끝났습니다. 종료하면 더 이상 진행할 수 없습니다.\n환산 규칙을 골라 등수를 발표할 수 있습니다.` }
     case 'reset': {
       const self = !props.users.find((u) => u.id === auth.user?.id)?.isFixed
       return {
@@ -389,6 +409,17 @@ function publish() {
         <span v-else class="blocker">아직 정하지 않음 — 정해야 다음 날로 넘어갑니다</span>
       </div>
     </template>
+
+    <!-- 마지막 라운드 발행 단계 (docs/100 D4) -->
+    <div v-if="s.status === 'running'" class="row war-cost">
+      <span>마지막 라운드({{ s.totalDays }}일차) 발행 단계</span>
+      <template v-if="!isLastDay">
+        <PhaseChecks v-model="lastPhases" :disabled="busy" />
+        <button class="secondary small" :disabled="busy || !lastPhases.length || !lastPhasesDirty" @click="saveLastPhases">저장</button>
+        <span class="muted">저장됨: {{ lastPhasesText(view.settings.lastIssuePhases) }} · 마지막 라운드가 시작되면 고정</span>
+      </template>
+      <strong v-else>{{ lastPhasesText(view.settings.lastIssuePhases) }} <span class="muted">(고정 · 발행량 비공개)</span></strong>
+    </div>
 
     <!-- 리더간 협의 -->
     <p v-if="s.status === 'running' && s.phase === 'council'" class="muted">
