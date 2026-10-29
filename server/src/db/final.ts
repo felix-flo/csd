@@ -1,8 +1,7 @@
 /**
  * 최종장 (docs/100.최종룰_차이_결정사항.md N2 + D7, 룰 03 §11).
  *   running(마지막 라운드 협의: 라이프 투표권 안건 통과/부결)
- *     └─게임 종료──▶ final/vote ──마감(+동점이면 가위바위보)──▶ final/result ──▶ final/settle ──▶ ended
- *   spy 단계는 N4 스파이 구현 때 settle 과 ended 사이에 넣는다.
+ *     └─게임 종료──▶ final/vote ──마감(+동점이면 가위바위보)──▶ final/result ──▶ final/settle ──▶ final/spy(스파이 공개, N4) ──▶ ended
  *
  * 규칙:
  * - 투표: 활성 참가자(스파이·테스트 계정 포함, 탈락자 제외) 1인 1회, 보석/골드. 한 번 내면 바꿀 수 없다 (final_votes PRIMARY KEY)
@@ -16,9 +15,10 @@ import { db } from './index.js'
 import { listGroupMembers, listGroups } from './users.js'
 import { applyDeltas, getAllResources } from './resources.js'
 import { lastRoundAmounts } from './issuance.js'
+import { listSpyStatus } from './spy.js'
 import { GameError } from './gameError.js'
 import { emptyResources, settleShares, TIEBREAK_ADOPTS } from '../../../shared/game.js'
-import type { FinalState, FinalStep, GameResults, Phase, Tiebreak } from '../../../shared/game.js'
+import type { FinalState, FinalStep, GameResults, Phase, SpyStatus, Tiebreak } from '../../../shared/game.js'
 
 type Choice = 'gem' | 'gold'
 
@@ -155,6 +155,7 @@ function computeResults(adopted: Choice): GameResults {
 export type FinalAdvance =
   | { to: 'result'; adopted: Choice; tally: { gem: number; gold: number }; tiebreak: Tiebreak | null; lastIssue: { gem: number; gold: number } }
   | { to: 'settle'; results: GameResults }
+  | { to: 'spy'; spies: SpyStatus[] }
   | { to: 'ended' }
 
 /** 다음 단계로. expect = 관리자 화면이 보고 있던 단계 (중복 클릭·동시 조작 방지) */
@@ -179,7 +180,11 @@ export function advanceFinal(expect: FinalStep): FinalAdvance {
       update('results = ?', [JSON.stringify(results)])
       return { to: 'settle', results }
     }
-    // settle (spy 는 N4 때) → 끝
+    if (expect === 'settle') {
+      step('spy')
+      return { to: 'spy', spies: listSpyStatus() }
+    }
+    // 스파이 공개 → 끝
     update(`status = 'ended', ended_at = datetime('now')`)
     return { to: 'ended' }
   })()
@@ -220,6 +225,7 @@ export function getFinalState(): FinalState | null {
     tiebreak: r.tiebreak,
     adopted: closed ? r.adopted : null,
     lastIssue: isResultRevealed() ? lastRoundAmounts(r.total_days ?? r.day) : null,
+    spies: r.final_step === 'spy' ? listSpyStatus() : null,
   }
 }
 

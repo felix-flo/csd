@@ -5,6 +5,7 @@
  * - 참가자  : GET /game/team, 투표, 라이프 제출(리더), 거래(리더)
  * - 관리자  : /admin/game/* 설정·초기셋팅완료·설정으로 되돌리기·시작·다음 단계·종료(=최종장 시작)·리셋, 재화 조정, 원조, 동표 지정, 거래 강제 취소
  * - 이주 (docs/100 N3): 참가자 POST /migration/request · /migration/:id/cancel, 받는 팀 리더 POST /migration/:id/decide, 관리자 POST /admin/migration/:id/cancel
+ * - 스파이 (docs/100 N4): 참가자 GET·POST /game/fate (준비 상태 운명의 카드), 관리자 PUT /admin/spies (후보 중 지정)
  * - 최종장 (docs/100 N2): 관리자 POST /admin/game/life-vote (마지막 라운드 안건), /admin/final/close · tiebreak · next · recompute, 참가자 POST /final/vote
  * - 참가자(준비 상태): POST /game/join 팀 선택. 시작 전에는 팀 게임 정보를 주지 않는다
  * - 보석·골드 발행 (docs/97): 화이트·옐로우 리더 POST /issue/request, 관리자 POST /admin/issue/:id/decide
@@ -26,6 +27,7 @@ import { allElectionsDone, castVote, finalizeElection, getElection, resolveTie, 
 import {
   cancelMigration, decideMigration, getAdminMigrations, getTeamMigrationView, requestMigration, sweepMigrations, teamLeaderId,
 } from '../db/migration.js'
+import { chooseFate, getAdminSpyView, getMyFate, getMySpy, setSpies } from '../db/spy.js'
 import { allLivesDone, getLifeSubmission, submitLife } from '../db/life.js'
 import {
   acceptOffer, cancelActiveTrade, cancelTrade, getActiveTrade, getActiveTradeForTeam, payCredit, proposeOffer, requestTrade, respondTrade,
@@ -41,7 +43,7 @@ import { insertEvent } from '../db/events.js'
 import { disconnectUsers, moveUserRooms, publishEvent, signalLobby } from '../realtime/index.js'
 import { revokeUserRefreshTokens } from '../auth/tokens.js'
 import { emptyResources, FINAL_STEPS, josa, MIGRATION_CANCEL_LABELS, PHASE_LABELS, PHASES, RESOURCE_KINDS, RESOURCE_LABELS, shareText } from '../../../shared/game.js'
-import type { AdminGameView, GameResults, IssueRequestView, MigrationView, Resources, TeamGameView, TradeView } from '../../../shared/game.js'
+import type { AdminGameView, GameResults, IssueRequestView, MigrationView, Resources, SpyStatus, TeamGameView, TradeView } from '../../../shared/game.js'
 import type { EventScope, GameKind } from '../../../shared/types.js'
 
 export const gameRouter = Router()
@@ -173,6 +175,8 @@ gameRouter.get('/game/team', requireRole('member'), (req, res) => {
     })(),
     myFinalVote: g.status === 'final' || g.status === 'ended' ? getMyFinalVote(req.auth!.sub) : null,
     migration: running ? getTeamMigrationView(req.auth!.sub, teamId, !!req.auth!.isLeader) : null,
+    // 스파이 본인에게만 (시작 알림은 기록하지 않고, 화면이 이 값을 보고 무음 팝업을 1번 띄운다)
+    spy: getMySpy(req.auth!.sub),
   }
   res.json(body)
 })
@@ -204,6 +208,7 @@ function adminView(): AdminGameView {
     },
     finalVotes: g.status === 'final' || g.status === 'ended' ? finalVoteProgress() : [],
     migrations: getAdminMigrations(),
+    spy: getAdminSpyView(),
   }
 }
 
@@ -296,6 +301,34 @@ gameRouter.post('/admin/game/end', requireRole('admin'), handle(null, (req, res)
   emit('game', 'all', null, 'final.started', `🗳️ 최종장이 시작되었습니다 · 최종 투표: 보석과 골드 중 하나에 투표하세요 (1인 1표${extra})`, req.auth!.sub)
   res.json(adminView())
 }))
+
+// ---- 스파이 (docs/100 N4) ----
+
+/** 내 운명의 카드 (준비 상태 대기 화면) */
+gameRouter.get('/game/fate', requireRole('member'), (req, res) => {
+  res.json({ fate: getMyFate(req.auth!.sub) })
+})
+
+/** 운명의 카드 선택 (1회). 알림 없음 — 관리자 현황만 기록 없는 신호로 갱신 */
+gameRouter.post('/game/fate', requireRole('member'), handle(z.object({ fate: z.enum(['sun', 'moon']) }), (req, res, body) => {
+  chooseFate(req.auth!.sub, body.fate)
+  signalLobby()
+  res.json({ fate: body.fate })
+}))
+
+/** 관리자: 달을 고른 후보 중에서 스파이 지정 (준비 상태). 참가자에게 알리지 않는다 */
+gameRouter.put('/admin/spies', requireRole('admin'), handle(z.object({ userIds: z.array(z.number().int().positive()).max(200) }), (_req, res, body) => {
+  setSpies(body.userIds)
+  res.json(adminView())
+}))
+
+function spyRevealText(spies: SpyStatus[]): string {
+  if (!spies.length) return '🕵️ 스파이는 없었습니다'
+  const reward = (x: SpyStatus) => (x.alive ? `${x.reward.toLocaleString('ko-KR')}원` : '탈락으로 0원')
+  // 룰 04: "스파이는 [이름]님이었습니다. 스파이 보상: [금액]"
+  if (spies.length === 1) return `🕵️ 스파이는 ${spies[0]!.name}님(${teamName(spies[0]!.teamId)})이었습니다 · 스파이 보상: ${reward(spies[0]!)}`
+  return `🕵️ 스파이는 ${spies.length}명이었습니다 · ${spies.map((x) => `${x.name}님(${teamName(x.teamId)}) ${reward(x)}`).join(' / ')}`
+}
 
 // ---- 이주 (docs/100 N3) ----
 
@@ -437,6 +470,8 @@ gameRouter.post('/admin/final/next', requireRole('admin'), handle(z.object({ ste
     emit('game', 'all', null, 'final.result', `🏆 상금 화폐는 ${RESOURCE_LABELS[r.adopted]}입니다 (보석 ${r.tally.gem}표 · 골드 ${r.tally.gold}표${rps}) · ${issued}`, by)
   } else if (r.to === 'settle') {
     emit('game', 'all', null, 'final.settled', `💰 정산: ${resultsText(r.results)}`, by)
+  } else if (r.to === 'spy') {
+    emit('game', 'all', null, 'final.spy', spyRevealText(r.spies), by)
   } else {
     emit('game', 'all', null, 'final.ended', '게임이 끝났습니다. 수고하셨습니다', by)
   }

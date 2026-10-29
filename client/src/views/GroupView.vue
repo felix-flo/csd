@@ -13,6 +13,7 @@ import IssuePanel from '../components/IssuePanel.vue'
 import WarPanel from '../components/WarPanel.vue'
 import FinalVotePanel from '../components/FinalVotePanel.vue'
 import MigrationPanel from '../components/MigrationPanel.vue'
+import SpyCard from '../components/SpyCard.vue'
 import IntroOverlay from '../components/IntroOverlay.vue'
 import introUrl from '../assets/intro_image.webp'
 import { useAuthStore } from '../stores/auth'
@@ -68,6 +69,17 @@ const phaseHint: Record<string, string> = {
   production: '오프라인 미니게임(생산게임)을 합니다. 결과에 따라 진행자가 팀 재화를 지급합니다.',
   council: '리더들이 대가 없는 원조를 협의합니다 (팀마다 라운드당 1회 줄 수 있음). 원조는 진행자가 재화를 조정합니다.',
 }
+// 스파이(docs/100 N4): 게임이 시작되면 본인에게만 무음 안내 1번. 알림 기록·소리 없음 (서버도 이벤트로 보내지 않는다)
+const spyIntro = ref(false)
+const spySeenKey = () => `csd:spy-seen:${auth.user?.id}`
+watch(() => game.team?.spy, (spy) => {
+  if (!spy || spyIntro.value) return
+  try {
+    if (localStorage.getItem(spySeenKey())) return
+    localStorage.setItem(spySeenKey(), '1')
+  } catch { /* 저장 못 하면 매번 보일 수 있음 */ }
+  spyIntro.value = true
+}, { immediate: true })
 const isLastRound = computed(() => s.value?.status === 'running' && s.value.day >= (s.value.totalDays ?? Infinity))
 const final = computed(() => (s.value?.status === 'final' || s.value?.status === 'ended' ? s.value.final : null))
 </script>
@@ -75,6 +87,7 @@ const final = computed(() => (s.value?.status === 'final' || s.value?.status ===
 <template>
   <div class="page">
     <IntroOverlay v-if="intro" @done="intro = false" />
+    <SpyCard v-if="spyIntro && !intro && game.team?.spy" :spy="game.team.spy" intro @close="spyIntro = false" />
     <TopBar :title="beforeStart ? 'CSD' : group?.name ?? '팀'" :color="beforeStart ? null : group?.color" />
     <NameSetup v-if="auth.user && !auth.user.nameSet" />
     <ReadyLobby v-else-if="beforeStart" />

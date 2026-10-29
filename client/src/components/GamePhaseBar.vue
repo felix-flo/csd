@@ -16,8 +16,7 @@ const s = computed(() => game.state)
 const teams = useTeamsStore()
 const war = computed(() => (s.value?.status === 'running' ? s.value.war?.active ?? null : null))
 const nameOf = (id: number) => teams.byId(id)?.name ?? `#${id}`
-/** 스파이 공개(spy)는 N4 전까지 없다 */
-const FINAL_FLOW = ['vote', 'result', 'settle'] as const
+const FINAL_FLOW = ['vote', 'result', 'settle', 'spy'] as const
 const finalIdx = computed(() => FINAL_FLOW.indexOf((s.value?.final?.step ?? 'vote') as never))
 </script>
 

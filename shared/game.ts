@@ -28,7 +28,7 @@ export const PHASE_LABELS: Record<Phase, string> = {
 
 export type GameStatus = 'setup' | 'ready' | 'running' | 'final' | 'ended'
 
-/** 최종장 단계 (docs/100 N2). spy 는 N4 스파이 구현 때 쓴다 (지금은 정산 다음 바로 끝) */
+/** 최종장 단계 (docs/100 N2): 최종 투표 → 결과 발표 → 정산 → 스파이 공개(N4) → 끝 */
 export const FINAL_STEPS = ['vote', 'result', 'settle', 'spy'] as const
 export type FinalStep = (typeof FINAL_STEPS)[number]
 export const FINAL_STEP_LABELS: Record<FinalStep, string> = {
@@ -57,6 +57,8 @@ export interface FinalState {
   adopted: 'gem' | 'gold' | null
   /** 마지막 라운드 발행량 — 결과 발표 단계부터 공개 */
   lastIssue: { gem: number; gold: number } | null
+  /** 스파이 공개 (④ 단계부터). 스파이가 없으면 빈 배열 */
+  spies: SpyStatus[] | null
 }
 /** 시작 전(설정·준비)에는 참가자가 게임 화면을 보지 못하고, 팀은 실제 이름 대신 A, B, C… 로 표시한다 */
 export function isBeforeStart(status: GameStatus | null | undefined): boolean {
@@ -200,6 +202,42 @@ export interface GameSettings {
   tabLogin: boolean
   /** 이주가 열리는 라운드 (docs/100 N3, 기본 4). 총 라운드보다 크면 이주 없음 */
   migrationStartDay: number
+}
+
+// ---- 스파이 (docs/100 N4) ----
+
+/** 운명의 카드: 달 = 스파이 후보, 태양 = 후보 아님 */
+export type Fate = 'sun' | 'moon'
+export const FATE_LABELS: Record<Fate, string> = { sun: '☀️ 태양', moon: '🌙 달' }
+/** 시작 이후 탈락자 1명당 적립, 최대 (룰 03 §12) */
+export const SPY_REWARD_PER = 5000
+export const SPY_REWARD_MAX = 50000
+
+export function spyReward(eliminated: number, alive: boolean): number {
+  return alive ? Math.min(eliminated * SPY_REWARD_PER, SPY_REWARD_MAX) : 0
+}
+
+/** 스파이 1명의 현황. 본인 화면(카드)·관리자·최종장 공개에 쓴다 */
+export interface SpyStatus {
+  userId: number
+  name: string
+  teamId: number | null
+  /** 본인이 살아 있는지 (탈락하면 적립금 0) */
+  alive: boolean
+  /** 시작 이후 탈락자 수 (본인 제외) */
+  eliminated: number
+  reward: number
+}
+
+/** 관리자 화면 (준비 상태: 후보 지정 / 진행 중: 현황) */
+export interface AdminSpyView {
+  counts: { sun: number; moon: number; none: number }
+  /** 달을 고른 활성 참가자 (팀이 있는 사람) */
+  candidates: { userId: number; name: string; teamId: number; isTest: boolean }[]
+  /** 지정된 스파이 id */
+  selected: number[]
+  /** 진행 중·최종장: 스파이 현황 */
+  spies: SpyStatus[]
 }
 
 // ---- 이주 (docs/100 N3) ----
@@ -424,6 +462,8 @@ export interface TeamGameView {
   myFinalVote: { choice: 'gem' | 'gold'; extra: boolean } | null
   /** 이주 (진행 중에만) */
   migration: TeamMigrationView | null
+  /** 내가 스파이면 현황 (본인에게만. 아니면 null) */
+  spy: SpyStatus | null
 }
 
 /** 관리자 화면용 팀 행 */
@@ -514,6 +554,8 @@ export interface AdminGameView {
   finalVotes: { teamId: number; done: number; eligible: number }[]
   /** 이주: 대기 신청(오래된 순) · 최근 처리(최신순) */
   migrations: { pending: MigrationView[]; recent: MigrationView[] }
+  /** 스파이 (운명의 카드 현황·후보·지정·적립) */
+  spy: AdminSpyView
 }
 
 export function isResources(v: unknown): v is Resources {

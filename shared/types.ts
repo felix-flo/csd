@@ -117,6 +117,7 @@ export type EventType = 'notice' | 'system' | 'document.updated' | 'game' | 'tra
  * - final.tiebreak     : 가위바위보 결과 (scope=all)
  * - final.result       : 채택 화폐 + 마지막 라운드 발행량 공개 (scope=all)
  * - final.settled      : 정산 발표 (scope=all)
+ * - final.spy          : 스파이 공개 — 이름·팀·보상 (scope=all, docs/100 N4)
  * - final.ended        : 게임 끝 (scope=all)
  * 이주 (docs/100 N3)
  * - migration.requested: 이주 신청 (scope=user 받는 팀 리더 / role admin 무음)
@@ -127,7 +128,7 @@ export type EventType = 'notice' | 'system' | 'document.updated' | 'game' | 'tra
 export type GameKind =
   | 'game.updated' | 'game.reset'
   | 'migration.requested' | 'migration.accepted' | 'migration.rejected' | 'migration.cancelled'
-  | 'final.life_vote' | 'final.started' | 'final.voted' | 'final.closed' | 'final.tiebreak' | 'final.result' | 'final.settled' | 'final.ended'
+  | 'final.life_vote' | 'final.started' | 'final.voted' | 'final.closed' | 'final.tiebreak' | 'final.result' | 'final.settled' | 'final.spy' | 'final.ended'
   | 'election.progress' | 'election.done' | 'election.tie' | 'election.all_done'
   | 'resources.updated' | 'life.submitted' | 'life.eliminated' | 'life.all_done'
   | 'issue.requested' | 'issue.decided' | 'issue.cancelled'
