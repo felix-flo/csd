@@ -77,7 +77,11 @@ async function send() {
 
 <template>
   <div class="page" style="max-width: 960px">
-    <TopBar title="게임 진행자" />
+    <TopBar title="게임 진행자">
+      <template v-if="game.admin?.settings.tabLogin" #subtitle>
+        관리자 (admin) · <span class="badge warn">🧪 테스트 모드 (탭 로그인)</span>
+      </template>
+    </TopBar>
     <GameControlCard :users="users" :groups="groups" @updated="onUpdated" />
     <IssueAdminCard :groups="groups" />
     <ParticipantPins :users="users" :groups="groups" />

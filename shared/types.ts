@@ -39,6 +39,8 @@ export interface GroupInfo {
 export interface LoginResponse {
   accessToken: string
   user: PublicUser
+  /** 테스트 모드(탭 로그인, docs/101): 리프레시 쿠키 없음. 클라이언트가 액세스 토큰을 sessionStorage 에 둔다 */
+  tabLogin?: boolean
 }
 
 export interface RefreshResponse {

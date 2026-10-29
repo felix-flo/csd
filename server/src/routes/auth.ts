@@ -3,7 +3,7 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
 import { z } from 'zod'
 import { config } from '../config.js'
 import { findUserById, findUserByPinHash, touchLogin } from '../db/users.js'
-import { getGameRow } from '../db/game.js'
+import { getGameRow, isTabLogin } from '../db/game.js'
 import { signalLobby } from '../realtime/index.js'
 import { requireAuth } from '../auth/middleware.js'
 import {
@@ -25,7 +25,7 @@ const cookieOpts = {
   secure: config.cookieSecure,
   sameSite: 'lax' as const,
   path: '/api/auth',
-  maxAge: config.refreshTokenTtlDays * 86_400_000,
+  maxAge: config.refreshTokenTtlMs,
 }
 
 // 4자리 영문·숫자 PIN 은 경우의 수가 적으므로(36^4 ≈ 168만) 로그인 시도는 반드시 제한한다.
@@ -61,6 +61,13 @@ authRouter.post('/login', loginLimiter, (req, res) => {
   touchLogin(user.id)
   // 준비 상태에서 참가자가 들어오면 관리자 화면의 "참가자 PIN" 상태(접속함)를 바로 갱신
   if (user.role === 'member' && getGameRow().status === 'ready') signalLobby()
+  // 테스트 모드(탭 로그인, docs/101): 리프레시 쿠키를 심지 않는다. 클라이언트가 액세스 토큰을 탭 저장소에 둔다
+  if (isTabLogin()) {
+    res.clearCookie(REFRESH_COOKIE, { path: cookieOpts.path })
+    const body: LoginResponse = { accessToken: signAccessToken(user), user, tabLogin: true }
+    res.json(body)
+    return
+  }
   const refresh = issueRefreshToken(user.id)
   res.cookie(REFRESH_COOKIE, refresh, cookieOpts)
   const body: LoginResponse = { accessToken: signAccessToken(user), user }
@@ -68,6 +75,12 @@ authRouter.post('/login', loginLimiter, (req, res) => {
 })
 
 authRouter.post('/refresh', (req, res) => {
+  // 테스트 모드에서는 재발급 없음. 모드를 켜기 전에 생긴 쿠키도 새 탭에서 되살아나지 않게 지운다
+  if (isTabLogin()) {
+    res.clearCookie(REFRESH_COOKIE, { path: cookieOpts.path })
+    res.status(401).json({ error: 'tab_login' })
+    return
+  }
   const current = req.cookies?.[REFRESH_COOKIE] as string | undefined
   const rotated = current ? rotateRefreshToken(current) : null
   const user = rotated ? findUserById(rotated.userId) : null

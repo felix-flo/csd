@@ -13,6 +13,7 @@ import { api } from '../lib/api'
 import { useGameStore } from '../stores/game'
 import TeamMark from './TeamMark.vue'
 import PhaseChecks from './PhaseChecks.vue'
+import TabLoginToggle from './TabLoginToggle.vue'
 import ModalDialog from './ModalDialog.vue'
 
 const props = defineProps<{ groups: GroupInfo[] }>()
@@ -139,6 +140,9 @@ async function prepare() {
       <label>총 라운드 수 <input v-model.number="totalDays" type="number" min="1" max="30" placeholder="6" style="width: 5em" /></label>
       <label>라이프 매장량 <input v-model.number="lifeReserve" type="number" min="0" style="width: 6em" /></label>
       <label class="row" style="gap: 6px"><input v-model="includeTest" type="checkbox" /> 팀별 테스트 계정(리더 1·팀원 1) 포함</label>
+    </div>
+    <div class="row" style="margin-bottom: 10px">
+      <TabLoginToggle />
     </div>
     <div class="row" style="margin-bottom: 10px">
       <label>💎 보석 발행 한도 <input v-model.number="issueLimit.gem" type="number" min="0" style="width: 6em" /> /라운드</label>

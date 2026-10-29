@@ -16,7 +16,7 @@ import { findGroupById, findUserById, listGroups } from '../db/users.js'
 import { isBeforeStart } from '../../../shared/game.js'
 import { GameError } from '../db/gameError.js'
 import {
-  activeMemberCount, advance, endGame, getGameRow, getGameState, getPrep, getPublicRoster, getSettings, joinTeam, prepareGame, setLastIssuePhases, publishResults,
+  activeMemberCount, advance, endGame, getGameRow, getGameState, getPrep, getPublicRoster, getSettings, joinTeam, prepareGame, setLastIssuePhases, setTabLogin, publishResults,
   requireRunning, resetGame, revertToSetup, saveSettings, startGame, takeFromLifeReserve,
 } from '../db/game.js'
 import { applyDeltas, describeDeltas, getAllResources, getTeamResources, listLedger } from '../db/resources.js'
@@ -219,6 +219,12 @@ gameRouter.put('/admin/game/settings', requireRole('admin'), handle(settingsSche
 /** 마지막 라운드 발행 허용 단계 (docs/100 D4). 진행 중에는 마지막 라운드 전날까지만 바꿀 수 있다. 참가자에게 알리지 않는다 */
 gameRouter.put('/admin/game/last-issue', requireRole('admin'), handle(z.object({ phases: z.array(z.enum(PHASES)).min(1).max(PHASES.length) }), (_req, res, body) => {
   setLastIssuePhases(body.phases)
+  res.json(adminView())
+}))
+
+/** 테스트 모드(탭 로그인, docs/101) 전환. 상태와 무관. 참가자에게 알리지 않는다 */
+gameRouter.put('/admin/game/tab-login', requireRole('admin'), handle(z.object({ on: z.boolean() }), (_req, res, body) => {
+  setTabLogin(body.on)
   res.json(adminView())
 }))
 

@@ -8,6 +8,7 @@ import { config } from './config.js'
 import { runMigrations } from './db/index.js'
 import { seed } from './db/seed.js'
 import { listGroups, rehashPins } from './db/users.js'
+import { isTabLogin } from './db/game.js'
 import { ensureLeader, ensureTeams } from './db/teams.js'
 import { pruneRefreshTokens } from './auth/tokens.js'
 import { authRouter } from './routes/auth.js'
@@ -40,8 +41,9 @@ function readClientVersion(): string {
 }
 const clientVersion = readClientVersion()
 
+// tabLogin: 테스트 모드(탭 로그인, docs/101). 로그인 화면이 안내 문구를 띄우는 데 쓴다
 app.get('/api/health', (_req, res) =>
-  res.json({ ok: true, ts: new Date().toISOString(), version: clientVersion }),
+  res.json({ ok: true, ts: new Date().toISOString(), version: clientVersion, tabLogin: isTabLogin() }),
 )
 app.use('/api/auth', authRouter)
 app.use('/api', apiRouter)

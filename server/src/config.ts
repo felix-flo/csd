@@ -19,8 +19,12 @@ export const config = {
   dbPath: env.DB_PATH ?? path.resolve(process.cwd(), '../data/csd.sqlite'),
   jwtSecret: required('JWT_SECRET', 'dev-jwt-secret'),
   pinSecret: required('PIN_SECRET', 'dev-pin-secret'),
-  accessTokenTtl: env.ACCESS_TOKEN_TTL ?? '15m',
-  refreshTokenTtlDays: Number(env.REFRESH_TOKEN_TTL_DAYS ?? 30),
+  /** 액세스 토큰 수명 (두 모드 공통, docs/101). .env 가 있으면 그 값이 우선 */
+  accessTokenTtl: env.ACCESS_TOKEN_TTL ?? '1h',
+  /** 리프레시 토큰 수명(ms). REFRESH_TOKEN_TTL_HOURS 기본 12. 예전 REFRESH_TOKEN_TTL_DAYS 가 있으면 그 값(일) 우선 */
+  refreshTokenTtlMs: env.REFRESH_TOKEN_TTL_DAYS
+    ? Number(env.REFRESH_TOKEN_TTL_DAYS) * 86_400_000
+    : Number(env.REFRESH_TOKEN_TTL_HOURS ?? 12) * 3_600_000,
   cookieSecure: (env.COOKIE_SECURE ?? (env.NODE_ENV === 'production' ? 'true' : 'false')) === 'true',
   seedOnStart: (env.SEED_ON_START ?? 'true') === 'true',
   /** 빌드된 Vue 정적 파일 위치 (단일 컨테이너 구성) */

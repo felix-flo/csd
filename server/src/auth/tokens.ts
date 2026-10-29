@@ -54,7 +54,7 @@ function sha256(s: string) {
 
 export function issueRefreshToken(userId: number): string {
   const token = crypto.randomBytes(32).toString('base64url')
-  const expires = new Date(Date.now() + config.refreshTokenTtlDays * 86_400_000).toISOString()
+  const expires = new Date(Date.now() + config.refreshTokenTtlMs).toISOString()
   db.prepare('INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)').run(
     userId,
     sha256(token),

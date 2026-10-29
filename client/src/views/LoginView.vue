@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { ApiError } from '../lib/api'
@@ -10,6 +10,14 @@ const route = useRoute()
 const pin = ref('')
 const error = ref('')
 const busy = ref(false)
+/** 테스트 모드(탭 로그인, docs/101)면 안내. 로그인 전이라 공개 /api/health 로 본다 */
+const tabLogin = ref(false)
+onMounted(async () => {
+  try {
+    const res = await fetch('/api/health', { cache: 'no-store' })
+    tabLogin.value = !!((await res.json()) as { tabLogin?: boolean }).tabLogin
+  } catch { /* 안내만 생략 */ }
+})
 
 /** 입력 즉시 대문자로 바꾸고 영문·숫자만 남긴다 (서버도 같은 정규화를 한 번 더 한다) */
 function onInput(e: Event) {
@@ -62,6 +70,7 @@ async function submit() {
         <button type="submit" :disabled="busy">입장</button>
       </form>
       <p v-if="error" class="error">{{ error }}</p>
+      <p v-if="tabLogin" class="muted" style="margin-top: 12px">🧪 테스트 모드: 이 탭에서만 로그인됩니다. 새 탭은 다시 로그인하세요.</p>
     </div>
   </div>
 </template>

@@ -21,6 +21,7 @@ import TeamMark from './TeamMark.vue'
 import ModalDialog from './ModalDialog.vue'
 import ResourceRow from './ResourceRow.vue'
 import PhaseChecks from './PhaseChecks.vue'
+import TabLoginToggle from './TabLoginToggle.vue'
 
 const props = defineProps<{ users: AdminUser[]; groups: GroupInfo[] }>()
 const emit = defineEmits<{ updated: [users: AdminUser[]] }>()
@@ -165,7 +166,9 @@ const modalText = computed(() => {
     case 'start': {
       const p = view.value?.prep
       const warn = p?.unassigned ? `\n팀을 고르지 않은 참가자 ${p.unassigned}명은 비활성(로그인 차단) 처리됩니다. 나중에 계정 관리에서 팀에 넣고 복귀시킬 수 있습니다.` : ''
-      return { title: '게임을 시작할까요?', message: `총 ${st.totalDays}라운드. 시작하면 참가자 화면이 게임 화면으로 바뀌고 1라운드 리더 선출이 열립니다.${warn}` }
+      // 테스트 모드(탭 로그인)를 끄는 걸 잊지 않게 (docs/101)
+      const tab = view.value?.settings.tabLogin ? '\n\n⚠️ 테스트 모드(탭 로그인)가 켜져 있습니다. 참가자가 새 탭을 열 때마다 다시 로그인해야 합니다. 실제 진행이면 "게임 설정"에서 끄세요.' : ''
+      return { title: '게임을 시작할까요?', message: `총 ${st.totalDays}라운드. 시작하면 참가자 화면이 게임 화면으로 바뀌고 1라운드 리더 선출이 열립니다.${warn}${tab}` }
     }
     case 'revert':
       return { title: '설정 단계로 되돌릴까요?', message: '참가자는 팀을 고를 수 없게 됩니다. 이미 팀을 고른 참가자와 PIN 은 그대로 남습니다.' }
@@ -298,6 +301,10 @@ function publish() {
       <button class="secondary" :disabled="busy" @click="clearSettings = false; modal = 'reset'">게임 리셋</button>
     </div>
     <p class="muted" style="min-height: 1.2em; margin: 6px 0 0">{{ status }}</p>
+    <!-- 시작 후에는 게임 설정 카드가 숨으므로 여기서 테스트 모드를 끌 수 있게 (docs/101) -->
+    <div v-if="s.status === 'running' || s.status === 'ended'" class="row" style="margin: 4px 0 8px">
+      <TabLoginToggle />
+    </div>
     <div v-if="resetDone" class="reset-done">
       <strong>리셋 완료</strong> · 참가자 {{ resetDone.members }}명 · 진행자 {{ resetDone.staff }}명 · 알림 {{ resetDone.events }}건 삭제, 테스트 계정은 같은 PIN 으로 다시 생성.
       <br />

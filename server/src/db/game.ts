@@ -45,6 +45,18 @@ interface GameRow {
   gold_issue_limit: number
   /** 마지막 라운드 발행 허용 단계 Phase[] JSON (docs/100 D4) */
   last_issue_phases: string
+  /** 테스트 모드(탭 로그인, docs/101): 1 이면 로그인 때 리프레시 쿠키를 심지 않는다 */
+  tab_login: number
+}
+
+/** 테스트 모드(탭 로그인) 여부. 로그인·재발급 라우터가 본다 */
+export function isTabLogin(): boolean {
+  return getGameRow().tab_login === 1
+}
+
+/** 테스트 모드 전환. 게임 상태와 무관하게 언제든. 리셋 "설정값 초기화" 때 꺼진다 */
+export function setTabLogin(on: boolean) {
+  updateGame('tab_login = ?', [on ? 1 : 0])
 }
 
 export function getGameRow(): GameRow {
@@ -101,6 +113,7 @@ export function getSettings(): GameSettings {
     issueLimit: { gem: g.gem_issue_limit, gold: g.gold_issue_limit },
     warCost: getWarCost(1),
     lastIssuePhases: parsePhases(g.last_issue_phases),
+    tabLogin: g.tab_login === 1,
   }
 }
 
@@ -437,7 +450,7 @@ export function resetGame(clearSettings = false): ResetResult {
     if (clearSettings) {
       db.prepare('UPDATE groups SET capacity = 0').run()
       db.prepare('UPDATE team_resources SET initial = 0').run()
-      updateGame('include_test = 1, life_reserve_initial = 0, gem_issue_limit = ?, gold_issue_limit = ?, last_issue_phases = ?', [
+      updateGame('include_test = 1, life_reserve_initial = 0, tab_login = 0, gem_issue_limit = ?, gold_issue_limit = ?, last_issue_phases = ?', [
         DEFAULT_ISSUE_LIMITS.gem, DEFAULT_ISSUE_LIMITS.gold, JSON.stringify(DEFAULT_LAST_ISSUE_PHASES),
       ])
       setWarCost(1, { gem: 0, gold: 0, credit: 0 })

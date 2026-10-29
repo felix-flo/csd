@@ -157,6 +157,8 @@ export interface GameSettings {
   warCost: WarCost | null
   /** 마지막 라운드에 발행을 허용할 단계 (docs/100 D4). 마지막 라운드가 시작되면 고정 */
   lastIssuePhases: Phase[]
+  /** 테스트 모드(탭 로그인, docs/101). 켜면 리프레시 쿠키 없이 탭마다 로그인. 언제든 전환 */
+  tabLogin: boolean
 }
 
 export type ScoreMode = 'gem' | 'gold' | 'ratio'
