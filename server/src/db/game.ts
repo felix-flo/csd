@@ -518,6 +518,16 @@ export function resetGame(clearSettings = false): ResetResult {
   })()
 }
 
+/**
+ * 남은 라이프 매장량 재설정 (시작 후, docs/95 §10). 절대값으로 덮어쓴다.
+ * 초기값(life_reserve_initial)은 건드리지 않으므로 리셋·준비 단계로 되돌리면 원래 설정값으로 돌아간다
+ */
+export function setLifeReserve(amount: number) {
+  const g = getGameRow()
+  if (isBeforeStart(g.status)) throw new GameError('not_running', '시작 전에는 게임 설정의 라이프 매장량을 수정하세요')
+  updateGame('life_reserve = ?', [amount])
+}
+
 /** 생산 활동 라이프 지급: 매장량에서 차감 (음수 delta 는 매장량으로 반환) */
 export function takeFromLifeReserve(delta: number) {
   const g = getGameRow()

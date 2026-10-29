@@ -20,7 +20,7 @@ import { isBeforeStart } from '../../../shared/game.js'
 import { GameError } from '../db/gameError.js'
 import {
   activeMemberCount, advance, endGame, getGameRow, getGameState, getPrep, getPublicRoster, getSettings, joinTeam, prepareGame, setLastIssuePhases, setTabLogin,
-  requireRunning, resetGame, revertToSetup, saveSettings, startGame, takeFromLifeReserve,
+  requireRunning, resetGame, revertToSetup, saveSettings, setLifeReserve, startGame, takeFromLifeReserve,
 } from '../db/game.js'
 import { applyDeltas, describeDeltas, getAllResources, getTeamResources, listLedger } from '../db/resources.js'
 import { allElectionsDone, castVote, finalizeElection, getElection, resolveTie, type FinalizeResult } from '../db/election.js'
@@ -241,6 +241,12 @@ gameRouter.put('/admin/game/settings', requireRole('admin'), handle(settingsSche
 /** 마지막 라운드 발행 허용 단계 (docs/100 D4). 진행 중에는 마지막 라운드 전날까지만 바꿀 수 있다. 참가자에게 알리지 않는다 */
 gameRouter.put('/admin/game/last-issue', requireRole('admin'), handle(z.object({ phases: z.array(z.enum(PHASES)).min(1).max(PHASES.length) }), (_req, res, body) => {
   setLastIssuePhases(body.phases)
+  res.json(adminView())
+}))
+
+/** 남은 라이프 매장량 재설정 (시작 후, docs/95 §10). 관리자만 보는 값이라 알림·이력 없음 */
+gameRouter.put('/admin/game/life-reserve', requireRole('admin'), handle(z.object({ amount }), (_req, res, body) => {
+  setLifeReserve(body.amount)
   res.json(adminView())
 }))
 

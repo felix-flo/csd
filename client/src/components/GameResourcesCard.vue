@@ -3,9 +3,10 @@
  * 팀 재화 (관리자, 게임 시작 후): 현재 보유량, 생산·정정 입력, 대가 없는 원조, 변동 이력.
  * - 원조는 리더 협의 단계에서만, 주는 팀 라운드당 1회 (받는 팀은 제한 없음. docs/100 D2)
  * - 생산 라이프는 남은 라이프 매장량 안에서만 (서버도 검사). 정정은 매장량과 무관.
+ * - 남은 매장량은 시작 후 여기서 절대값으로 재설정할 수 있다 (시작 전에는 게임 설정 카드). 초기값은 그대로.
  * - 0 미만이 되는 입력은 서버가 거부한다.
  */
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import type { GroupInfo } from '../../../shared/types'
 import { LEDGER_REASON_LABELS, RESOURCE_KINDS, RESOURCE_LABELS, emptyResources, isBeforeStart, type AdminGameView, type Resources } from '../../../shared/game'
 import { RESOURCES } from '../lib/resources'
@@ -35,6 +36,15 @@ async function run(label: string, fn: () => Promise<AdminGameView>): Promise<boo
   } finally {
     busy.value = false
   }
+}
+
+// ---- 남은 라이프 매장량 재설정 ----
+const reserveInput = ref(0)
+watch(() => view.value?.lifeReserve, (v) => (reserveInput.value = v ?? 0), { immediate: true })
+const reserveDirty = computed(() => Math.max(0, Math.floor(reserveInput.value || 0)) !== (view.value?.lifeReserve ?? 0))
+async function applyReserve() {
+  const amount = Math.max(0, Math.floor(reserveInput.value || 0))
+  await run(`라이프 매장량 ${view.value?.lifeReserve} → ${amount}`, () => api.put('/api/admin/game/life-reserve', { amount }))
 }
 
 // ---- 생산 / 정정 ----
@@ -95,7 +105,11 @@ async function applyAid() {
         </tr>
       </tbody>
     </table>
-    <p class="muted" style="margin: 6px 0 0">현재 보유량. 남은 라이프 매장량 <strong class="mono">{{ view.lifeReserve }}</strong></p>
+    <form class="row muted" style="margin: 6px 0 0" @submit.prevent="applyReserve">
+      현재 보유량. 남은 라이프 매장량 <strong class="mono">{{ view.lifeReserve }}</strong>
+      <label class="row" style="gap: 4px">→ <input v-model.number="reserveInput" type="number" min="0" style="width: 5em" title="남은 매장량을 이 값으로 바꿉니다" /></label>
+      <button type="submit" :disabled="busy || !reserveDirty">매장량 변경</button>
+    </form>
 
     <h3>생산 · 정정</h3>
     <form class="row" @submit.prevent="applyAdjust">
