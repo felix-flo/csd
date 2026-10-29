@@ -61,8 +61,19 @@ function applyBulk() {
 function applyBulkCapacity() {
   for (const g of props.groups) capacity[g.id] = Math.max(0, bulkCapacity.value || 0)
 }
-const totalCapacity = computed(() => props.groups.reduce((sum, g) => sum + (capacity[g.id] || 0), 0))
-const canPrepare = computed(() => !!totalDays.value && props.groups.length > 0 && props.groups.every((g) => (capacity[g.id] ?? 0) >= 1))
+/** 테스트 계정은 최대 인원에 포함: 팀마다 리더·팀원(최대 2명, 최대 인원이 더 작으면 그만큼)이 자리를 차지하고 나머지만 참가자 PIN */
+const testSeats = computed(() => (includeTest.value ? props.groups.reduce((sum, g) => sum + Math.min(2, Math.max(0, capacity[g.id] || 0)), 0) : 0))
+const totalCapacity = computed(() => props.groups.reduce((sum, g) => sum + (capacity[g.id] || 0), 0) - testSeats.value)
+/** 초기셋팅완료 전에 채워야 할 것. 비어 있으면 버튼 옆에 문구로, 입력란은 빨간 테두리로 보여 준다 */
+const noCapacityTeams = computed(() => props.groups.filter((g) => (capacity[g.id] ?? 0) < 1))
+const prepareMissing = computed(() => {
+  const items: string[] = []
+  if (!totalDays.value) items.push('총 라운드 수')
+  if (props.groups.length === 0) items.push('팀 (팀 · 진행자 구성 카드)')
+  else if (noCapacityTeams.value.length) items.push(`최대 인원 (${noCapacityTeams.value.map((g) => g.name).join(', ')})`)
+  return items
+})
+const canPrepare = computed(() => prepareMissing.value.length === 0)
 
 const dirty = computed(() => {
   const s = settings.value
@@ -137,9 +148,9 @@ async function prepare() {
     </p>
 
     <div class="row" style="margin-bottom: 10px">
-      <label>총 라운드 수 <input v-model.number="totalDays" type="number" min="1" max="30" placeholder="6" style="width: 5em" /></label>
+      <label>총 라운드 수 <input v-model.number="totalDays" type="number" min="1" max="30" placeholder="6" style="width: 5em" :class="{ missing: !totalDays }" /></label>
       <label>라이프 매장량 <input v-model.number="lifeReserve" type="number" min="0" style="width: 6em" /></label>
-      <label class="row" style="gap: 6px"><input v-model="includeTest" type="checkbox" /> 팀별 테스트 계정(리더 1·팀원 1) 포함</label>
+      <label class="row" style="gap: 6px"><input v-model="includeTest" type="checkbox" /> 팀별 테스트 계정(리더 1·팀원 1) 포함 <span class="muted">— 최대 인원에 포함</span></label>
     </div>
     <div class="row" style="margin-bottom: 10px">
       <TabLoginToggle />
@@ -161,7 +172,7 @@ async function prepare() {
       <span v-if="!settings?.warCost" class="error" style="font-size: 0.85rem">저장해야 게임을 시작할 수 있습니다</span>
     </div>
     <p class="muted" style="margin-top: 0">
-      라이프 매장량: 생산게임으로 지급할 수 있는 라이프 총량. 테스트 계정은 팀·리더가 미리 정해져 있고 최대 인원에 들어가지 않습니다. 빼면 탈락(로그인 차단) 처리됩니다.
+      라이프 매장량: 생산게임으로 지급할 수 있는 라이프 총량. 테스트 계정은 팀·리더가 미리 정해져 있고 최대 인원에 들어갑니다 (팀마다 리더 → 팀원 순으로 최대 인원까지만 활성, 최대 인원 1이면 리더만). 빼면 탈락(로그인 차단) 처리됩니다.
       전쟁 선포 비용: 2라운드부터는 게임 진행 카드에서 전 라운드가 끝나기 전에 정합니다(0 이면 무료).
       발행 한도: 화이트팀 리더는 보석을 라운드마다 한도까지(이월 없음), 옐로우팀 리더는 골드를 라운드마다 한도씩 쌓아서(안 쓴 만큼 이월) 발행 요청할 수 있습니다.
     </p>
@@ -184,7 +195,7 @@ async function prepare() {
         </tr>
         <tr v-for="(g, i) in groups" :key="g.id">
           <td class="nowrap"><span class="letter mono">{{ teamLetter(i) }}</span> <TeamMark :color="g.color" />{{ g.name }}</td>
-          <td><input v-model.number="capacity[g.id]" type="number" min="0" max="50" /></td>
+          <td><input v-model.number="capacity[g.id]" type="number" min="0" max="50" :class="{ missing: (capacity[g.id] ?? 0) < 1 }" /></td>
           <td v-for="k in RESOURCE_KINDS" :key="k">
             <input v-if="initial[g.id]" v-model.number="initial[g.id]![k]" type="number" min="0" />
           </td>
@@ -192,11 +203,12 @@ async function prepare() {
         </tr>
       </tbody>
     </table>
-    <p class="muted" style="margin: 6px 0 0">참가자 PIN {{ totalCapacity }}개 · 참가자에게는 팀 이름 대신 A, B, C… 로 보입니다.</p>
+    <p class="muted" style="margin: 6px 0 0">참가자 PIN {{ totalCapacity }}개<template v-if="testSeats"> (테스트 계정 {{ testSeats }}명 제외)</template> · 참가자에게는 팀 이름 대신 A, B, C… 로 보입니다.</p>
 
     <div class="row" style="margin-top: 12px">
       <button :class="status === 'setup' ? 'secondary' : ''" :disabled="busy || !dirty || !lastIssuePhases.length" @click="save">설정 저장</button>
       <button v-if="status === 'setup'" :disabled="busy || !canPrepare" @click="confirmPrepare = true">초기셋팅완료</button>
+      <span v-if="status === 'setup' && prepareMissing.length" class="blocker">먼저 정하세요: {{ prepareMissing.join(' · ') }}</span>
       <span class="muted">{{ message }}<template v-if="dirty"> · 저장하지 않은 변경 있음</template></span>
     </div>
 
@@ -214,6 +226,9 @@ async function prepare() {
 </template>
 
 <style scoped>
+/* 초기셋팅완료 전에 비어 있는 입력란 */
+.missing { border-color: var(--red); box-shadow: 0 0 0 2px color-mix(in srgb, var(--red) 25%, transparent); }
+.blocker { color: var(--red); font-size: 0.88rem; }
 .res-table { border-collapse: collapse; font-size: 0.9rem; }
 .res-table th, .res-table td { text-align: left; padding: 4px 8px 4px 0; border-bottom: 1px solid var(--line-soft); }
 .res-table th { color: var(--muted); font-weight: 500; font-size: 0.8rem; white-space: nowrap; }

@@ -87,7 +87,7 @@ export function getGameState(): GameState {
   }
 }
 
-/** 팀별 일반 참가자 수 (테스트 계정 제외, 비활성 포함) */
+/** 팀별 일반 참가자 수 (테스트 계정 제외, 비활성 포함). 정원 계산은 여기에 activeTestCount 를 더한다 */
 function countRegular(teamId: number): number {
   return (db.prepare(`SELECT COUNT(*) AS n FROM users WHERE role = 'member' AND is_test = 0 AND group_id = ?`).get(teamId) as { n: number }).n
 }
@@ -98,7 +98,7 @@ function capacityOf(teamId: number): number {
 
 /** 팀 선택 현황. 팀 순서대로 A, B, C … */
 export function getLobby(): LobbyTeam[] {
-  return listGroups().map((t, i) => ({ teamId: t.id, label: teamLetter(i), count: countRegular(t.id), capacity: capacityOf(t.id) }))
+  return listGroups().map((t, i) => ({ teamId: t.id, label: teamLetter(i), count: countRegular(t.id) + activeTestCount(t.id), capacity: capacityOf(t.id) }))
 }
 
 export function getSettings(): GameSettings {
@@ -160,12 +160,29 @@ export function requireRunning(phase?: Phase): GameRow {
  * 테스트 계정 포함/제외 적용. 제외 = 비활성 (로그인 차단). 반환: 비활성으로 바뀐 id (세션 종료용)
  */
 function applyTestAccounts(include: boolean): number[] {
-  const rows = db.prepare(`SELECT id, active FROM users WHERE role = 'member' AND is_test = 1`).all() as { id: number; active: number }[]
-  const want = include ? 1 : 0
-  const changed = rows.filter((r) => r.active !== want).map((r) => r.id)
-  setUsersActive(changed, include)
+  // 테스트 계정은 팀별 최대 인원에 포함된다 (2026-10-29): 팀마다 리더 → 팀원 순으로 최대 인원까지만 활성, 나머지는 비활성
+  const rows = db
+    .prepare(`SELECT id, active, group_id, is_leader FROM users WHERE role = 'member' AND is_test = 1 ORDER BY group_id, is_leader DESC, id`)
+    .all() as { id: number; active: number; group_id: number | null; is_leader: number }[]
+  const slotsLeft = new Map<number, number>()
+  for (const t of listGroups()) slotsLeft.set(t.id, capacityOf(t.id))
+  const on: number[] = []
+  const off: number[] = []
+  for (const r of rows) {
+    const left = r.group_id != null ? (slotsLeft.get(r.group_id) ?? 0) : 0
+    const want = include && left > 0
+    if (want && r.group_id != null) slotsLeft.set(r.group_id, left - 1)
+    if (r.active !== (want ? 1 : 0)) (want ? on : off).push(r.id)
+  }
+  setUsersActive(on, true)
+  setUsersActive(off, false)
   for (const t of listGroups()) ensureLeader(t.id)
-  return include ? [] : changed
+  return off
+}
+
+/** 팀의 활성 테스트 계정 수 (최대 인원에 포함) */
+function activeTestCount(teamId: number): number {
+  return (db.prepare(`SELECT COUNT(*) AS n FROM users WHERE role = 'member' AND is_test = 1 AND active = 1 AND group_id = ?`).get(teamId) as { n: number }).n
 }
 
 /** 설정 저장 (setup·ready). ready 에서 최대 인원을 바꾸면 PIN 수를 맞춘다. 반환: 비활성으로 바뀐 테스트 계정 id + 지운 미사용 PIN id */
@@ -223,7 +240,8 @@ function teamLabel(teamId: number): string {
  * (이미 들어온 사람은 지우지 않으므로 남는 PIN 이 있을 수 있다 → 시작할 때 미배정은 비활성)
  */
 function syncParticipantPins(): { created: number; deleted: number[] } {
-  const target = listGroups().reduce((sum, t) => sum + capacityOf(t.id), 0)
+  // 최대 인원에서 활성 테스트 계정을 뺀 만큼만 참가자 PIN 을 만든다
+  const target = listGroups().reduce((sum, t) => sum + Math.max(0, capacityOf(t.id) - activeTestCount(t.id)), 0)
   const current = (db.prepare(`SELECT COUNT(*) AS n FROM users WHERE role = 'member' AND is_test = 0`).get() as { n: number }).n
   const result = { created: 0, deleted: [] as number[] }
   if (current < target) {
@@ -282,7 +300,7 @@ export function joinTeam(userId: number, teamId: number): GroupInfo {
     if (u.is_test === 1) throw new GameError('test_account', '테스트 계정은 팀이 정해져 있습니다')
     if (u.group_id != null) throw new GameError('already_joined', '이미 팀을 골랐습니다. 바꾸려면 진행자에게 요청하세요')
     if (u.name_set !== 1) throw new GameError('name_required', '이름을 먼저 입력하세요', 400)
-    if (countRegular(teamId) >= capacityOf(teamId)) throw new GameError('team_full', '팀이 가득 찼습니다')
+    if (countRegular(teamId) + activeTestCount(teamId) >= capacityOf(teamId)) throw new GameError('team_full', '팀이 가득 찼습니다')
     const ok = db.prepare('UPDATE users SET group_id = ?, is_leader = 0 WHERE id = ? AND group_id IS NULL').run(teamId, userId).changes === 1
     if (!ok) throw new GameError('already_joined', '이미 팀을 골랐습니다')
     return team
