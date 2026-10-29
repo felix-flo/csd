@@ -140,6 +140,8 @@ export function resolveTie(day: number, teamId: number, userId: number) {
     if (!row || row.status !== 'tie') throw new GameError('not_tie', '동표 상태가 아닙니다')
     const tied = JSON.parse(row.tied ?? '[]') as number[]
     if (!tied.includes(userId)) throw new GameError('bad_candidate', '동표자 중에서만 지정할 수 있습니다', 400)
+    // 동표 뒤 이주·탈락한 사람은 지정할 수 없다 (docs/100 N3)
+    if (!activeMemberIds(teamId).includes(userId)) throw new GameError('bad_candidate', '지금 이 팀의 활성 팀원이 아닙니다', 400)
     setTeamLeader(teamId, userId)
     db.prepare(`UPDATE leader_elections SET status = 'done', leader_id = ?, tied = NULL WHERE day = ? AND group_id = ?`).run(userId, day, teamId)
   })()

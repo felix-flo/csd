@@ -23,7 +23,7 @@ import {
 import { deleteEvents, insertEvent, listEventsForUser, listRecentEventsForUser } from '../db/events.js'
 import { disconnectUsers, moveUserRooms, publishEvent, signalLobby } from '../realtime/index.js'
 import { revokeUserRefreshTokens } from '../auth/tokens.js'
-import { gameRouter } from './game.js'
+import { announceMigrationSweep, gameRouter } from './game.js'
 import { HEX_COLOR, isPaletteColor } from '../../../shared/teams.js'
 import { isBeforeStart, teamLetter } from '../../../shared/game.js'
 import type { DocumentInfo, EventType, GroupInfo, MeResponse, RulesResponse } from '../../../shared/types.js'
@@ -218,6 +218,8 @@ apiRouter.post('/admin/users/active', requireRole('admin'), (req, res) => {
     publishEvent(ev)
   }
   announceLivesIfNowDone(livesBefore, req.auth!.sub)
+  // 탈락한 신청자·승계로 리더가 된 신청자의 이주 대기 신청 자동 취소 (docs/100 N3)
+  announceMigrationSweep(req.auth!.sub)
   signalLobby()
   res.json({ changed, users: listAllUsers() })
 })
@@ -363,6 +365,7 @@ apiRouter.post('/admin/users/:id/team', requireRole('admin'), (req, res) => {
     publishEvent(insertEvent({ type: 'system', scope: 'group', targetId: teamId, payload, createdBy: req.auth!.sub }))
   }
   announceLivesIfNowDone(livesBefore, req.auth!.sub)
+  announceMigrationSweep(req.auth!.sub)
   signalLobby()
   res.json({ users: listAllUsers() })
 })
@@ -386,6 +389,7 @@ apiRouter.post('/admin/users/:id/leader', requireRole('admin'), (req, res) => {
     payload: { kind: 'leader.set', userId: user.id, message: `${user.name} 님이 리더로 지정되었습니다` },
     createdBy: req.auth!.sub,
   }))
+  announceMigrationSweep(req.auth!.sub)
   // 다른 관리자 화면의 시작 점검(리더 미지정 팀)도 바로 갱신
   signalLobby()
   res.json({ users: listAllUsers() })

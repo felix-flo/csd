@@ -12,6 +12,7 @@ import ReadyLobby from '../components/ReadyLobby.vue'
 import IssuePanel from '../components/IssuePanel.vue'
 import WarPanel from '../components/WarPanel.vue'
 import FinalVotePanel from '../components/FinalVotePanel.vue'
+import MigrationPanel from '../components/MigrationPanel.vue'
 import IntroOverlay from '../components/IntroOverlay.vue'
 import introUrl from '../assets/intro_image.webp'
 import { useAuthStore } from '../stores/auth'
@@ -123,6 +124,14 @@ const final = computed(() => (s.value?.status === 'final' || s.value?.status ===
       :my-team-id="group.id"
       :is-leader="isLeader"
       :resources="game.team.resources"
+    />
+    <!-- 이주 (docs/100 N3): 이주 시작 라운드부터 -->
+    <MigrationPanel
+      v-if="s?.status === 'running' && group && game.team?.migration"
+      :migration="game.team.migration"
+      :my-team-id="group.id"
+      :is-leader="isLeader"
+      :day="s.day"
     />
     <!-- 화이트팀 보석 / 옐로우팀 골드 발행 (그 팀만) -->
     <IssuePanel v-if="s?.status === 'running' && game.team?.issue" :issue="game.team.issue" :is-leader="isLeader" />

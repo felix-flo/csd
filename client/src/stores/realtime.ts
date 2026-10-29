@@ -204,7 +204,8 @@ export const useRealtimeStore = defineStore('realtime', {
     shouldToast(ev: GameEvent): boolean {
       const popup =
         ev.type === 'notice' ||
-        (ev.type === 'system' && (ev.payload.kind === 'member.moved' || ev.payload.kind === 'members.active' || ev.payload.kind === 'leader.set')) ||
+        // (이주 수락의 팀 이동 신호는 silent — 전체 이주 공지가 따로 뜬다)
+        (ev.type === 'system' && !ev.payload.silent && (ev.payload.kind === 'member.moved' || ev.payload.kind === 'members.active' || ev.payload.kind === 'leader.set')) ||
         // 게임 진행·거래 알림. silent(투표 진행 상황, 설정 변경 등)는 피드에만
         ((ev.type === 'game' || ev.type === 'trade') && !ev.payload.silent)
       if (!popup) return false

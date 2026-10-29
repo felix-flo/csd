@@ -2,6 +2,7 @@
 /**
  * 게임 진행 (관리자): 준비 상태 점검·리더 지정·게임 시작 / 단계 넘기기 / 다음 날 / 게임 종료(= 최종장 시작) / 리셋, 그리고 현재 단계의 팀별 현황.
  * - 마지막 라운드 리더 협의: 필수 안건(라이프 투표권) 통과/부결 입력. 넣어야 라이프 제출로 넘어간다 (docs/100 N2)
+ * - 이주 (docs/100 N3): 대기 신청 목록·강제 취소. 대기 신청이 있으면 리더 협의 → 라이프 제출로 넘어가지 못한다
  * - 최종장(final): FinalControl (투표 마감·가위바위보·결과·정산)
  * - 준비 상태: 팀별 입장 현황(A 3/5)과 리더. 리더가 없는 팀이 있으면 시작할 수 없다. 팀을 고르지 않은 참가자는 시작할 때 비활성.
  * - 리셋은 어느 상태에서나: 참가자·진행자 계정과 모든 기록·알림을 지우고 설정 단계로 (리셋한 사람이 진행자면 본인도 로그아웃).
@@ -12,7 +13,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import type { AdminUser, GroupInfo } from '../../../shared/types'
 import {
-  FINAL_STEP_LABELS, PHASE_LABELS, PHASES, RESOURCE_LABELS, DEFAULT_LAST_ISSUE_PHASES, WAR_COST_KINDS, WAR_STATUS_LABELS, isLifeExempt, josa, teamLetter,
+  FINAL_STEP_LABELS, MIGRATION_CANCEL_LABELS, PHASE_LABELS, PHASES, RESOURCE_LABELS, DEFAULT_LAST_ISSUE_PHASES, WAR_COST_KINDS, WAR_STATUS_LABELS, isLifeExempt, josa, teamLetter,
   type AdminGameView, type Phase, type Resources, type TradeView, type WarCost, type WarResult,
 } from '../../../shared/game'
 import { useRouter } from 'vue-router'
@@ -92,6 +93,13 @@ function askWar(result: WarResult) {
   warResult.value = result
   modal.value = 'war'
 }
+// ---- 이주 (docs/100 N3) ----
+const migrationOpenFrom = computed(() => view.value?.settings.migrationStartDay ?? 4)
+const MIGRATION_STATUS: Record<string, string> = { accepted: '이주 완료', rejected: '거절' }
+function cancelMigration(id: number) {
+  return run('이주 신청 취소', () => api.post(`/api/admin/migration/${id}/cancel`))
+}
+
 // ---- 마지막 라운드 필수 안건: 남은 라이프를 최종 투표권으로 (docs/100 N2) ----
 const lifeVoteOpen = computed(() => s.value?.status === 'running' && isLastDay.value && s.value.phase === 'council')
 function setLifeVote(passed: boolean) {
@@ -101,6 +109,7 @@ function setLifeVote(passed: boolean) {
 /** 다음 단계/다음 날 버튼을 막는 이유 */
 const advanceBlocker = computed(() => {
   if (warBlocker.value) return warBlocker.value
+  if (s.value?.phase === 'council' && view.value?.migrations.pending.length) return '처리하지 않은 이주 신청이 있습니다. 받는 팀 리더가 처리하거나 아래 "이주" 에서 취소해야 라이프 제출로 넘어갈 수 있습니다'
   if (lifeVoteOpen.value && s.value?.lifeVote == null) return '라이프 투표권 안건의 통과/부결을 아래에서 입력해야 라이프 제출로 넘어갈 수 있습니다'
   if (leavingIssuePhases.value && pendingIssues.value) return `처리하지 않은 발행 요청이 있습니다. ${PHASE_LABELS[nextPhase.value!]} 단계에서는 발행할 수 없어 수락 또는 거절해야 넘어갈 수 있습니다`
   if (!nextPhase.value && !isLastDay.value && pendingIssues.value) return '처리하지 않은 발행 요청이 있습니다. 수락 또는 거절해야 다음 라운드로 넘어갈 수 있습니다'
@@ -466,6 +475,31 @@ const tradeLine = (t: TradeView) => `${team(t.from.teamId)?.name} → ${team(t.t
       </template>
       <strong v-else>{{ lastPhasesText(view.settings.lastIssuePhases) }} <span class="muted">(고정 · 발행량 비공개)</span></strong>
     </div>
+
+    <!-- 이주 (docs/100 N3) -->
+    <template v-if="s.status === 'running' && s.day >= migrationOpenFrom">
+      <h3>🧳 이주 <span class="muted">{{ migrationOpenFrom }}라운드부터 · 라이프 제출 단계 제외</span></h3>
+      <p v-if="!view.migrations.pending.length" class="muted" style="margin: 0">대기 중인 이주 신청 없음</p>
+      <table v-else class="tbl">
+        <tbody>
+          <tr v-for="m in view.migrations.pending" :key="m.id">
+            <td><strong>{{ m.userName }}</strong></td>
+            <td><TeamMark :color="team(m.fromTeamId)?.color ?? ''" />{{ team(m.fromTeamId)?.name }} → <TeamMark :color="team(m.toTeamId)?.color ?? ''" />{{ team(m.toTeamId)?.name }}</td>
+            <td class="muted">받는 팀 리더 수락 대기</td>
+            <td><button class="secondary small" :disabled="busy" @click="cancelMigration(m.id)">강제 취소</button></td>
+          </tr>
+        </tbody>
+      </table>
+      <details v-if="view.migrations.recent.length" style="margin-top: 6px">
+        <summary class="muted">최근 처리 {{ view.migrations.recent.length }}건</summary>
+        <ul class="feed">
+          <li v-for="m in view.migrations.recent" :key="m.id">
+            {{ m.day }}라운드 · {{ m.userName }} · {{ team(m.fromTeamId)?.name }} → {{ team(m.toTeamId)?.name }} ·
+            <strong>{{ m.status === 'cancelled' ? (m.cancelReason ? MIGRATION_CANCEL_LABELS[m.cancelReason] : '취소') : MIGRATION_STATUS[m.status] }}</strong>
+          </li>
+        </ul>
+      </details>
+    </template>
 
     <!-- 리더간 협의 -->
     <p v-if="s.status === 'running' && s.phase === 'council'" class="muted">

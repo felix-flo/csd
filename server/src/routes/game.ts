@@ -4,6 +4,7 @@
  * - 프레젠테이션·관리자: GET /game/roster 팀 현황 (팀원 명단·탈락, 시작 후에만)
  * - 참가자  : GET /game/team, 투표, 라이프 제출(리더), 거래(리더)
  * - 관리자  : /admin/game/* 설정·초기셋팅완료·설정으로 되돌리기·시작·다음 단계·종료(=최종장 시작)·리셋, 재화 조정, 원조, 동표 지정, 거래 강제 취소
+ * - 이주 (docs/100 N3): 참가자 POST /migration/request · /migration/:id/cancel, 받는 팀 리더 POST /migration/:id/decide, 관리자 POST /admin/migration/:id/cancel
  * - 최종장 (docs/100 N2): 관리자 POST /admin/game/life-vote (마지막 라운드 안건), /admin/final/close · tiebreak · next · recompute, 참가자 POST /final/vote
  * - 참가자(준비 상태): POST /game/join 팀 선택. 시작 전에는 팀 게임 정보를 주지 않는다
  * - 보석·골드 발행 (docs/97): 화이트·옐로우 리더 POST /issue/request, 관리자 POST /admin/issue/:id/decide
@@ -21,7 +22,10 @@ import {
   requireRunning, resetGame, revertToSetup, saveSettings, startGame, takeFromLifeReserve,
 } from '../db/game.js'
 import { applyDeltas, describeDeltas, getAllResources, getTeamResources, listLedger } from '../db/resources.js'
-import { allElectionsDone, castVote, getElection, resolveTie, type FinalizeResult } from '../db/election.js'
+import { allElectionsDone, castVote, finalizeElection, getElection, resolveTie, type FinalizeResult } from '../db/election.js'
+import {
+  cancelMigration, decideMigration, getAdminMigrations, getTeamMigrationView, requestMigration, sweepMigrations, teamLeaderId,
+} from '../db/migration.js'
 import { allLivesDone, getLifeSubmission, submitLife } from '../db/life.js'
 import {
   acceptOffer, cancelActiveTrade, cancelTrade, getActiveTrade, getActiveTradeForTeam, payCredit, proposeOffer, requestTrade, respondTrade,
@@ -36,8 +40,8 @@ import { db } from '../db/index.js'
 import { insertEvent } from '../db/events.js'
 import { disconnectUsers, moveUserRooms, publishEvent, signalLobby } from '../realtime/index.js'
 import { revokeUserRefreshTokens } from '../auth/tokens.js'
-import { emptyResources, FINAL_STEPS, josa, PHASE_LABELS, PHASES, RESOURCE_KINDS, RESOURCE_LABELS, shareText } from '../../../shared/game.js'
-import type { AdminGameView, GameResults, IssueRequestView, Resources, TeamGameView, TradeView } from '../../../shared/game.js'
+import { emptyResources, FINAL_STEPS, josa, MIGRATION_CANCEL_LABELS, PHASE_LABELS, PHASES, RESOURCE_KINDS, RESOURCE_LABELS, shareText } from '../../../shared/game.js'
+import type { AdminGameView, GameResults, IssueRequestView, MigrationView, Resources, TeamGameView, TradeView } from '../../../shared/game.js'
 import type { EventScope, GameKind } from '../../../shared/types.js'
 
 export const gameRouter = Router()
@@ -168,6 +172,7 @@ gameRouter.get('/game/team', requireRole('member'), (req, res) => {
       return w ? { id: w.id, defender: w.defender, cost: w.cost } : null
     })(),
     myFinalVote: g.status === 'final' || g.status === 'ended' ? getMyFinalVote(req.auth!.sub) : null,
+    migration: running ? getTeamMigrationView(req.auth!.sub, teamId, !!req.auth!.isLeader) : null,
   }
   res.json(body)
 })
@@ -198,6 +203,7 @@ function adminView(): AdminGameView {
       nextCost: g.status === 'running' ? getWarCost(g.day + 1) : null,
     },
     finalVotes: g.status === 'final' || g.status === 'ended' ? finalVoteProgress() : [],
+    migrations: getAdminMigrations(),
   }
 }
 
@@ -216,6 +222,7 @@ const settingsSchema = z.object({
   issueLimit: z.object({ gem: amount, gold: amount }).optional(),
   warCost: z.object({ gem: amount, gold: amount, credit: amount }).optional(),
   lastIssuePhases: z.array(z.enum(PHASES)).min(1).max(PHASES.length).optional(),
+  migrationStartDay: z.number().int().min(1).max(30).optional(),
 })
 
 gameRouter.put('/admin/game/settings', requireRole('admin'), handle(settingsSchema, (req, res, body) => {
@@ -255,7 +262,7 @@ gameRouter.post('/admin/game/start', requireRole('admin'), handle(null, (req, re
   const deactivated = startGame(req.auth!.sub)
   endSessions(deactivated)
   const g = getGameRow()
-  emit('game', 'all', null, 'game.updated', `게임이 시작되었습니다 · 1라운드 / 총 ${g.total_days}라운드 · 리더 선출 중 · ${todayCostText(1)}`, req.auth!.sub, { day: 1, phase: 'leader' })
+  emit('game', 'all', null, 'game.updated', `게임이 시작되었습니다 · 1라운드 / 총 ${g.total_days}라운드 · 리더 선출 중 · ${todayCostText(1)}${migrationOpensText(1)}`, req.auth!.sub, { day: 1, phase: 'leader' })
   res.json(adminView())
 }))
 
@@ -267,10 +274,11 @@ gameRouter.post('/admin/game/next', requireRole('admin'), handle(advanceSchema, 
   const r = advance(body)
   for (const f of r.finalized) announceElection(body.day, f.teamId, f.result, by)
   if (body.phase === 'leader' && !leadersWereDone && r.finalized.length > 0) announceAllLeaders(body.day, by)
+  announceMigrationSweep(by)
   announceCancelled(r.cancelledTrade, '거래 단계 종료로', by)
   // 날이 바뀔 때마다 오늘 전쟁 선포 비용을 전체에 알린다 (바뀌지 않아도. docs/100 D6-b). 단계만 바뀔 때는 붙이지 않는다
   const message = r.day !== body.day
-    ? `${r.day}라운드가 시작되었습니다 · ${PHASE_LABELS[r.phase]} 중 · ${todayCostText(r.day)}`
+    ? `${r.day}라운드가 시작되었습니다 · ${PHASE_LABELS[r.phase]} 중 · ${todayCostText(r.day)}${migrationOpensText(r.day)}`
     : `${r.day}라운드 · ${PHASE_LABELS[r.phase]} 중입니다`
   emit('game', 'all', null, 'game.updated', message, by, { day: r.day, phase: r.phase })
   // 모든 팀이 제출 불필요(팀원 1명 이하)면 라이프 제출 단계에 들어가자마자 완료
@@ -286,6 +294,94 @@ gameRouter.post('/admin/game/end', requireRole('admin'), handle(null, (req, res)
   }
   const extra = getGameRow().life_vote_passed === 1 ? ' · 라이프 투표권: 팀 라이프 1개로 1표 더 (1인 1장, 선착순)' : ''
   emit('game', 'all', null, 'final.started', `🗳️ 최종장이 시작되었습니다 · 최종 투표: 보석과 골드 중 하나에 투표하세요 (1인 1표${extra})`, req.auth!.sub)
+  res.json(adminView())
+}))
+
+// ---- 이주 (docs/100 N3) ----
+
+/** 이주가 열리는 라운드 시작 공지에 붙인다 */
+function migrationOpensText(day: number): string {
+  const g = getGameRow()
+  return day === g.migration_start_day && day <= (g.total_days ?? 0) ? ' · 🧳 이주가 열렸습니다 (라이프 제출 전까지 신청)' : ''
+}
+
+function migrationText(m: MigrationView): string {
+  return `${teamName(m.fromTeamId)} → ${teamName(m.toTeamId)}`
+}
+
+/** 취소 알림: 신청자에게만 (받는 팀 리더·관리자 화면은 기록 없는 신호로 갱신) */
+function announceMigrationCancelled(list: MigrationView[], by: number | null) {
+  for (const m of list) {
+    const why = m.cancelReason ? MIGRATION_CANCEL_LABELS[m.cancelReason] : '취소'
+    emit('game', 'user', m.userId, 'migration.cancelled', `🧳 이주 신청이 취소되었습니다 (${migrationText(m)} · ${why})`, by, { migrationId: m.id, silent: m.cancelReason === 'self' })
+  }
+  if (list.length) signalLobby()
+}
+
+/** 리더가 바뀌거나 탈락·팀 이동이 생긴 뒤: 자동 취소 대상 정리 + 알림 (api.ts 도 쓴다) */
+export function announceMigrationSweep(by: number | null) {
+  announceMigrationCancelled(sweepMigrations(), by)
+}
+
+/** 일반 팀원 신청. 받는 팀 리더에게만 알림 (관리자는 무음) */
+gameRouter.post('/migration/request', requireRole('member'), handle(z.object({ toTeamId: z.number().int().positive() }), (req, res, body) => {
+  const by = req.auth!.sub
+  const m = requestMigration(by, body.toTeamId)
+  const leader = teamLeaderId(m.toTeamId)
+  if (leader != null) emit('game', 'user', leader, 'migration.requested', `🧳 ${userName(by)} 님(${teamName(m.fromTeamId)})이 우리 팀으로 이주를 신청했습니다`, by, { migrationId: m.id })
+  publishEvent(insertEvent({
+    type: 'game', scope: 'role', targetRole: 'admin', createdBy: by,
+    payload: { kind: 'migration.requested', message: `🧳 이주 신청: ${m.userName} (${migrationText(m)})`, migrationId: m.id, muted: true },
+  }))
+  res.json({ migration: m })
+}))
+
+gameRouter.post('/migration/:id/cancel', requireRole('member'), handle(null, (req, res) => {
+  const m = cancelMigration(Number(req.params.id), 'self', req.auth!.sub)
+  announceMigrationCancelled([m], req.auth!.sub)
+  res.json({ migration: m })
+}))
+
+/** 받는 팀 리더 수락/거절. 수락: 즉시 소속 변경 + 전체 공지 (룰 04 이주 알림) */
+gameRouter.post('/migration/:id/decide', requireRole('member'), handle(z.object({ accept: z.boolean() }), (req, res, body) => {
+  const by = req.auth!.sub
+  const id = Number(req.params.id)
+  if (!Number.isInteger(id)) throw new GameError('not_found', '', 404)
+  // 신청자가 리더가 되었거나 탈락한 신청은 먼저 자동 취소로 정리한다
+  announceMigrationSweep(by)
+  const { migration: m, electionTeam } = decideMigration(id, by, body.accept)
+  if (!body.accept) {
+    emit('game', 'user', m.userId, 'migration.rejected', `🧳 ${teamName(m.toTeamId)} 리더가 이주 신청을 거절했습니다`, by, { migrationId: m.id })
+    res.json({ migration: m })
+    return
+  }
+  moveUserRooms(m.userId, m.fromTeamId, m.toTeamId)
+  // 두 팀 팀원 목록·본인 팀 정보 갱신 (관리자 팀 이동과 같은 시스템 알림. 화면은 이걸로 /api/me 를 다시 받는다)
+  const payload = {
+    kind: 'member.moved', userId: m.userId, userName: m.userName,
+    fromTeamId: m.fromTeamId, fromTeamName: teamName(m.fromTeamId), toTeamId: m.toTeamId, toTeamName: teamName(m.toTeamId),
+    message: `${m.userName} 님이 이주했습니다 (${migrationText(m)})`, silent: true,
+  }
+  for (const teamId of [m.fromTeamId, m.toTeamId]) {
+    publishEvent(insertEvent({ type: 'system', scope: 'group', targetId: teamId, payload, createdBy: by }))
+  }
+  emit('game', 'all', null, 'migration.accepted', `🧳 ${m.userName}님이 ${teamName(m.fromTeamId)}에서 ${teamName(m.toTeamId)}으로 이주했습니다`, by, { migrationId: m.id, ...NOTIFY_SELF })
+  // 리더 선출 중이었으면 원래 팀 재집계 (남은 팀원이 모두 투표했으면 바로 결과)
+  if (electionTeam != null) {
+    const g = getGameRow()
+    const r = finalizeElection(g.day, electionTeam)
+    if (r) {
+      announceElection(g.day, electionTeam, r, by)
+      if (r.status === 'done' && allElectionsDone(g.day)) announceAllLeaders(g.day, by)
+    }
+  }
+  signalLobby()
+  res.json({ migration: m })
+}))
+
+gameRouter.post('/admin/migration/:id/cancel', requireRole('admin'), handle(null, (req, res) => {
+  const m = cancelMigration(Number(req.params.id), 'admin', req.auth!.sub)
+  announceMigrationCancelled([m], req.auth!.sub)
   res.json(adminView())
 }))
 
@@ -422,6 +518,7 @@ gameRouter.post('/admin/game/election', requireRole('admin'), handle(tieSchema, 
   resolveTie(g.day, body.teamId, body.userId)
   announceElection(g.day, body.teamId, { status: 'done', leaderId: body.userId, votes: 0, changed: true }, req.auth!.sub)
   if (allElectionsDone(g.day)) announceAllLeaders(g.day, req.auth!.sub)
+  announceMigrationSweep(req.auth!.sub)
   res.json(adminView())
 }))
 
@@ -542,6 +639,7 @@ gameRouter.post('/game/vote', requireRole('member'), handle(voteSchema, (req, re
   if (result) {
     announceElection(g.day, teamId, result, by, NOTIFY_SELF)
     if (result.status === 'done' && allElectionsDone(g.day)) announceAllLeaders(g.day, by, NOTIFY_SELF)
+    announceMigrationSweep(by)
   }
   res.json({ election: getElection(g.day, teamId, by), user: findUserById(by) })
 }))
@@ -564,6 +662,7 @@ gameRouter.post('/game/life', requireRole('member'), handle(lifeSchema, (req, re
   // 탈락자 이름은 전체 공지 (사용 개수는 팀만)
   if (dead.length) emit('game', 'all', null, 'life.eliminated', `${teamName(teamId)} 탈락: ${dead.join(', ')}`, by, { day: g.day, teamId })
   if (allLivesDone(g.day)) emit('game', 'all', null, 'life.all_done', '모든 팀의 라이프가 제출되었습니다.', by, { day: g.day, ...NOTIFY_SELF })
+  announceMigrationSweep(by)
   signalLobby() // 프레젠테이션 팀 현황(탈락 표시)
   // 응답을 먼저 보낸 뒤 세션을 끊는다. 탈락자 화면은 "탈락되었습니다" 를 5초 보여주고 로그아웃한다
   res.json({ submission: sub })

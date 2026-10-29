@@ -118,9 +118,15 @@ export type EventType = 'notice' | 'system' | 'document.updated' | 'game' | 'tra
  * - final.result       : 채택 화폐 + 마지막 라운드 발행량 공개 (scope=all)
  * - final.settled      : 정산 발표 (scope=all)
  * - final.ended        : 게임 끝 (scope=all)
+ * 이주 (docs/100 N3)
+ * - migration.requested: 이주 신청 (scope=user 받는 팀 리더 / role admin 무음)
+ * - migration.accepted : 이주 완료 (scope=all) "[이름]님이 [원래 팀]에서 [새 팀]으로 이주했습니다"
+ * - migration.rejected : 거절 (scope=user 신청자)
+ * - migration.cancelled: 취소 (scope=user 신청자, 받는 팀 리더에게는 무음 갱신)
  */
 export type GameKind =
   | 'game.updated' | 'game.reset'
+  | 'migration.requested' | 'migration.accepted' | 'migration.rejected' | 'migration.cancelled'
   | 'final.life_vote' | 'final.started' | 'final.voted' | 'final.closed' | 'final.tiebreak' | 'final.result' | 'final.settled' | 'final.ended'
   | 'election.progress' | 'election.done' | 'election.tie' | 'election.all_done'
   | 'resources.updated' | 'life.submitted' | 'life.eliminated' | 'life.all_done'

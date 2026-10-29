@@ -1,13 +1,13 @@
 <script setup lang="ts">
 /**
- * 게임 설정 (시작 전: 설정·준비 상태): 총 일수, 팀별 최대 인원, 테스트 계정 포함 여부, 라이프 매장량, 발행 한도, 마지막 라운드 발행 단계, 팀별 초기 재화.
+ * 게임 설정 (시작 전: 설정·준비 상태): 총 일수, 팀별 최대 인원, 테스트 계정 포함 여부, 라이프 매장량, 발행 한도, 마지막 라운드 발행 단계, 이주 시작 라운드, 팀별 초기 재화.
  * - 설정 상태: "초기셋팅완료" → 준비 상태 (최대 인원 합계만큼 팀 없는 PIN 생성, 참가자가 로그인해 팀 선택)
  * - 준비 상태: 계속 수정 가능. 최대 인원을 늘리면 PIN 이 추가되고, 줄이면 쓰지 않은 PIN 이 지워진다. 게임 시작은 "게임 진행" 카드
  * 리셋하면 총 일수만 비워지고 나머지 설정은 유지된다.
  */
 import { computed, reactive, ref, watch } from 'vue'
 import type { GroupInfo } from '../../../shared/types'
-import { DEFAULT_ISSUE_LIMITS, DEFAULT_LAST_ISSUE_PHASES, RESOURCE_KINDS, emptyResources, isBeforeStart, teamLetter, type AdminGameView, type Phase, type Resources } from '../../../shared/game'
+import { DEFAULT_ISSUE_LIMITS, DEFAULT_LAST_ISSUE_PHASES, DEFAULT_MIGRATION_START_DAY, RESOURCE_KINDS, emptyResources, isBeforeStart, teamLetter, type AdminGameView, type Phase, type Resources } from '../../../shared/game'
 import { RESOURCES } from '../lib/resources'
 import { api } from '../lib/api'
 import { useGameStore } from '../stores/game'
@@ -30,6 +30,8 @@ const lifeReserve = ref(0)
 const issueLimit = reactive({ ...DEFAULT_ISSUE_LIMITS })
 /** 마지막 라운드 발행 허용 단계 (진행 중에는 게임 진행 카드에서 마지막 라운드 전날까지 바꿀 수 있다) */
 const lastIssuePhases = ref<Phase[]>([...DEFAULT_LAST_ISSUE_PHASES])
+/** 이주가 열리는 라운드 (docs/100 N3). 총 라운드보다 크면 이주 없음 */
+const migrationStartDay = ref(DEFAULT_MIGRATION_START_DAY)
 /** 1일차 전쟁 선포 비용 (저장해야 게임 시작 가능. 2일차부터는 게임 진행 카드에서 전날 정한다) */
 const warCost = reactive({ gem: 0, gold: 0, credit: 0 })
 const initial = reactive<Record<number, Resources>>({})
@@ -47,6 +49,7 @@ function resetInputs() {
   lifeReserve.value = s.lifeReserve
   Object.assign(issueLimit, s.issueLimit)
   lastIssuePhases.value = [...s.lastIssuePhases]
+  migrationStartDay.value = s.migrationStartDay
   Object.assign(warCost, s.warCost ?? { gem: 0, gold: 0, credit: 0 })
   for (const g of props.groups) {
     initial[g.id] = { ...(s.initial[g.id] ?? emptyResources()) }
@@ -85,6 +88,7 @@ const dirty = computed(() => {
     issueLimit.gem !== s.issueLimit.gem ||
     issueLimit.gold !== s.issueLimit.gold ||
     lastIssuePhases.value.join() !== s.lastIssuePhases.join() ||
+    migrationStartDay.value !== s.migrationStartDay ||
     !s.warCost ||
     (['gem', 'gold', 'credit'] as const).some((k) => warCost[k] !== s.warCost![k]) ||
     props.groups.some((g) => (capacity[g.id] ?? 0) !== (s.capacity[g.id] ?? 0)) ||
@@ -103,6 +107,7 @@ async function save(): Promise<boolean> {
       lifeReserve: Math.max(0, lifeReserve.value || 0),
       issueLimit: { gem: Math.max(0, issueLimit.gem || 0), gold: Math.max(0, issueLimit.gold || 0) },
       lastIssuePhases: lastIssuePhases.value,
+      migrationStartDay: Math.min(30, Math.max(1, Math.floor(migrationStartDay.value || DEFAULT_MIGRATION_START_DAY))),
       warCost: { gem: Math.max(0, warCost.gem || 0), gold: Math.max(0, warCost.gold || 0), credit: Math.max(0, warCost.credit || 0) },
       initial: Object.fromEntries(props.groups.map((g) => [String(g.id), initial[g.id]])),
     }
@@ -163,6 +168,13 @@ async function prepare() {
       <span>마지막 라운드 발행 단계</span>
       <PhaseChecks v-model="lastIssuePhases" :disabled="busy" />
       <span v-if="!lastIssuePhases.length" class="error" style="font-size: 0.85rem">1개 이상 고르세요</span>
+    </div>
+    <div class="row" style="margin-bottom: 10px">
+      <label>🧳 이주 시작 라운드 <input v-model.number="migrationStartDay" type="number" min="1" max="30" style="width: 5em" /></label>
+      <span class="muted" style="font-size: 0.85rem">
+        <template v-if="totalDays && migrationStartDay > totalDays">총 {{ totalDays }}라운드라 이주가 열리지 않습니다</template>
+        <template v-else>이 라운드부터 마지막 라운드까지 (라이프 제출 단계 제외)</template>
+      </span>
     </div>
     <div class="row" style="margin-bottom: 10px">
       <span>⚔️ 1라운드 전쟁 선포 비용</span>

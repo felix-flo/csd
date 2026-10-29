@@ -198,6 +198,51 @@ export interface GameSettings {
   lastIssuePhases: Phase[]
   /** 테스트 모드(탭 로그인, docs/101). 켜면 리프레시 쿠키 없이 탭마다 로그인. 언제든 전환 */
   tabLogin: boolean
+  /** 이주가 열리는 라운드 (docs/100 N3, 기본 4). 총 라운드보다 크면 이주 없음 */
+  migrationStartDay: number
+}
+
+// ---- 이주 (docs/100 N3) ----
+
+export type MigrationStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled'
+/** 취소 사유: 본인 / 관리자 / 신청자가 리더가 됨 / 탈락 / 다른 경로로 팀이 바뀜 */
+export type MigrationCancelReason = 'self' | 'admin' | 'leader' | 'inactive' | 'moved'
+export const MIGRATION_CANCEL_LABELS: Record<MigrationCancelReason, string> = {
+  self: '본인 취소',
+  admin: '진행자 취소',
+  leader: '리더가 되어 자동 취소',
+  inactive: '탈락으로 자동 취소',
+  moved: '팀이 바뀌어 자동 취소',
+}
+export const DEFAULT_MIGRATION_START_DAY = 4
+
+export interface MigrationView {
+  id: number
+  day: number
+  userId: number
+  userName: string
+  fromTeamId: number
+  toTeamId: number
+  status: MigrationStatus
+  cancelReason: MigrationCancelReason | null
+  createdAt: string
+  decidedAt: string | null
+}
+
+/** 참가자 화면용 이주 정보 */
+export interface TeamMigrationView {
+  /** 지금 신청·수락할 수 있는지 (진행 중 · 이주 시작 라운드부터 · 라이프 제출 단계 제외) */
+  open: boolean
+  startDay: number
+  /** 내 대기 신청 (일반 팀원) */
+  mine: MigrationView | null
+  /** 우리 팀으로 온 대기 신청 (리더에게만) */
+  incoming: MigrationView[]
+}
+
+/** 이주를 신청·수락할 수 있는 때 */
+export function isMigrationOpen(status: GameStatus, day: number, phase: Phase | null, startDay: number): boolean {
+  return status === 'running' && day >= startDay && phase !== 'life'
 }
 
 /** 정산 팀 행 (docs/100 D7, 룰 03 §11) */
@@ -377,6 +422,8 @@ export interface TeamGameView {
   warPending: { id: number; defender: number; cost: WarCost } | null
   /** 내 최종 투표 (최종장, 본인만) */
   myFinalVote: { choice: 'gem' | 'gold'; extra: boolean } | null
+  /** 이주 (진행 중에만) */
+  migration: TeamMigrationView | null
 }
 
 /** 관리자 화면용 팀 행 */
@@ -465,6 +512,8 @@ export interface AdminGameView {
   }
   /** 최종 투표 팀별 진행 (최종장). 득표는 state.final.tally (마감 뒤) */
   finalVotes: { teamId: number; done: number; eligible: number }[]
+  /** 이주: 대기 신청(오래된 순) · 최근 처리(최신순) */
+  migrations: { pending: MigrationView[]; recent: MigrationView[] }
 }
 
 export function isResources(v: unknown): v is Resources {

@@ -23,8 +23,9 @@ import { cancelPendingIssues, clearIssues, pendingIssueTeams, publicGoldIssued }
 import { clearCouncilActions } from './council.js'
 import { clearWars, getActiveWar, getPublicWar, getWarCost, setWarCost } from './war.js'
 import { clearFinalVotes, getFinalState, isResultRevealed } from './final.js'
+import { clearMigrations, pendingMigrations } from './migration.js'
 import { GameError } from './gameError.js'
-import { DEFAULT_ISSUE_LIMITS, DEFAULT_LAST_ISSUE_PHASES, emptyResources, isBeforeStart, PHASE_LABELS, PHASES, sortPhases, sumResources, teamLetter } from '../../../shared/game.js'
+import { DEFAULT_ISSUE_LIMITS, DEFAULT_LAST_ISSUE_PHASES, DEFAULT_MIGRATION_START_DAY, emptyResources, isBeforeStart, PHASE_LABELS, PHASES, sortPhases, sumResources, teamLetter } from '../../../shared/game.js'
 import type {
   GameResults, GameSettings, GameState, GameStatus, IssueLimits, IssueRequestView, LobbyTeam, Phase, Resources, RosterTeam, TradeView, WarCost,
 } from '../../../shared/game.js'
@@ -51,6 +52,8 @@ interface GameRow {
   tab_login: number
   /** 마지막 라운드 라이프 투표권 안건: NULL 미입력 / 0 부결 / 1 통과 (docs/100 N2). 최종장 열은 db/final.ts 가 다룬다 */
   life_vote_passed: 0 | 1 | null
+  /** 이주가 열리는 라운드 (docs/100 N3) */
+  migration_start_day: number
 }
 
 /** 최종장 열을 비운다 (게임 시작·리셋) */
@@ -124,6 +127,7 @@ export function getSettings(): GameSettings {
     warCost: getWarCost(1),
     lastIssuePhases: parsePhases(g.last_issue_phases),
     tabLogin: g.tab_login === 1,
+    migrationStartDay: g.migration_start_day,
   }
 }
 
@@ -216,6 +220,8 @@ export function saveSettings(input: {
   warCost?: WarCost
   /** 마지막 라운드 발행 허용 단계. 없으면 기존 값 유지 */
   lastIssuePhases?: Phase[]
+  /** 이주 시작 라운드. 없으면 기존 값 유지 */
+  migrationStartDay?: number
 }): number[] {
   return db.transaction(() => {
     const status = getGameRow().status
@@ -239,6 +245,7 @@ export function saveSettings(input: {
     ])
     if (input.warCost) setWarCost(1, input.warCost)
     if (input.lastIssuePhases) setLastIssuePhases(input.lastIssuePhases)
+    if (input.migrationStartDay) updateGame('migration_start_day = ?', [input.migrationStartDay])
     if (input.issueLimit) updateGame('gem_issue_limit = ?, gold_issue_limit = ?', [input.issueLimit.gem, input.issueLimit.gold])
     const ended = applyTestAccounts(input.includeTest)
     if (status === 'ready') ended.push(...syncParticipantPins().deleted)
@@ -359,6 +366,7 @@ export function startGame(by: number): number[] {
     clearIssues()
     clearCouncilActions()
     clearFinalVotes()
+    clearMigrations()
     resetAmountsToInitial()
     recordInitialLedger(1, by)
     updateGame(`status = 'running', day = 1, phase = 'leader', life_reserve = life_reserve_initial, aid_used = 0, results = NULL,
@@ -401,6 +409,13 @@ export function advance(expect: { day: number; phase: Phase }): AdvanceResult {
       // 마지막 라운드 필수 안건(라이프 투표권)은 리더 협의 단계에서 통과/부결을 넣어야 넘어간다 (docs/100 N2-a′)
       if (isLastRound(g) && g.phase === 'council' && g.life_vote_passed == null) {
         throw new GameError('life_vote_undecided', '라이프 투표권 안건의 통과/부결을 먼저 입력하세요')
+      }
+      // 라이프 제출 단계에는 이주가 없으므로 대기 신청을 정리해야 넘어간다 (docs/100 N3-d)
+      if (g.phase === 'council') {
+        const pending = pendingMigrations()
+        if (pending.length) {
+          throw new GameError('migration_pending', `처리하지 않은 이주 신청이 있습니다 (${pending.map((m) => `${m.userName} → ${teamLabel(m.toTeamId)}`).join(', ')}). 받는 팀 리더가 처리하거나 진행자가 취소하세요`)
+        }
       }
       result.phase = PHASES[idx + 1]!
       updateGame('phase = ?', [result.phase])
@@ -472,6 +487,7 @@ export function resetGame(clearSettings = false): ResetResult {
     clearWars()
     clearCouncilActions()
     clearFinalVotes()
+    clearMigrations()
     clearLedger()
     const events = db.prepare('DELETE FROM events').run().changes
     if (removed.length) db.prepare(`DELETE FROM users WHERE id IN (${removed.map(() => '?').join(',')})`).run(...removed)
@@ -479,8 +495,8 @@ export function resetGame(clearSettings = false): ResetResult {
     if (clearSettings) {
       db.prepare('UPDATE groups SET capacity = 0').run()
       db.prepare('UPDATE team_resources SET initial = 0').run()
-      updateGame('include_test = 1, life_reserve_initial = 0, tab_login = 0, gem_issue_limit = ?, gold_issue_limit = ?, last_issue_phases = ?', [
-        DEFAULT_ISSUE_LIMITS.gem, DEFAULT_ISSUE_LIMITS.gold, JSON.stringify(DEFAULT_LAST_ISSUE_PHASES),
+      updateGame('include_test = 1, life_reserve_initial = 0, tab_login = 0, gem_issue_limit = ?, gold_issue_limit = ?, last_issue_phases = ?, migration_start_day = ?', [
+        DEFAULT_ISSUE_LIMITS.gem, DEFAULT_ISSUE_LIMITS.gold, JSON.stringify(DEFAULT_LAST_ISSUE_PHASES), DEFAULT_MIGRATION_START_DAY,
       ])
       setWarCost(1, { gem: 0, gold: 0, credit: 0 })
     }
