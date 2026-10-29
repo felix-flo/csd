@@ -1,6 +1,8 @@
 <script setup lang="ts">
 /**
- * 게임 진행 (관리자): 준비 상태 점검·리더 지정·게임 시작 / 단계 넘기기 / 다음 날 / 게임 종료 / 등수 발표 / 리셋, 그리고 현재 단계의 팀별 현황.
+ * 게임 진행 (관리자): 준비 상태 점검·리더 지정·게임 시작 / 단계 넘기기 / 다음 날 / 게임 종료(= 최종장 시작) / 리셋, 그리고 현재 단계의 팀별 현황.
+ * - 마지막 라운드 리더 협의: 필수 안건(라이프 투표권) 통과/부결 입력. 넣어야 라이프 제출로 넘어간다 (docs/100 N2)
+ * - 최종장(final): FinalControl (투표 마감·가위바위보·결과·정산)
  * - 준비 상태: 팀별 입장 현황(A 3/5)과 리더. 리더가 없는 팀이 있으면 시작할 수 없다. 팀을 고르지 않은 참가자는 시작할 때 비활성.
  * - 리셋은 어느 상태에서나: 참가자·진행자 계정과 모든 기록·알림을 지우고 설정 단계로 (리셋한 사람이 진행자면 본인도 로그아웃).
  * - 다음 단계 요청에 보고 있던 일차·단계를 함께 보내 중복 클릭·관리자 2명 동시 조작을 막는다 (서버 stale 거부).
@@ -10,8 +12,8 @@
 import { computed, reactive, ref, watch } from 'vue'
 import type { AdminUser, GroupInfo } from '../../../shared/types'
 import {
-  PHASE_LABELS, PHASES, RESOURCE_LABELS, DEFAULT_LAST_ISSUE_PHASES, WAR_COST_KINDS, WAR_STATUS_LABELS, isLifeExempt, josa, rankTeams, teamLetter,
-  type AdminGameView, type Phase, type Resources, type ScoreMode, type TradeView, type WarCost, type WarResult,
+  FINAL_STEP_LABELS, PHASE_LABELS, PHASES, RESOURCE_LABELS, DEFAULT_LAST_ISSUE_PHASES, WAR_COST_KINDS, WAR_STATUS_LABELS, isLifeExempt, josa, teamLetter,
+  type AdminGameView, type Phase, type Resources, type TradeView, type WarCost, type WarResult,
 } from '../../../shared/game'
 import { useRouter } from 'vue-router'
 import { api } from '../lib/api'
@@ -22,6 +24,8 @@ import ModalDialog from './ModalDialog.vue'
 import ResourceRow from './ResourceRow.vue'
 import PhaseChecks from './PhaseChecks.vue'
 import TabLoginToggle from './TabLoginToggle.vue'
+import FinalControl from './FinalControl.vue'
+import ResultsBoard from './ResultsBoard.vue'
 
 const props = defineProps<{ users: AdminUser[]; groups: GroupInfo[] }>()
 const emit = defineEmits<{ updated: [users: AdminUser[]] }>()
@@ -88,9 +92,16 @@ function askWar(result: WarResult) {
   warResult.value = result
   modal.value = 'war'
 }
+// ---- 마지막 라운드 필수 안건: 남은 라이프를 최종 투표권으로 (docs/100 N2) ----
+const lifeVoteOpen = computed(() => s.value?.status === 'running' && isLastDay.value && s.value.phase === 'council')
+function setLifeVote(passed: boolean) {
+  return run(`라이프 투표권 안건 ${passed ? '통과' : '부결'}`, () => api.post('/api/admin/game/life-vote', { passed }))
+}
+
 /** 다음 단계/다음 날 버튼을 막는 이유 */
 const advanceBlocker = computed(() => {
   if (warBlocker.value) return warBlocker.value
+  if (lifeVoteOpen.value && s.value?.lifeVote == null) return '라이프 투표권 안건의 통과/부결을 아래에서 입력해야 라이프 제출로 넘어갈 수 있습니다'
   if (leavingIssuePhases.value && pendingIssues.value) return `처리하지 않은 발행 요청이 있습니다. ${PHASE_LABELS[nextPhase.value!]} 단계에서는 발행할 수 없어 수락 또는 거절해야 넘어갈 수 있습니다`
   if (!nextPhase.value && !isLastDay.value && pendingIssues.value) return '처리하지 않은 발행 요청이 있습니다. 수락 또는 거절해야 다음 라운드로 넘어갈 수 있습니다'
   if (!nextPhase.value && !isLastDay.value && !view.value?.war.nextCost) return `${(s.value?.day ?? 0) + 1}라운드 전쟁 선포 비용을 아래 "전쟁" 에서 정해야 다음 라운드로 넘어갈 수 있습니다`
@@ -156,8 +167,13 @@ const modalText = computed(() => {
         : ''
       return { title: last ? `마지막 라운드(${st.day + 1}라운드)로 넘길까요?` : `${st.day + 1}라운드로 넘길까요?`, message: `이번 라운드가 끝나고 ${st.day + 1}라운드 리더 선출이 시작됩니다.${warn}${last}` }
     }
-    case 'end':
-      return { title: '게임을 종료할까요?', message: `${st.day}라운드 모든 팀의 라이프 제출이 끝났습니다. 종료하면 더 이상 진행할 수 없습니다.\n환산 규칙을 골라 등수를 발표할 수 있습니다.` }
+    case 'end': {
+      const lv = st.lifeVote ? '라이프 투표권 사용 가능 (팀 라이프 1개로 1표 더, 1인 1장)' : '1인 1표 (라이프 투표권 안건 부결)'
+      return {
+        title: '게임을 종료하고 최종장을 시작할까요?',
+        message: `${st.day}라운드 모든 팀의 라이프 제출이 끝났습니다. 거래·발행·원조는 더 이상 할 수 없습니다.\n최종 투표(보석 vs 골드)가 열립니다 · ${lv}.`,
+      }
+    }
     case 'reset': {
       const self = !props.users.find((u) => u.id === auth.user?.id)?.isFixed
       return {
@@ -283,21 +299,6 @@ const offerText = (o: Resources | null) =>
   o ? (Object.entries(o).filter(([, n]) => n > 0).map(([k, n]) => `${RESOURCE_LABELS[k as keyof Resources]} ${n}`).join(', ') || '없음') : '제안 전'
 const tradeLine = (t: TradeView) => `${team(t.from.teamId)?.name} → ${team(t.to.teamId)?.name}`
 
-// ---- 등수 ----
-const mode = ref<ScoreMode>('ratio')
-const ratioGem = ref(1)
-const ratioGold = ref(1)
-const rule = computed(() => ({ mode: mode.value, gem: Math.max(0, ratioGem.value || 0), gold: Math.max(0, ratioGold.value || 0) }))
-const preview = computed(() => {
-  if (!view.value) return []
-  return rankTeams(
-    view.value.teams.map((t) => ({ teamId: t.teamId, name: team(t.teamId)?.name ?? '', color: team(t.teamId)?.color ?? '', gem: t.resources.gem, gold: t.resources.gold })),
-    rule.value,
-  )
-})
-function publish() {
-  return run('등수 발표됨', () => api.post('/api/admin/game/results', rule.value))
-}
 </script>
 
 <template>
@@ -320,16 +321,17 @@ function publish() {
         <button v-if="nextPhase" :disabled="busy || !!advanceBlocker" @click="modal = 'next'">다음 단계: {{ PHASE_LABELS[nextPhase] }} →</button>
         <button v-else-if="!isLastDay" :disabled="busy || !!advanceBlocker" @click="modal = 'next'">다음 라운드로 ({{ s.day + 1 }}라운드) →</button>
         <span v-if="advanceBlocker && (nextPhase || !isLastDay)" class="blocker">{{ advanceBlocker }}</span>
-        <button v-if="isLastDay" :disabled="busy || !canEnd" class="danger" @click="modal = 'end'">게임 종료</button>
+        <button v-if="isLastDay" :disabled="busy || !canEnd" class="danger" @click="modal = 'end'">게임 종료 (최종장 시작)</button>
         <span v-if="endBlocker" class="blocker">{{ endBlocker }}</span>
       </template>
-      <span v-else class="mono"><strong>게임 종료</strong></span>
+      <span v-else-if="s.status === 'final'" class="mono"><strong>최종장</strong> · {{ s.final ? FINAL_STEP_LABELS[s.final.step] : '' }}</span>
+      <span v-else class="mono"><strong>게임 끝</strong></span>
       <span class="spacer" />
       <button class="secondary" :disabled="busy" @click="clearSettings = false; modal = 'reset'">게임 리셋</button>
     </div>
     <p class="muted" style="min-height: 1.2em; margin: 6px 0 0">{{ status }}</p>
     <!-- 시작 후에는 게임 설정 카드가 숨으므로 여기서 테스트 모드를 끌 수 있게 (docs/101) -->
-    <div v-if="s.status === 'running' || s.status === 'ended'" class="row" style="margin: 4px 0 8px">
+    <div v-if="s.status === 'running' || s.status === 'final' || s.status === 'ended'" class="row" style="margin: 4px 0 8px">
       <TabLoginToggle />
     </div>
     <div v-if="resetDone" class="reset-done">
@@ -470,6 +472,19 @@ function publish() {
       대가 없는 원조는 아래 "팀 재화" 카드의 원조 입력으로 처리합니다 (주는 팀 라운드당 1회{{ view.aidsToday.length ? ` · 이번 라운드 ${view.aidsToday.length}건` : '' }}).
       제재 기능은 아직 없습니다. 전쟁은 거래 단계에서 선포됩니다 (아래 "전쟁").
     </p>
+    <div v-if="lifeVoteOpen" class="life-vote" :class="{ missing: s.lifeVote == null }">
+      <div><strong>📜 필수 안건: 남은 라이프를 최종 투표권으로 인정할까요?</strong></div>
+      <div class="muted">리더 4명 중 3명 찬성이면 통과. 통과 시 최종 투표 때 팀 라이프 1개로 1표 더 (1인 1장). 라이프 제출로 넘어가면 바꿀 수 없습니다.</div>
+      <div class="row" style="margin-top: 6px">
+        <button :class="{ secondary: s.lifeVote !== true }" :disabled="busy" @click="setLifeVote(true)">통과</button>
+        <button :class="{ secondary: s.lifeVote !== false }" :disabled="busy" @click="setLifeVote(false)">부결</button>
+        <span v-if="s.lifeVote == null" class="blocker">아직 입력하지 않음</span>
+        <span v-else class="muted">입력됨: <strong>{{ s.lifeVote ? '통과' : '부결' }}</strong> (전체 공지됨)</span>
+      </div>
+    </div>
+    <p v-else-if="s.status === 'running' && isLastDay && s.phase === 'life'" class="muted">
+      라이프 투표권 안건: <strong>{{ s.lifeVote ? '통과' : '부결' }}</strong>
+    </p>
 
     <!-- 라이프 제출 -->
     <template v-if="s.status === 'running' && s.phase === 'life'">
@@ -495,35 +510,9 @@ function publish() {
       </table>
     </template>
 
-    <!-- 종료: 등수 -->
-    <template v-if="s.status === 'ended'">
-      <h3>등수 계산</h3>
-      <div class="row">
-        <label class="row" style="gap: 4px"><input v-model="mode" type="radio" value="gem" /> 보석만</label>
-        <label class="row" style="gap: 4px"><input v-model="mode" type="radio" value="gold" /> 골드만</label>
-        <label class="row" style="gap: 4px"><input v-model="mode" type="radio" value="ratio" /> 비율</label>
-        <template v-if="mode === 'ratio'">
-          보석 × <input v-model.number="ratioGem" type="number" min="0" style="width: 4.5em" />
-          + 골드 × <input v-model.number="ratioGold" type="number" min="0" style="width: 4.5em" />
-        </template>
-      </div>
-      <table class="tbl" style="margin-top: 8px">
-        <thead><tr><th>순위</th><th>팀</th><th>보석</th><th>골드</th><th>점수</th></tr></thead>
-        <tbody>
-          <tr v-for="t in preview" :key="t.teamId">
-            <td class="mono">{{ t.rank }}위</td>
-            <td><TeamMark :color="t.color" />{{ t.name }}</td>
-            <td class="mono">{{ t.gem }}</td>
-            <td class="mono">{{ t.gold }}</td>
-            <td class="mono"><strong>{{ t.score }}</strong></td>
-          </tr>
-        </tbody>
-      </table>
-      <div class="row" style="margin-top: 10px">
-        <button :disabled="busy || (mode === 'ratio' && rule.gem + rule.gold === 0)" @click="publish">등수 발표 (프레젠테이션 표시)</button>
-        <span v-if="s.results" class="muted">발표됨 · {{ new Date(s.results.publishedAt).toLocaleTimeString('ko-KR') }} (다시 누르면 갱신)</span>
-      </div>
-    </template>
+    <!-- 최종장 (docs/100 N2) -->
+    <FinalControl v-if="s.status === 'final' && s.final" :groups="groups" />
+    <ResultsBoard v-else-if="s.status === 'ended' && s.final" :final="s.final" :results="s.results" />
 
     <template v-if="s.status === 'running'">
       <h3>초기 재화 합계 <span class="muted">(프레젠테이션 공개)</span></h3>
@@ -534,7 +523,7 @@ function publish() {
       :open="modal !== null"
       :title="modalText.title"
       :message="modalText.message"
-      :confirm-label="modal === 'reset' ? '리셋' : modal === 'end' ? '종료' : modal === 'start' ? '시작' : modal === 'war' ? '결과 확정' : modal === 'warApprove' ? '승인' : modal === 'warReject' ? '거절' : '확인'"
+      :confirm-label="modal === 'reset' ? '리셋' : modal === 'end' ? '최종장 시작' : modal === 'start' ? '시작' : modal === 'war' ? '결과 확정' : modal === 'warApprove' ? '승인' : modal === 'warReject' ? '거절' : '확인'"
       cancel-label="취소"
       :danger="modal === 'reset' || modal === 'end' || modal === 'cancelTrade' || modal === 'war' || modal === 'warApprove'"
       :busy="busy"
@@ -557,6 +546,8 @@ h3 { font-size: 0.95rem; margin: 16px 0 6px; font-weight: 600; }
 .tbl th, .tbl td { text-align: left; padding: 5px 12px 5px 0; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
 .tbl th { color: var(--muted); font-weight: 500; font-size: 0.8rem; }
 .letter { display: inline-block; min-width: 1.4em; font-weight: 600; }
+.life-vote { margin-top: 8px; border: 1px solid var(--line); border-left: 4px solid var(--blue); border-radius: var(--radius); background: var(--bg-soft); padding: 10px 12px; }
+.life-vote.missing { border-color: var(--red); border-left-color: var(--red); }
 .war-pending { border: 2px solid var(--amber, #b7791f); border-left-width: 6px; border-radius: var(--radius); background: var(--bg-soft); padding: 10px 12px; }
 .war-active { border: 2px solid var(--red); border-left-width: 6px; border-radius: var(--radius); background: var(--red-bg); padding: 10px 12px; }
 .war-active strong { color: var(--red); }

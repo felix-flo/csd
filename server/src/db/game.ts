@@ -4,7 +4,8 @@
  * - ready  : "초기셋팅완료" 로 진입. 최대 인원 합계만큼 팀 없는 PIN 을 만들고, 참가자가 로그인해 이름을 입력하고 팀(A, B, C…)을 고른다.
  *            설정은 계속 바꿀 수 있고 setup 으로 되돌릴 수도 있다 (배정된 참가자 유지). 관리자가 팀별 리더를 지정해야 시작할 수 있다
  * - running: day 1..totalDays, phase 는 PHASES 순서. 관리자 "다음 단계" 로만 넘어간다. 라이프 제출 다음은 +1일 리더 선출
- * - ended  : 마지막 날에 관리자가 종료. 환산 규칙을 골라 등수를 발표한다
+ * - final  : 최종장 (docs/100 N2). 마지막 라운드 라이프 제출이 끝나면 관리자 "게임 종료" 로 진입. 최종 투표 → 결과 발표 → 정산 (db/final.ts)
+ * - ended  : 정산 뒤 관리자가 게임을 끝낸다
  * - reset  : 참가자·진행자 계정을 모두 지우고(고정 관리자·프레젠테이션만 남김) 진행 기록과 알림을 전부 비운 뒤 setup 으로.
  *            시드 테스트 계정은 고정 PIN 으로 다시 만든다. 팀 정의·룰 문서·설정값(총 일수 제외)은 유지
  */
@@ -21,10 +22,11 @@ import { allLivesDone, clearLifeSubmissions } from './life.js'
 import { cancelPendingIssues, clearIssues, pendingIssueTeams, publicGoldIssued } from './issuance.js'
 import { clearCouncilActions } from './council.js'
 import { clearWars, getActiveWar, getPublicWar, getWarCost, setWarCost } from './war.js'
+import { clearFinalVotes, getFinalState, isResultRevealed } from './final.js'
 import { GameError } from './gameError.js'
-import { DEFAULT_ISSUE_LIMITS, DEFAULT_LAST_ISSUE_PHASES, emptyResources, isBeforeStart, PHASE_LABELS, PHASES, rankTeams, sortPhases, sumResources, teamLetter } from '../../../shared/game.js'
+import { DEFAULT_ISSUE_LIMITS, DEFAULT_LAST_ISSUE_PHASES, emptyResources, isBeforeStart, PHASE_LABELS, PHASES, sortPhases, sumResources, teamLetter } from '../../../shared/game.js'
 import type {
-  GameResults, GameSettings, GameState, GameStatus, IssueLimits, IssueRequestView, LobbyTeam, Phase, Resources, RosterTeam, ScoreRule, TradeView, WarCost,
+  GameResults, GameSettings, GameState, GameStatus, IssueLimits, IssueRequestView, LobbyTeam, Phase, Resources, RosterTeam, TradeView, WarCost,
 } from '../../../shared/game.js'
 import type { GroupInfo } from '../../../shared/types.js'
 
@@ -47,7 +49,12 @@ interface GameRow {
   last_issue_phases: string
   /** 테스트 모드(탭 로그인, docs/101): 1 이면 로그인 때 리프레시 쿠키를 심지 않는다 */
   tab_login: number
+  /** 마지막 라운드 라이프 투표권 안건: NULL 미입력 / 0 부결 / 1 통과 (docs/100 N2). 최종장 열은 db/final.ts 가 다룬다 */
+  life_vote_passed: 0 | 1 | null
 }
+
+/** 최종장 열을 비운다 (게임 시작·리셋) */
+const CLEAR_FINAL = `final_step = NULL, life_vote_passed = NULL, votes_closed = 0, tiebreak = NULL, adopted = NULL`
 
 /** 테스트 모드(탭 로그인) 여부. 로그인·재발급 라우터가 본다 */
 export function isTabLogin(): boolean {
@@ -80,10 +87,13 @@ export function getGameState(): GameState {
     livesDone: g.status === 'running' && g.phase === 'life' && allLivesDone(g.day),
     initialTotals: sumResources([...initial].filter(([id]) => teamIds.has(id)).map(([, r]) => r)),
     results: g.results ? (JSON.parse(g.results) as GameResults) : null,
+    lifeVote: g.life_vote_passed == null ? null : g.life_vote_passed === 1,
+    final: getFinalState(),
     lobby: g.status === 'ready' ? getLobby() : null,
     title: isBeforeStart(g.status) ? null : GAME_TITLE,
     war: getPublicWar(g.day, g.status === 'running'),
-    goldIssued: isBeforeStart(g.status) ? null : publicGoldIssued(g.total_days),
+    // 마지막 라운드 골드는 최종장 결과 발표부터 포함 (docs/100 N2)
+    goldIssued: isBeforeStart(g.status) ? null : publicGoldIssued(isResultRevealed() ? null : g.total_days),
   }
 }
 
@@ -132,7 +142,7 @@ function isLastRound(g: GameRow): boolean {
  */
 export function setLastIssuePhases(phases: Phase[]) {
   const g = getGameRow()
-  if (g.status === 'ended') throw new GameError('ended', '게임이 끝났습니다')
+  if (g.status === 'final' || g.status === 'ended') throw new GameError('ended', '게임이 끝났습니다')
   if (isLastRound(g)) throw new GameError('last_round_locked', '마지막 라운드가 시작되어 발행 단계를 바꿀 수 없습니다')
   const sorted = sortPhases(phases)
   if (!sorted.length) throw new GameError('no_phase', '발행을 허용할 단계를 1개 이상 고르세요', 400)
@@ -348,10 +358,11 @@ export function startGame(by: number): number[] {
     clearLifeSubmissions()
     clearIssues()
     clearCouncilActions()
+    clearFinalVotes()
     resetAmountsToInitial()
     recordInitialLedger(1, by)
     updateGame(`status = 'running', day = 1, phase = 'leader', life_reserve = life_reserve_initial, aid_used = 0, results = NULL,
-                started_at = datetime('now'), ended_at = NULL`)
+                started_at = datetime('now'), ended_at = NULL, ${CLEAR_FINAL}`)
     // 시작 전에는 리더 표시를 그대로 두므로 여기서 정리 (비활성 리더 해제. 활성 리더는 위에서 팀마다 확인했다)
     for (const t of listGroups()) ensureLeader(t.id)
     openElections(1)
@@ -387,6 +398,10 @@ export function advance(expect: { day: number; phase: Phase }): AdvanceResult {
     const idx = PHASES.indexOf(g.phase!)
     if (idx < PHASES.length - 1) {
       guardLastRoundIssue(g, PHASES[idx + 1]!)
+      // 마지막 라운드 필수 안건(라이프 투표권)은 리더 협의 단계에서 통과/부결을 넣어야 넘어간다 (docs/100 N2-a′)
+      if (isLastRound(g) && g.phase === 'council' && g.life_vote_passed == null) {
+        throw new GameError('life_vote_undecided', '라이프 투표권 안건의 통과/부결을 먼저 입력하세요')
+      }
       result.phase = PHASES[idx + 1]!
       updateGame('phase = ?', [result.phase])
     } else {
@@ -407,7 +422,8 @@ export function advance(expect: { day: number; phase: Phase }): AdvanceResult {
 }
 
 /**
- * 마지막 날의 턴이 모두 끝나야 종료할 수 있다: 라이프 제출 단계 + 모든 팀 제출 완료 (팀원 0·1명 팀은 완료로 본다).
+ * 게임 종료 = 최종장 시작 (running → final/vote, docs/100 N2).
+ * 마지막 날의 턴이 모두 끝나야 한다: 라이프 제출 단계 + 모든 팀 제출 완료 (팀원 0·1명 팀은 완료로 본다).
  * 비상 조기 종료는 두지 않는다 (문제가 생기면 리셋). 진행 중 거래와 대기 중 발행 요청은 취소
  */
 export function endGame(): { trade: TradeView | null; issues: IssueRequestView[] } {
@@ -421,23 +437,9 @@ export function endGame(): { trade: TradeView | null; issues: IssueRequestView[]
     guardLastRoundIssue(g, null)
     const trade = cancelActiveTrade()
     const issues = cancelPendingIssues()
-    updateGame(`status = 'ended', phase = NULL, ended_at = datetime('now')`)
+    clearFinalVotes()
+    updateGame(`status = 'final', phase = NULL, final_step = 'vote', votes_closed = 0, tiebreak = NULL, adopted = NULL, results = NULL`)
     return { trade, issues }
-  })()
-}
-
-/** 등수 계산·발표 (종료 후, 여러 번 가능 — 마지막 발표가 표시된다) */
-export function publishResults(rule: ScoreRule): GameResults {
-  return db.transaction(() => {
-    if (getGameRow().status !== 'ended') throw new GameError('not_ended', '게임 종료 후에 발표할 수 있습니다')
-    const { amount } = getAllResources()
-    const teams = listGroups().map((t) => {
-      const r = amount.get(t.id) ?? emptyResources()
-      return { teamId: t.id, name: t.name, color: t.color, gem: r.gem, gold: r.gold }
-    })
-    const results: GameResults = { rule, teams: rankTeams(teams, rule), publishedAt: new Date().toISOString() }
-    updateGame('results = ?', [JSON.stringify(results)])
-    return results
   })()
 }
 
@@ -469,6 +471,7 @@ export function resetGame(clearSettings = false): ResetResult {
     clearIssues()
     clearWars()
     clearCouncilActions()
+    clearFinalVotes()
     clearLedger()
     const events = db.prepare('DELETE FROM events').run().changes
     if (removed.length) db.prepare(`DELETE FROM users WHERE id IN (${removed.map(() => '?').join(',')})`).run(...removed)
@@ -483,7 +486,7 @@ export function resetGame(clearSettings = false): ResetResult {
     }
     resetAmountsToInitial()
     updateGame(`status = 'setup', total_days = NULL, day = 0, phase = NULL, life_reserve = life_reserve_initial, aid_used = 0,
-                results = NULL, started_at = NULL, ended_at = NULL`)
+                results = NULL, started_at = NULL, ended_at = NULL, ${CLEAR_FINAL}`)
     applyTestAccounts(getGameRow().include_test === 1)
     return {
       removed,

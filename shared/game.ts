@@ -1,6 +1,6 @@
 /**
  * 게임 진행 정의 (서버/클라이언트 공용). 설계·결정 경위: docs/95.게임진행_설계.md
- * - 게임 상태: setup(설정) → ready(준비: 참가자 입장·팀 선택) → running(진행, day/phase) → ended(종료, 등수 발표)
+ * - 게임 상태: setup(설정) → ready(준비: 참가자 입장·팀 선택) → running(진행, day/phase) → final(최종장: 투표·결과·정산) → ended(끝)
  * - 라운드 흐름: 리더 선출 → 생산게임 → 거래 → 리더 협의 → 라이프 제출. 단계 전환은 관리자 버튼으로만.
  * - 용어: 화면·알림은 "N라운드" (코드·DB·API 의 day 는 그대로. docs/100 §5)
  */
@@ -26,8 +26,38 @@ export const PHASE_LABELS: Record<Phase, string> = {
   life: '라이프 제출',
 }
 
-export type GameStatus = 'setup' | 'ready' | 'running' | 'ended'
+export type GameStatus = 'setup' | 'ready' | 'running' | 'final' | 'ended'
 
+/** 최종장 단계 (docs/100 N2). spy 는 N4 스파이 구현 때 쓴다 (지금은 정산 다음 바로 끝) */
+export const FINAL_STEPS = ['vote', 'result', 'settle', 'spy'] as const
+export type FinalStep = (typeof FINAL_STEPS)[number]
+export const FINAL_STEP_LABELS: Record<FinalStep, string> = {
+  vote: '최종 투표',
+  result: '결과 발표',
+  settle: '정산',
+  spy: '스파이 공개',
+}
+
+/** 동점 가위바위보: 화이트 리더 승 = 보석, 옐로우 리더 승 = 골드 */
+export type Tiebreak = 'white' | 'yellow'
+export const TIEBREAK_ADOPTS: Record<Tiebreak, 'gem' | 'gold'> = { white: 'gem', yellow: 'gold' }
+
+/** 최종장 공개 상태 (final·ended). 득표는 마감 뒤에만 */
+export interface FinalState {
+  step: FinalStep
+  /** 투표한 사람 수 / 투표할 수 있는 사람 수 (활성 참가자) */
+  votes: { done: number; eligible: number }
+  closed: boolean
+  /** 득표 (라이프 투표권 포함). 마감 뒤에만 */
+  tally: { gem: number; gold: number } | null
+  /** 마감했는데 동점이고 가위바위보 결과를 아직 넣지 않음 */
+  tieUnresolved: boolean
+  tiebreak: Tiebreak | null
+  /** 채택 화폐 (마감·동점 처리 뒤) */
+  adopted: 'gem' | 'gold' | null
+  /** 마지막 라운드 발행량 — 결과 발표 단계부터 공개 */
+  lastIssue: { gem: number; gold: number } | null
+}
 /** 시작 전(설정·준비)에는 참가자가 게임 화면을 보지 못하고, 팀은 실제 이름 대신 A, B, C… 로 표시한다 */
 export function isBeforeStart(status: GameStatus | null | undefined): boolean {
   return status === 'setup' || status === 'ready'
@@ -76,8 +106,12 @@ export interface GameState {
   livesDone: boolean
   /** 모든 팀 초기 재화 합계 (프레젠테이션 공개용. 게임 중 변동은 공개하지 않는다) */
   initialTotals: Resources
-  /** 발표된 등수 (종료 후 관리자가 발표하면) */
+  /** 정산 결과 (최종장 정산 단계부터) */
   results: GameResults | null
+  /** 마지막 라운드 필수 안건 "남은 라이프를 최종 투표권으로" 결과. null = 아직 입력 안 함 (docs/100 N2) */
+  lifeVote: boolean | null
+  /** 최종장 (final·ended 일 때만) */
+  final: FinalState | null
   /** 팀 선택 현황 (준비 상태에서만) */
   lobby: LobbyTeam[] | null
   /**
@@ -87,7 +121,7 @@ export interface GameState {
   title: string | null
   /** 전쟁 (진행 중일 때만 의미 있음). 모든 화면 상단 "⚔️ 전쟁 중" 띠, 거래 금지 표시에 쓴다 */
   war: PublicWarState
-  /** 현황판 공개: 마지막 라운드 전까지 수락된 골드 발행 합계 (docs/100 D5). 시작 전은 null. 마지막 라운드 발행은 최종장 때 공개 */
+  /** 현황판 공개: 마지막 라운드 전까지 수락된 골드 발행 합계 (docs/100 D5). 시작 전은 null. 최종장 결과 발표부터 마지막 라운드 포함 */
   goldIssued: number | null
 }
 
@@ -166,29 +200,24 @@ export interface GameSettings {
   tabLogin: boolean
 }
 
-export type ScoreMode = 'gem' | 'gold' | 'ratio'
-
-export interface ScoreRule {
-  mode: ScoreMode
-  /** ratio 일 때 점수 = 보석 × gem + 골드 × gold */
-  gem: number
-  gold: number
-}
-
-export interface TeamResult {
+/** 정산 팀 행 (docs/100 D7, 룰 03 §11) */
+export interface TeamShare {
   teamId: number
   name: string
   color: string
-  gem: number
-  gold: number
-  score: number
-  /** 공동 순위 허용 (1, 2, 2, 4) */
-  rank: number
+  /** 살아남은 인원 (활성 팀원) */
+  alive: number
+  /** 보유한 채택 화폐 */
+  holding: number
+  /** 보상 비율 0~1 */
+  share: number
+  /** 상대 화폐 발행팀 (보석 채택 → 옐로우, 골드 채택 → 화이트): 보상 없음, 분모에서도 제외 */
+  excluded: boolean
 }
 
 export interface GameResults {
-  rule: ScoreRule
-  teams: TeamResult[]
+  adopted: 'gem' | 'gold'
+  teams: TeamShare[]
   publishedAt: string
 }
 
@@ -346,6 +375,8 @@ export interface TeamGameView {
   issue: TeamIssueView | null
   /** 내 팀이 선포해 관리자 승인을 기다리는 전쟁 (docs/99 §8). 공격팀만 안다 */
   warPending: { id: number; defender: number; cost: WarCost } | null
+  /** 내 최종 투표 (최종장, 본인만) */
+  myFinalVote: { choice: 'gem' | 'gold'; extra: boolean } | null
 }
 
 /** 관리자 화면용 팀 행 */
@@ -369,7 +400,7 @@ export interface LedgerEntry {
   createdAt: string
 }
 
-export type LedgerReason = 'init' | 'production' | 'correction' | 'aid' | 'trade' | 'trade_credit' | 'life' | 'issue' | 'war_cost' | 'war_loss' | 'war_spoils'
+export type LedgerReason = 'init' | 'production' | 'correction' | 'aid' | 'trade' | 'trade_credit' | 'life' | 'issue' | 'war_cost' | 'war_loss' | 'war_spoils' | 'final_vote'
 
 export const LEDGER_REASON_LABELS: Record<LedgerReason, string> = {
   init: '초기 설정',
@@ -383,6 +414,7 @@ export const LEDGER_REASON_LABELS: Record<LedgerReason, string> = {
   war_cost: '전쟁 비용',
   war_loss: '전쟁 패배',
   war_spoils: '전쟁 전리품',
+  final_vote: '라이프 투표권',
 }
 
 /** 리더간 협의 원조 1건 */
@@ -431,6 +463,8 @@ export interface AdminGameView {
     /** 다음 날 선포 비용 (입력해야 다음 날로 넘어간다. 마지막 날에는 필요 없음) */
     nextCost: WarCost | null
   }
+  /** 최종 투표 팀별 진행 (최종장). 득표는 state.final.tally (마감 뒤) */
+  finalVotes: { teamId: number; done: number; eligible: number }[]
 }
 
 export function isResources(v: unknown): v is Resources {
@@ -443,17 +477,33 @@ export function sumResources(list: Resources[]): Resources {
   return total
 }
 
-/** 등수 계산. 점수 내림차순, 같은 점수는 같은 등수 (1, 2, 2, 4). 동점 표시 순서는 보석 → 팀 id */
-export function rankTeams(teams: Omit<TeamResult, 'score' | 'rank'>[], rule: ScoreRule): TeamResult[] {
-  const scoreOf = (t: { gem: number; gold: number }) =>
-    rule.mode === 'gem' ? t.gem : rule.mode === 'gold' ? t.gold : t.gem * rule.gem + t.gold * rule.gold
-  const scored = teams
-    .map((t) => ({ ...t, score: scoreOf(t), rank: 0 }))
-    .sort((a, b) => b.score - a.score || b.gem - a.gem || a.teamId - b.teamId)
-  scored.forEach((t, i) => {
-    t.rank = i > 0 && scored[i - 1]!.score === t.score ? scored[i - 1]!.rank : i + 1
-  })
-  return scored
+/**
+ * 정산 (docs/100 D7, 룰 03 §11): 팀 보상 = 팀 보유 채택 화폐 ÷ 모든 팀 보유 채택 화폐.
+ * - 상대 화폐 발행팀(보석 채택 → 옐로우, 골드 채택 → 화이트)은 보상 0, 분모에서도 제외
+ * - 살아남은 인원 0명 팀은 보상 0 이지만 분모에는 남는다 (그 몫은 아무도 가져가지 않는다)
+ * - 분모가 0 이면 모두 0
+ */
+export function settleShares(
+  teams: { teamId: number; code: string; name: string; color: string; alive: number; resources: Resources }[],
+  adopted: 'gem' | 'gold',
+): TeamShare[] {
+  const excludedCode = adopted === 'gem' ? ISSUE_TEAM_CODE.gold : ISSUE_TEAM_CODE.gem
+  const rows = teams.map((t) => ({ ...t, holding: t.resources[adopted], excluded: t.code === excludedCode }))
+  const denom = rows.filter((t) => !t.excluded).reduce((sum, t) => sum + t.holding, 0)
+  return rows.map((t) => ({
+    teamId: t.teamId,
+    name: t.name,
+    color: t.color,
+    alive: t.alive,
+    holding: t.excluded ? 0 : t.holding,
+    share: t.excluded || t.alive === 0 || denom === 0 ? 0 : t.holding / denom,
+    excluded: t.excluded,
+  }))
+}
+
+/** 보상 % 표시 (소수 첫째 자리) */
+export function shareText(share: number): string {
+  return `${(Math.round(share * 1000) / 10).toLocaleString('ko-KR')}%`
 }
 
 /**

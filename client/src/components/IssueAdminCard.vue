@@ -23,7 +23,7 @@ const later = ref(new Set<number>())
 
 const issues = computed(() => game.admin?.issues)
 const status = computed(() => game.admin?.state.status)
-const visible = computed(() => (status.value === 'running' || status.value === 'ended') && !!issues.value)
+const visible = computed(() => (status.value === 'running' || status.value === 'final' || status.value === 'ended') && !!issues.value)
 const popup = computed(() => issues.value?.pending.find((r) => !later.value.has(r.id)) ?? null)
 
 const team = (id: number) => props.groups.find((g) => g.id === id)

@@ -11,6 +11,7 @@ import ResultsBoard from '../components/ResultsBoard.vue'
 import ReadyLobby from '../components/ReadyLobby.vue'
 import IssuePanel from '../components/IssuePanel.vue'
 import WarPanel from '../components/WarPanel.vue'
+import FinalVotePanel from '../components/FinalVotePanel.vue'
 import IntroOverlay from '../components/IntroOverlay.vue'
 import introUrl from '../assets/intro_image.webp'
 import { useAuthStore } from '../stores/auth'
@@ -66,6 +67,8 @@ const phaseHint: Record<string, string> = {
   production: '오프라인 미니게임(생산게임)을 합니다. 결과에 따라 진행자가 팀 재화를 지급합니다.',
   council: '리더들이 대가 없는 원조를 협의합니다 (팀마다 라운드당 1회 줄 수 있음). 원조는 진행자가 재화를 조정합니다.',
 }
+const isLastRound = computed(() => s.value?.status === 'running' && s.value.day >= (s.value.totalDays ?? Infinity))
+const final = computed(() => (s.value?.status === 'final' || s.value?.status === 'ended' ? s.value.final : null))
 </script>
 
 <template>
@@ -75,7 +78,14 @@ const phaseHint: Record<string, string> = {
     <NameSetup v-if="auth.user && !auth.user.nameSet" />
     <ReadyLobby v-else-if="beforeStart" />
     <template v-else>
-    <ResultsBoard v-if="s?.status === 'ended' && s.results" :results="s.results" />
+    <ResultsBoard v-if="final" :final="final" :results="s?.results ?? null" />
+    <FinalVotePanel
+      v-if="final && final.step === 'vote' && s?.status === 'final' && game.team"
+      :final="final"
+      :life-vote="!!s.lifeVote"
+      :team-lives="game.team.resources.life"
+      :my-vote="game.team.myFinalVote"
+    />
     <div class="card">
       <h2>팀 재화</h2>
       <ResourceRow show-label :amounts="game.team?.resources" />
@@ -100,6 +110,12 @@ const phaseHint: Record<string, string> = {
     />
     <div v-else-if="phase && phaseHint[phase]" class="card">
       <p class="muted" style="margin: 0">{{ phaseHint[phase] }}</p>
+      <!-- 마지막 라운드 필수 안건 (docs/100 N2) -->
+      <p v-if="phase === 'council' && isLastRound" style="margin: 8px 0 0">
+        📜 <strong>필수 안건: 남은 라이프를 최종 투표권으로 인정할까요?</strong>
+        <span class="muted">— 통과 시 최종 투표 때 팀 라이프 1개로 1표 더 (1인 1장).
+          {{ s?.lifeVote == null ? '' : s.lifeVote ? '결과: 통과' : '결과: 부결' }}</span>
+      </p>
     </div>
     <!-- 전쟁: 거래 활동 단계에서 선포. 진행 중이면 다른 단계에서도 상황 표시 -->
     <WarPanel

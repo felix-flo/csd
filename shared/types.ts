@@ -82,7 +82,7 @@ export type EventScope = 'all' | 'role' | 'group' | 'user'
 
 /**
  * 이벤트 종류.
- * - game  : 게임 진행 (단계·일차 전환, 리더 선출, 재화 변동, 라이프 제출, 등수 발표). payload.kind 는 GameKind
+ * - game  : 게임 진행 (단계·일차 전환, 리더 선출, 재화 변동, 라이프 제출, 최종장). payload.kind 는 GameKind
  * - trade : 거래 (요청·수락·제안·완료·취소). 거래 당사자 두 팀에 scope=group 으로만 보낸다 (관리자는 전부 받음)
  */
 export type EventType = 'notice' | 'system' | 'document.updated' | 'game' | 'trade'
@@ -91,7 +91,6 @@ export type EventType = 'notice' | 'system' | 'document.updated' | 'game' | 'tra
  * game 이벤트의 payload.kind.
  * - game.updated       : 시작·단계/일차 전환·종료 (scope=all). 클라이언트는 게임 상태 재조회
  * - game.reset         : 리셋 (scope=all)
- * - game.results       : 등수 발표 (scope=all)
  * - election.progress  : 팀원이 투표함 (scope=group, 팝업 없음)
  * - election.done      : 팀 리더 확정 (scope=group)
  * - election.tie       : 동표 → 관리자 지정 대기 (scope=group)
@@ -110,9 +109,19 @@ export type EventType = 'notice' | 'system' | 'document.updated' | 'game' | 'tra
  * - war.resolved       : 전쟁 결과 — 승리팀 이름·무승부·취소 (scope=all)
  * - war.spoils         : 승리팀이 빼앗은 재화 (scope=group 승리팀만)
  * - war.lost           : 패배 알림 (scope=group 패배팀, 수량 없음)
+ * 최종장 (docs/100 N2)
+ * - final.life_vote    : 마지막 라운드 안건(라이프 투표권) 통과/부결 (scope=all)
+ * - final.started      : 최종장 시작 = 최종 투표 열림 (scope=all)
+ * - final.voted        : 본인 투표 완료 (scope=user)
+ * - final.closed       : 투표 마감·득표 공개 (scope=all). 동점이면 가위바위보 안내
+ * - final.tiebreak     : 가위바위보 결과 (scope=all)
+ * - final.result       : 채택 화폐 + 마지막 라운드 발행량 공개 (scope=all)
+ * - final.settled      : 정산 발표 (scope=all)
+ * - final.ended        : 게임 끝 (scope=all)
  */
 export type GameKind =
-  | 'game.updated' | 'game.reset' | 'game.results'
+  | 'game.updated' | 'game.reset'
+  | 'final.life_vote' | 'final.started' | 'final.voted' | 'final.closed' | 'final.tiebreak' | 'final.result' | 'final.settled' | 'final.ended'
   | 'election.progress' | 'election.done' | 'election.tie' | 'election.all_done'
   | 'resources.updated' | 'life.submitted' | 'life.eliminated' | 'life.all_done'
   | 'issue.requested' | 'issue.decided' | 'issue.cancelled'

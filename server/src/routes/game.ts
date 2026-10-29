@@ -3,7 +3,8 @@
  * - 모든 역할: GET /game (일차·단계·초기 재화 합계·발표된 등수)
  * - 프레젠테이션·관리자: GET /game/roster 팀 현황 (팀원 명단·탈락, 시작 후에만)
  * - 참가자  : GET /game/team, 투표, 라이프 제출(리더), 거래(리더)
- * - 관리자  : /admin/game/* 설정·초기셋팅완료·설정으로 되돌리기·시작·다음 단계·종료·등수 발표·리셋, 재화 조정, 원조, 동표 지정, 거래 강제 취소
+ * - 관리자  : /admin/game/* 설정·초기셋팅완료·설정으로 되돌리기·시작·다음 단계·종료(=최종장 시작)·리셋, 재화 조정, 원조, 동표 지정, 거래 강제 취소
+ * - 최종장 (docs/100 N2): 관리자 POST /admin/game/life-vote (마지막 라운드 안건), /admin/final/close · tiebreak · next · recompute, 참가자 POST /final/vote
  * - 참가자(준비 상태): POST /game/join 팀 선택. 시작 전에는 팀 게임 정보를 주지 않는다
  * - 보석·골드 발행 (docs/97): 화이트·옐로우 리더 POST /issue/request, 관리자 POST /admin/issue/:id/decide
  * - 전쟁 (docs/99): 리더 POST /war/declare, 관리자 POST /admin/war/cost (다음 날 비용) · /admin/war/:id/resolve
@@ -16,7 +17,7 @@ import { findGroupById, findUserById, listGroups } from '../db/users.js'
 import { isBeforeStart } from '../../../shared/game.js'
 import { GameError } from '../db/gameError.js'
 import {
-  activeMemberCount, advance, endGame, getGameRow, getGameState, getPrep, getPublicRoster, getSettings, joinTeam, prepareGame, setLastIssuePhases, setTabLogin, publishResults,
+  activeMemberCount, advance, endGame, getGameRow, getGameState, getPrep, getPublicRoster, getSettings, joinTeam, prepareGame, setLastIssuePhases, setTabLogin,
   requireRunning, resetGame, revertToSetup, saveSettings, startGame, takeFromLifeReserve,
 } from '../db/game.js'
 import { applyDeltas, describeDeltas, getAllResources, getTeamResources, listLedger } from '../db/resources.js'
@@ -25,15 +26,18 @@ import { allLivesDone, getLifeSubmission, submitLife } from '../db/life.js'
 import {
   acceptOffer, cancelActiveTrade, cancelTrade, getActiveTrade, getActiveTradeForTeam, payCredit, proposeOffer, requestTrade, respondTrade,
 } from '../db/trades.js'
-import { decideIssue, getAdminIssues, getTeamIssue, requestIssue } from '../db/issuance.js'
+import { decideIssue, getAdminIssues, getTeamIssue, issueTeamId, requestIssue } from '../db/issuance.js'
+import {
+  advanceFinal, castFinalVote, closeFinalVotes, finalVoteProgress, getMyFinalVote, recomputeResults, setLifeVote, setTiebreak,
+} from '../db/final.js'
 import { listAids, recordAid } from '../db/council.js'
 import { approveWar, declareWar, describeCost, getPendingWarForTeam, getWarCost, getWarOfDay, rejectWar, resolveWar, setWarCost } from '../db/war.js'
 import { db } from '../db/index.js'
 import { insertEvent } from '../db/events.js'
 import { disconnectUsers, moveUserRooms, publishEvent, signalLobby } from '../realtime/index.js'
 import { revokeUserRefreshTokens } from '../auth/tokens.js'
-import { emptyResources, josa, PHASE_LABELS, PHASES, RESOURCE_KINDS, RESOURCE_LABELS } from '../../../shared/game.js'
-import type { AdminGameView, IssueRequestView, Resources, TeamGameView, TradeView } from '../../../shared/game.js'
+import { emptyResources, FINAL_STEPS, josa, PHASE_LABELS, PHASES, RESOURCE_KINDS, RESOURCE_LABELS, shareText } from '../../../shared/game.js'
+import type { AdminGameView, GameResults, IssueRequestView, Resources, TeamGameView, TradeView } from '../../../shared/game.js'
 import type { EventScope, GameKind } from '../../../shared/types.js'
 
 export const gameRouter = Router()
@@ -163,6 +167,7 @@ gameRouter.get('/game/team', requireRole('member'), (req, res) => {
       const w = running ? getPendingWarForTeam(teamId) : null
       return w ? { id: w.id, defender: w.defender, cost: w.cost } : null
     })(),
+    myFinalVote: g.status === 'final' || g.status === 'ended' ? getMyFinalVote(req.auth!.sub) : null,
   }
   res.json(body)
 })
@@ -192,6 +197,7 @@ function adminView(): AdminGameView {
       todayCost: g.status === 'running' ? getWarCost(g.day) : null,
       nextCost: g.status === 'running' ? getWarCost(g.day + 1) : null,
     },
+    finalVotes: g.status === 'final' || g.status === 'ended' ? finalVoteProgress() : [],
   }
 }
 
@@ -278,20 +284,73 @@ gameRouter.post('/admin/game/end', requireRole('admin'), handle(null, (req, res)
   for (const r of cancelled.issues) {
     emit('game', 'group', r.teamId, 'issue.cancelled', `게임 종료로 ${issueText(r)} 발행 요청이 취소되었습니다`, req.auth!.sub, { issueId: r.id, muted: true })
   }
-  emit('game', 'all', null, 'game.updated', '게임이 종료되었습니다. 곧 등수가 발표됩니다', req.auth!.sub)
+  const extra = getGameRow().life_vote_passed === 1 ? ' · 라이프 투표권: 팀 라이프 1개로 1표 더 (1인 1장, 선착순)' : ''
+  emit('game', 'all', null, 'final.started', `🗳️ 최종장이 시작되었습니다 · 최종 투표: 보석과 골드 중 하나에 투표하세요 (1인 1표${extra})`, req.auth!.sub)
   res.json(adminView())
 }))
 
-const scoreSchema = z.object({
-  mode: z.enum(['gem', 'gold', 'ratio']),
-  gem: z.number().int().min(0).max(1000),
-  gold: z.number().int().min(0).max(1000),
-}).refine((r) => r.mode !== 'ratio' || r.gem + r.gold > 0, { message: 'ratio_zero' })
+// ---- 최종장 (docs/100 N2 + D7) ----
 
-gameRouter.post('/admin/game/results', requireRole('admin'), handle(scoreSchema, (req, res, body) => {
-  const results = publishResults(body)
-  const top = results.teams.filter((t) => t.rank === 1).map((t) => t.name).join(', ')
-  emit('game', 'all', null, 'game.results', `최종 등수가 발표되었습니다 · 1위 ${top}`, req.auth!.sub)
+/** 마지막 라운드 리더 협의 필수 안건 "남은 라이프를 최종 투표권으로 인정할까요?" — 오프라인 협의 결과를 관리자가 입력 */
+gameRouter.post('/admin/game/life-vote', requireRole('admin'), handle(z.object({ passed: z.boolean() }), (req, res, body) => {
+  setLifeVote(body.passed)
+  const msg = body.passed
+    ? '📜 라이프 투표권 안건 통과: 최종 투표 때 남은 팀 라이프 1개로 1표 더 (1인 1장)'
+    : '📜 라이프 투표권 안건 부결: 최종 투표는 1인 1표입니다'
+  emit('game', 'all', null, 'final.life_vote', msg, req.auth!.sub)
+  res.json(adminView())
+}))
+
+/** 최종 투표 (활성 참가자). 득표는 공개하지 않고 인원 현황만 갱신 (기록 없는 신호) */
+gameRouter.post('/final/vote', requireRole('member'), handle(z.object({ choice: z.enum(['gem', 'gold']), extra: z.boolean() }), (req, res, body) => {
+  const by = req.auth!.sub
+  const { teamId } = castFinalVote(by, body.choice, body.extra)
+  const votes = body.extra ? '2표 · 라이프 투표권 사용' : '1표'
+  emit('game', 'user', by, 'final.voted', `최종 투표 완료: ${RESOURCE_LABELS[body.choice]} (${votes})`, by, { silent: true })
+  if (body.extra) emit('game', 'group', teamId, 'resources.updated', `라이프 투표권: ${userName(by)} 님 · 라이프 -1`, by, { silent: true })
+  signalLobby()
+  res.json({ vote: getMyFinalVote(by) })
+}))
+
+/** 투표 마감 → 득표 전체 공개. 동점이면 가위바위보 안내 */
+gameRouter.post('/admin/final/close', requireRole('admin'), handle(null, (req, res) => {
+  const t = closeFinalVotes()
+  const tie = t.tie ? ' — 동점입니다. 화이트·옐로우 리더 가위바위보로 정합니다' : ''
+  emit('game', 'all', null, 'final.closed', `🗳️ 투표 마감: 보석 ${t.gem}표 · 골드 ${t.gold}표${tie}`, req.auth!.sub)
+  res.json(adminView())
+}))
+
+gameRouter.post('/admin/final/tiebreak', requireRole('admin'), handle(z.object({ winner: z.enum(['white', 'yellow']) }), (req, res, body) => {
+  const adopted = setTiebreak(body.winner)
+  const winner = teamName(issueTeamId(adopted))
+  emit('game', 'all', null, 'final.tiebreak', `✊ 가위바위보: ${josa(winner, '이/가')} 이겼습니다 → ${RESOURCE_LABELS[adopted]}`, req.auth!.sub)
+  res.json(adminView())
+}))
+
+function resultsText(r: GameResults): string {
+  return r.teams.map((t) => `${t.name} ${t.excluded ? '보상 없음' : shareText(t.share)}`).join(' · ')
+}
+
+/** 다음 단계: 투표 → 결과 발표(채택 화폐 + 마지막 라운드 발행량 공개) → 정산 → 끝 */
+gameRouter.post('/admin/final/next', requireRole('admin'), handle(z.object({ step: z.enum(FINAL_STEPS) }), (req, res, body) => {
+  const by = req.auth!.sub
+  const r = advanceFinal(body.step)
+  if (r.to === 'result') {
+    const rps = r.tiebreak ? ` · 가위바위보 ${teamName(issueTeamId(r.adopted))} 승` : ''
+    const issued = `마지막 라운드 발행: ${teamName(issueTeamId('gem'))} 보석 ${r.lastIssue.gem}개 · ${teamName(issueTeamId('gold'))} 골드 ${r.lastIssue.gold}개`
+    emit('game', 'all', null, 'final.result', `🏆 상금 화폐는 ${RESOURCE_LABELS[r.adopted]}입니다 (보석 ${r.tally.gem}표 · 골드 ${r.tally.gold}표${rps}) · ${issued}`, by)
+  } else if (r.to === 'settle') {
+    emit('game', 'all', null, 'final.settled', `💰 정산: ${resultsText(r.results)}`, by)
+  } else {
+    emit('game', 'all', null, 'final.ended', '게임이 끝났습니다. 수고하셨습니다', by)
+  }
+  res.json(adminView())
+}))
+
+/** 정산 다시 계산 (정산 단계에서 재화를 정정한 경우) */
+gameRouter.post('/admin/final/recompute', requireRole('admin'), handle(null, (req, res) => {
+  const r = recomputeResults()
+  emit('game', 'all', null, 'final.settled', `💰 정산 (다시 계산): ${resultsText(r)}`, req.auth!.sub)
   res.json(adminView())
 }))
 

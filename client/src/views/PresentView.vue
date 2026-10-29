@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 프레젠테이션 (빔 출력). 준비 상태에서는 팀 입장 현황(A 3/5 …, 실제 팀 이름 비공개)과 접속 QR. 게임 중에는 일차·단계와 모든 팀 초기 재화 합계만 공개한다 (이후 변동은 비공개).
- * 모든 팀 리더 선출 / 라이프 제출 완료는 큰 알림으로, 게임 종료 후에는 발표된 등수를 보여준다.
+ * 모든 팀 리더 선출 / 라이프 제출 완료는 큰 알림으로. 최종장(docs/100 N2)에는 투표 인원 현황 → 득표 → 상금 화폐·마지막 라운드 발행량 → 정산을 크게 보여준다.
  * 게임 시작 후에는 팀 현황(팀별 팀원 명단, 리더, 탈락자 흐리게)도 보여준다. 재화는 공개하지 않는다.
  * 현황판 (docs/100 D5): 골드 발행 누적(마지막 라운드 전까지)과 오늘 전쟁 선포 비용·전쟁 상태. 보석 발행량은 공개하지 않는다.
  * 명단은 게임 상태가 갱신될 때마다(단계 전환, 팀 구성 변경 신호 lobby) 다시 받는다.
@@ -55,6 +55,9 @@ const alive = (t: RosterTeam) => t.members.filter((m) => !m.eliminated).length
 const teams = useTeamsStore()
 const nameOf = (id: number) => teams.byId(id)?.name ?? `#${id}`
 const isLastRound = computed(() => !!s.value && s.value.status === 'running' && s.value.day >= (s.value.totalDays ?? 0))
+const final = computed(() => (s.value?.status === 'final' || s.value?.status === 'ended' ? s.value.final : null))
+/** 마지막 라운드 발행은 최종장 결과 발표 전까지 비공개 */
+const lastHidden = computed(() => isLastRound.value || (!!final.value && !final.value.lastIssue))
 const costText = (c: WarCost) => WAR_COST_KINDS.filter((k) => c[k] > 0).map((k) => `${RESOURCE_LABELS[k]} ${c[k]}`).join(', ') || '없음 (무료)'
 /** 전쟁 줄: 선포 전 비용 → 전쟁 중 → 오늘 결과 */
 const warLine = computed(() => {
@@ -76,7 +79,11 @@ const warLine = computed(() => {
         <span class="subtitle" :class="{ hidden: revealing }">{{ s?.title ? 'for Switching Day' : '' }}</span>
       </template>
     </TopBar>
-    <ResultsBoard v-if="s?.status === 'ended' && s.results" :results="s.results" large />
+    <ResultsBoard v-if="final" :final="final" :results="s?.results ?? null" large />
+    <div v-if="final && final.step === 'vote' && !final.closed" class="card done-banner">
+      🗳️ 최종 투표 중 · <span class="mono">{{ final.votes.done }} / {{ final.votes.eligible }}</span>명
+      <span v-if="s?.lifeVote" class="muted sub">라이프 투표권 사용 가능</span>
+    </div>
     <div v-if="s?.status === 'running' && (s.phase === 'leader' && s.leadersDone || s.phase === 'life' && s.livesDone)" class="card done-banner">
       {{ s.phase === 'leader' ? '모든팀의 리더 선출이 완료되었습니다.' : '모든 팀의 라이프가 제출되었습니다.' }}
     </div>
@@ -99,7 +106,7 @@ const warLine = computed(() => {
       <div v-if="s && !isBeforeStart(s.status)" class="card board">
         <h2>현황판</h2>
         <p class="gold">🥇 골드 발행 누적 <strong class="mono">{{ s.goldIssued ?? 0 }}</strong>개</p>
-        <p v-if="isLastRound" class="muted">마지막 라운드 발행은 최종장에 공개됩니다.</p>
+        <p v-if="lastHidden" class="muted">마지막 라운드 발행은 최종장 결과 발표 때 공개됩니다.</p>
         <p v-if="warLine" class="war" :class="{ hot: warLine.hot }">⚔️ {{ warLine.text }}</p>
       </div>
       <div class="card">
@@ -152,5 +159,6 @@ const warLine = computed(() => {
 .board .gold strong { font-size: 2rem; }
 .board .war { margin: 10px 0 0; font-size: 1.15rem; }
 .board .war.hot { color: var(--red); font-weight: 700; font-size: 1.4rem; }
+.done-banner .sub { font-size: 1.2rem; margin-left: 8px; }
 .done-banner { font-family: var(--font-display); font-size: 2.4rem; line-height: 1.2; border-left: 3px solid var(--blue); }
 </style>

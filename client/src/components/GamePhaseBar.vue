@@ -2,12 +2,13 @@
 /**
  * 게임 진행 표시줄. 모든 역할의 상단바 아래에 붙는다 (TopBar).
  * "2라운드 / 총 6라운드 · 거래 중" + 라운드 흐름 5단계 중 현재 위치. 준비 상태에서는 "게임 준비 중".
+ * 최종장(docs/100 N2)은 "최종장 · 최종 투표" + 최종 투표 → 결과 발표 → 정산.
  * 전쟁 중(선포~결과)에는 아래에 "⚔️ 전쟁 중: 공격팀 → 방어팀 · 모든 거래 중지" 띠를 붙인다.
  */
 import { computed } from 'vue'
 import { useGameStore } from '../stores/game'
 import { useTeamsStore } from '../stores/teams'
-import { PHASE_LABELS, PHASES } from '../../../shared/game'
+import { FINAL_STEP_LABELS, PHASE_LABELS, PHASES } from '../../../shared/game'
 
 defineProps<{ large?: boolean }>()
 const game = useGameStore()
@@ -15,6 +16,9 @@ const s = computed(() => game.state)
 const teams = useTeamsStore()
 const war = computed(() => (s.value?.status === 'running' ? s.value.war?.active ?? null : null))
 const nameOf = (id: number) => teams.byId(id)?.name ?? `#${id}`
+/** 스파이 공개(spy)는 N4 전까지 없다 */
+const FINAL_FLOW = ['vote', 'result', 'settle'] as const
+const finalIdx = computed(() => FINAL_FLOW.indexOf((s.value?.final?.step ?? 'vote') as never))
 </script>
 
 <template>
@@ -31,7 +35,13 @@ const nameOf = (id: number) => teams.byId(id)?.name ?? `#${id}`
       </ol>
     </template>
     <div v-else-if="s.status === 'ready'" class="now"><strong>게임 준비 중</strong><span class="muted">참가자 입장·팀 선택</span></div>
-    <div v-else class="now"><strong>게임 종료</strong><span v-if="!s.results" class="muted">등수 발표 대기 중</span></div>
+    <template v-else-if="s.status === 'final' && s.final">
+      <div class="now"><span class="day mono">최종장</span><strong>{{ FINAL_STEP_LABELS[s.final.step] }}</strong></div>
+      <ol class="steps">
+        <li v-for="(st, i) in FINAL_FLOW" :key="st" :class="{ cur: i === finalIdx, past: finalIdx > i }">{{ FINAL_STEP_LABELS[st] }}</li>
+      </ol>
+    </template>
+    <div v-else class="now"><strong>게임 끝</strong><span class="muted">수고하셨습니다</span></div>
   </div>
   <div v-if="war" class="war-bar" :class="{ large }" role="status">
     ⚔️ <strong>전쟁 중: {{ nameOf(war.attacker) }} → {{ nameOf(war.defender) }}</strong>
