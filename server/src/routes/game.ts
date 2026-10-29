@@ -27,7 +27,7 @@ import {
 } from '../db/trades.js'
 import { decideIssue, getAdminIssues, getTeamIssue, requestIssue } from '../db/issuance.js'
 import { listAids, recordAid } from '../db/council.js'
-import { declareWar, describeCost, getWarCost, getWarOfDay, resolveWar, setWarCost } from '../db/war.js'
+import { approveWar, declareWar, describeCost, getPendingWarForTeam, getWarCost, getWarOfDay, rejectWar, resolveWar, setWarCost } from '../db/war.js'
 import { db } from '../db/index.js'
 import { insertEvent } from '../db/events.js'
 import { disconnectUsers, moveUserRooms, publishEvent, signalLobby } from '../realtime/index.js'
@@ -159,6 +159,10 @@ gameRouter.get('/game/team', requireRole('member'), (req, res) => {
     lifeSubmission: running ? getLifeSubmission(g.day, teamId) : null,
     trade: getActiveTradeForTeam(teamId),
     issue: getTeamIssue(teamId),
+    warPending: (() => {
+      const w = running ? getPendingWarForTeam(teamId) : null
+      return w ? { id: w.id, defender: w.defender, cost: w.cost } : null
+    })(),
   }
   res.json(body)
 })
@@ -520,18 +524,48 @@ gameRouter.post('/issue/request', requireRole('member'), handle(z.object({ amoun
 
 // ---- 참가자(리더): 전쟁 선포 ----
 
-/** 거래 활동 단계, 리더만. 오늘 비용을 내면 선포 → 모든 팀 거래 금지(진행 중 거래 취소), 모든 화면에 강조 알림(소리 있음) */
+/**
+ * 거래 단계, 리더만. 선포 → 관리자 승인 대기 (docs/99 §8). 비용은 승인될 때 차감.
+ * 대기 중 알림은 공격팀(강조)과 관리자(무음 팝업)에만. 전체 공지는 승인 때
+ */
 gameRouter.post('/war/declare', requireRole('member'), handle(z.object({ defenderId: z.number().int().positive() }), (req, res, body) => {
   const g = requireRunning('trade')
   const teamId = requireLeader(req)
   const by = req.auth!.sub
-  const { war, cancelledTrade } = declareWar(g.day, teamId, body.defenderId, by)
-  announceCancelled(cancelledTrade, '전쟁 선포로', by)
-  emit('game', 'group', teamId, 'resources.updated', `전쟁 선포 비용: ${describeCost(war.cost)} (소멸)`, by, { silent: true })
-  emit('game', 'all', null, 'war.declared', `⚔️ 전쟁이 선포되었습니다 (${teamName(war.attacker)} → ${teamName(war.defender)})`, by, {
-    war: true, warId: war.id, attacker: war.attacker, defender: war.defender, ...NOTIFY_SELF,
-  })
+  const war = declareWar(g.day, teamId, body.defenderId, by)
+  emit('game', 'group', teamId, 'war.pending', `⚔️ 전쟁 선포: → ${teamName(war.defender)} · 진행자 승인 대기 중`, by, { war: true, warId: war.id, ...NOTIFY_SELF })
+  publishEvent(insertEvent({
+    type: 'game', scope: 'role', targetRole: 'admin', createdBy: by,
+    payload: { kind: 'war.pending', message: `⚔️ 전쟁 선포 승인 요청: ${teamName(war.attacker)} → ${teamName(war.defender)} (비용 ${describeCost(war.cost)})`, warId: war.id, muted: true },
+  }))
   res.json({ ok: true })
+}))
+
+/** 관리자 승인: 비용 차감(소멸) → 진행 중 거래 취소 → 전체 강조 공지(소리 있음). 비용이 부족하면 대기 유지 + 409 */
+gameRouter.post('/admin/war/:id/approve', requireRole('admin'), handle(null, (req, res) => {
+  const g = requireRunning()
+  const id = Number(req.params.id)
+  if (!Number.isInteger(id)) throw new GameError('not_found', '', 404)
+  const by = req.auth!.sub
+  const { war, cancelledTrade } = approveWar(id, g.day, by)
+  announceCancelled(cancelledTrade, '전쟁 승인으로', by)
+  emit('game', 'group', war.attacker, 'resources.updated', `전쟁 선포 비용: ${describeCost(war.cost)} (소멸)`, by, { silent: true })
+  emit('game', 'all', null, 'war.declared', `⚔️ 전쟁이 선포되었습니다 (${teamName(war.attacker)} → ${teamName(war.defender)})`, by, {
+    war: true, warId: war.id, attacker: war.attacker, defender: war.defender,
+  })
+  res.json(adminView())
+}))
+
+/** 관리자 거절: 재화 변동 없음, 공격팀에만 사유와 함께 알림. 거절은 라운드당 1회에 세지 않는다 */
+gameRouter.post('/admin/war/:id/reject', requireRole('admin'), handle(z.object({ reason: z.string().trim().max(200).optional() }), (req, res, body) => {
+  requireRunning()
+  const id = Number(req.params.id)
+  if (!Number.isInteger(id)) throw new GameError('not_found', '', 404)
+  const by = req.auth!.sub
+  const reason = body.reason || null
+  const war = rejectWar(id, by, reason)
+  emit('game', 'group', war.attacker, 'war.rejected', `⚔️ 전쟁 선포가 거절되었습니다 (→ ${teamName(war.defender)})${reason ? ` — ${reason}` : ''}`, by, { war: true, warId: war.id })
+  res.json(adminView())
 }))
 
 // ---- 참가자(리더): 거래 ----

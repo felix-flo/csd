@@ -149,6 +149,14 @@ function guardLastRoundIssue(g: GameRow, next: Phase | null) {
   throw new GameError('issue_pending', `처리하지 않은 발행 요청이 있습니다 (${pending.map(teamLabel).join(', ')}). ${where}. 수락 또는 거절하세요`)
 }
 
+/** 승인 대기·진행 중 전쟁이 있으면 단계 넘기기·게임 종료 불가 */
+function requireNoWar() {
+  const war = getActiveWar()
+  if (!war) return
+  if (war.status === 'pending') throw new GameError('war_pending', '전쟁 선포를 승인하거나 거절하세요')
+  throw new GameError('war_active', '전쟁 결과를 먼저 정하세요')
+}
+
 export function requireRunning(phase?: Phase): GameRow {
   const g = getGameRow()
   if (g.status !== 'running') throw new GameError('not_running', '게임이 진행 중이 아닙니다')
@@ -367,7 +375,7 @@ export function advance(expect: { day: number; phase: Phase }): AdvanceResult {
   return db.transaction(() => {
     const g = requireRunning()
     if (g.day !== expect.day || g.phase !== expect.phase) throw new GameError('stale', '이미 다음 단계로 넘어갔습니다. 화면을 새로고침하세요')
-    if (getActiveWar()) throw new GameError('war_active', '전쟁 결과를 먼저 정하세요')
+    requireNoWar()
     const result: AdvanceResult = { day: g.day, phase: g.phase!, finalized: [], cancelledTrade: null }
     if (g.phase === 'leader') {
       for (const t of listGroups()) {
@@ -406,7 +414,7 @@ export function endGame(): { trade: TradeView | null; issues: IssueRequestView[]
   return db.transaction(() => {
     const g = requireRunning()
     if (g.day < (g.total_days ?? 0)) throw new GameError('not_last_day', '마지막 라운드에만 종료할 수 있습니다')
-    if (getActiveWar()) throw new GameError('war_active', '전쟁 결과를 먼저 정하세요')
+    requireNoWar()
     if (g.phase !== 'life' || !allLivesDone(g.day)) {
       throw new GameError('not_finished', '마지막 라운드 라이프 제출 단계에서 모든 팀이 제출해야 종료할 수 있습니다')
     }

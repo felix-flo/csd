@@ -96,11 +96,14 @@ export interface GameState {
 /** 선포 비용으로 낼 수 있는 재화 (보석·골드·크레딧). 일차마다 관리자가 정한다 */
 export const WAR_COST_KINDS = ['gem', 'gold', 'credit'] as const
 export type WarCost = Record<(typeof WAR_COST_KINDS)[number], number>
-export type WarStatus = 'declared' | 'attacker_won' | 'defender_won' | 'draw' | 'cancelled'
+/** pending = 관리자 승인 대기, rejected = 거절 (docs/99 §8). declared 부터가 "전쟁 중" */
+export type WarStatus = 'pending' | 'rejected' | 'declared' | 'attacker_won' | 'defender_won' | 'draw' | 'cancelled'
 /** 관리자 결과 지정: 공격팀 승 / 방어팀 승 / 무승부 / 전쟁 취소 */
 export type WarResult = 'attacker' | 'defender' | 'draw' | 'cancel'
 
 export const WAR_STATUS_LABELS: Record<WarStatus, string> = {
+  pending: '승인 대기',
+  rejected: '거절',
   declared: '전쟁 중',
   attacker_won: '공격팀 승리',
   defender_won: '방어팀 승리',
@@ -110,7 +113,7 @@ export const WAR_STATUS_LABELS: Record<WarStatus, string> = {
 
 /** 모든 역할 공개 */
 export interface PublicWarState {
-  /** 진행 중 전쟁 (선포~결과). 이 동안 모든 팀 거래 금지 */
+  /** 진행 중 전쟁 (승인~결과). 이 동안 모든 팀 거래 금지. 승인 대기(pending)는 공개하지 않는다 */
   active: { id: number; attacker: number; defender: number } | null
   /** 오늘 이미 선포됐는지 (하루 게임 전체 1회) */
   usedToday: boolean
@@ -129,6 +132,8 @@ export interface WarView {
   status: WarStatus
   cost: WarCost
   spoils: Resources | null
+  /** 거절 사유 (rejected 일 때, 선택) */
+  rejectReason: string | null
   createdAt: string
   decidedAt: string | null
 }
@@ -339,6 +344,8 @@ export interface TeamGameView {
   trade: TradeView | null
   /** 화이트(보석)·옐로우(골드)팀만 */
   issue: TeamIssueView | null
+  /** 내 팀이 선포해 관리자 승인을 기다리는 전쟁 (docs/99 §8). 공격팀만 안다 */
+  warPending: { id: number; defender: number; cost: WarCost } | null
 }
 
 /** 관리자 화면용 팀 행 */

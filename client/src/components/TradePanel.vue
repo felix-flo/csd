@@ -49,6 +49,7 @@ function offerText(o: Resources | null): string {
 const ERRORS: Record<string, { title: string; message: string }> = {
   trade_busy: { title: '다른 팀이 거래중입니다', message: '진행 중인 거래가 끝난 뒤 다시 요청하세요.' },
   war_active: { title: '전쟁 중입니다', message: '전쟁 결과가 나올 때까지 거래할 수 없습니다.' },
+  war_pending: { title: '전쟁 선포 승인 대기 중', message: '진행자가 선포를 승인하거나 거절할 때까지 새 거래를 올릴 수 없습니다.' },
   credit_already_paid: { title: '상대 팀이 먼저 냈습니다', message: '상대 팀이 크레딧을 먼저 제출해 거래가 시작되었습니다.' },
 }
 

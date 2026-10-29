@@ -42,22 +42,26 @@ const isLastDay = computed(() => !!s.value && s.value.day >= (s.value.totalDays 
  * 서버도 같은 조건으로 막는다 (409 not_finished). 0·1명 팀은 제출 불필요라 완료로 본다
  */
 const pendingIssues = computed(() => view.value?.issues.pending.length ?? 0)
-const canEnd = computed(() => isLastDay.value && s.value?.phase === 'life' && !!s.value.livesDone && !warActive.value && !pendingIssues.value)
+const canEnd = computed(() => isLastDay.value && s.value?.phase === 'life' && !!s.value.livesDone && !warBlocker.value && !pendingIssues.value)
 /** 아직 라이프를 제출하지 않은(제출 대상인) 팀 이름 */
 const lifePending = computed(() =>
   (view.value?.teams ?? []).filter((t) => !t.lifeSubmission && t.activeMembers > 0 && !isLifeExempt(t.activeMembers)).map((t) => team(t.teamId)?.name ?? `#${t.teamId}`),
 )
 const endBlocker = computed(() => {
   if (!isLastDay.value || canEnd.value) return ''
-  if (warActive.value) return '전쟁 결과를 먼저 정하세요'
+  if (warBlocker.value) return warBlocker.value
   if (pendingIssues.value) return '처리하지 않은 발행 요청이 있습니다. 수락 또는 거절해야 종료할 수 있습니다'
   if (s.value?.phase !== 'life') return '마지막 라운드 라이프 제출 단계에서 모든 팀이 제출하면 종료할 수 있습니다'
   return `라이프 미제출: ${lifePending.value.join(', ')} — 모든 팀이 제출하면 종료할 수 있습니다`
 })
 // ---- 전쟁 (docs/99) ----
 const warToday = computed(() => view.value?.war.today ?? null)
-/** 진행 중 전쟁이 있으면 단계 넘기기·게임 종료 불가 (서버도 409 war_active) */
+/** 진행 중 전쟁이 있으면 단계 넘기기·게임 종료 불가 (서버도 409 war_active). 승인 대기(pending)도 같다 (409 war_pending) */
 const warActive = computed(() => warToday.value?.status === 'declared')
+const warPending = computed(() => warToday.value?.status === 'pending')
+const warBlocker = computed(() => (warPending.value ? '⚔️ 전쟁 선포를 승인하거나 거절하세요' : warActive.value ? '⚔️ 전쟁 결과를 먼저 정하세요' : ''))
+/** 거절 사유 (선택) */
+const rejectReason = ref('')
 const costText = (c: WarCost | null | undefined) =>
   !c ? '미정' : WAR_COST_KINDS.filter((k) => c[k] > 0).map((k) => `${RESOURCE_LABELS[k]} ${c[k]}`).join(', ') || '없음 (무료)'
 /** 다음 날 선포 비용 입력 (저장해야 "다음 날로" 가 눌린다) */
@@ -86,7 +90,7 @@ function askWar(result: WarResult) {
 }
 /** 다음 단계/다음 날 버튼을 막는 이유 */
 const advanceBlocker = computed(() => {
-  if (warActive.value) return '⚔️ 전쟁 결과를 먼저 정하세요'
+  if (warBlocker.value) return warBlocker.value
   if (leavingIssuePhases.value && pendingIssues.value) return `처리하지 않은 발행 요청이 있습니다. ${PHASE_LABELS[nextPhase.value!]} 단계에서는 발행할 수 없어 수락 또는 거절해야 넘어갈 수 있습니다`
   if (!nextPhase.value && !isLastDay.value && pendingIssues.value) return '처리하지 않은 발행 요청이 있습니다. 수락 또는 거절해야 다음 라운드로 넘어갈 수 있습니다'
   if (!nextPhase.value && !isLastDay.value && !view.value?.war.nextCost) return `${(s.value?.day ?? 0) + 1}라운드 전쟁 선포 비용을 아래 "전쟁" 에서 정해야 다음 라운드로 넘어갈 수 있습니다`
@@ -131,7 +135,7 @@ const clearSettings = ref(false)
 const resetDone = ref<ResetSummary | null>(null)
 
 // ---- 확인 팝업 ----
-type ModalKind = 'next' | 'end' | 'reset' | 'cancelTrade' | 'start' | 'revert' | 'war'
+type ModalKind = 'next' | 'end' | 'reset' | 'cancelTrade' | 'start' | 'revert' | 'war' | 'warApprove' | 'warReject'
 const modal = ref<ModalKind | null>(null)
 const modalText = computed(() => {
   const st = s.value
@@ -174,6 +178,22 @@ const modalText = computed(() => {
       return { title: '설정 단계로 되돌릴까요?', message: '참가자는 팀을 고를 수 없게 됩니다. 이미 팀을 고른 참가자와 PIN 은 그대로 남습니다.' }
     case 'cancelTrade':
       return { title: '진행 중인 거래를 취소할까요?', message: '이미 낸 크레딧은 돌려주지 않습니다.' }
+    case 'warApprove': {
+      const w = warToday.value
+      if (!w) return { title: '', message: '' }
+      return {
+        title: '전쟁 선포를 승인할까요?',
+        message: `⚔️ ${team(w.attacker)?.name} → ${team(w.defender)?.name}\n승인하면 ${team(w.attacker)?.name}에서 선포 비용 ${costText(w.cost)}이(가) 빠지고(소멸) 전쟁이 시작됩니다. 진행 중인 거래는 취소되고, 결과가 나올 때까지 모든 거래가 멈춥니다.`,
+      }
+    }
+    case 'warReject': {
+      const w = warToday.value
+      if (!w) return { title: '', message: '' }
+      return {
+        title: '전쟁 선포를 거절할까요?',
+        message: `⚔️ ${team(w.attacker)?.name} → ${team(w.defender)?.name}\n재화 변동 없이 선포를 취소합니다. ${team(w.attacker)?.name}에만 알리고, 이번 라운드에 다시 선포할 수 있습니다.`,
+      }
+    }
     case 'war': {
       const w = warToday.value
       if (!w) return { title: '', message: '' }
@@ -213,6 +233,13 @@ function onConfirm() {
       return run('설정 단계로 되돌림', () => api.post('/api/admin/game/revert'))
     case 'war':
       return run('전쟁 결과 지정', () => api.post(`/api/admin/war/${warToday.value!.id}/resolve`, { result: warResult.value }))
+    case 'warApprove':
+      return run('전쟁 선포 승인', () => api.post(`/api/admin/war/${warToday.value!.id}/approve`))
+    case 'warReject': {
+      const reason = rejectReason.value.trim()
+      rejectReason.value = ''
+      return run('전쟁 선포 거절', () => api.post(`/api/admin/war/${warToday.value!.id}/reject`, reason ? { reason } : {}))
+    }
   }
 }
 
@@ -393,7 +420,17 @@ function publish() {
       <p class="muted" style="margin-top: 0">
         이번 라운드({{ s.day }}라운드) 선포 비용: <strong>{{ costText(view.war.todayCost) }}</strong> · 거래 단계에서 리더가 라운드당 1회(게임 전체) 선포. 낸 비용은 소멸합니다.
       </p>
-      <div v-if="warToday && warActive" class="war-active">
+      <!-- 선포 승인 대기 (docs/99 §8): 승인하면 비용 차감·전쟁 시작, 거절하면 재화 변동 없음 -->
+      <div v-if="warToday && warPending" class="war-pending">
+        <div><strong>⏳ 전쟁 선포 승인 요청: {{ team(warToday.attacker)?.name }} → {{ team(warToday.defender)?.name }}</strong> <span class="muted">(비용 {{ costText(warToday.cost) }})</span></div>
+        <div class="muted">리더 협의 결과(전쟁 금지 등)에 따라 승인하거나 거절하세요. 대기 중에는 새 거래와 단계 넘기기가 멈춥니다.</div>
+        <div class="row" style="margin-top: 6px">
+          <button class="danger" :disabled="busy" @click="modal = 'warApprove'">승인 (전쟁 시작)</button>
+          <input v-model="rejectReason" type="text" maxlength="200" placeholder="거절 사유 (선택)" style="width: 16em" />
+          <button class="secondary" :disabled="busy" @click="modal = 'warReject'">거절</button>
+        </div>
+      </div>
+      <div v-else-if="warToday && warActive" class="war-active">
         <div><strong>⚔️ 전쟁 중: {{ team(warToday.attacker)?.name }} → {{ team(warToday.defender)?.name }}</strong> <span class="muted">(비용 {{ costText(warToday.cost) }})</span></div>
         <div class="muted">오프라인 게임 결과를 지정하세요. 결과가 나올 때까지 모든 거래와 단계 넘기기가 멈춥니다.</div>
         <div class="row" style="margin-top: 6px">
@@ -497,9 +534,9 @@ function publish() {
       :open="modal !== null"
       :title="modalText.title"
       :message="modalText.message"
-      :confirm-label="modal === 'reset' ? '리셋' : modal === 'end' ? '종료' : modal === 'start' ? '시작' : modal === 'war' ? '결과 확정' : '확인'"
+      :confirm-label="modal === 'reset' ? '리셋' : modal === 'end' ? '종료' : modal === 'start' ? '시작' : modal === 'war' ? '결과 확정' : modal === 'warApprove' ? '승인' : modal === 'warReject' ? '거절' : '확인'"
       cancel-label="취소"
-      :danger="modal === 'reset' || modal === 'end' || modal === 'cancelTrade' || modal === 'war'"
+      :danger="modal === 'reset' || modal === 'end' || modal === 'cancelTrade' || modal === 'war' || modal === 'warApprove'"
       :busy="busy"
       @confirm="onConfirm"
       @cancel="modal = null"
@@ -520,6 +557,7 @@ h3 { font-size: 0.95rem; margin: 16px 0 6px; font-weight: 600; }
 .tbl th, .tbl td { text-align: left; padding: 5px 12px 5px 0; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
 .tbl th { color: var(--muted); font-weight: 500; font-size: 0.8rem; }
 .letter { display: inline-block; min-width: 1.4em; font-weight: 600; }
+.war-pending { border: 2px solid var(--amber, #b7791f); border-left-width: 6px; border-radius: var(--radius); background: var(--bg-soft); padding: 10px 12px; }
 .war-active { border: 2px solid var(--red); border-left-width: 6px; border-radius: var(--radius); background: var(--red-bg); padding: 10px 12px; }
 .war-active strong { color: var(--red); }
 .war-cost { gap: 8px; align-items: center; margin-top: 6px; }

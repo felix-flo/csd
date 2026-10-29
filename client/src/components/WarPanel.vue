@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
- * 전쟁 선포 (거래 활동 단계, 리더만). 하루에 게임 전체 1회, 진행 중 전쟁이 있으면 선포할 수 없다.
- * 상대 팀을 고르고 "전쟁 선포" → 확인 팝업(비용·되돌릴 수 없음) → 오늘 비용(보석·골드·크레딧)을 내면 선포된다.
- * 낸 비용은 소멸하고, 결과가 나올 때까지 모든 팀 거래가 멈춘다. 승패는 진행자가 오프라인 게임 결과로 정한다.
+ * 전쟁 선포 (거래 단계, 리더만). 라운드당 게임 전체 1회, 대기·진행 중 전쟁이 있으면 선포할 수 없다.
+ * 상대 팀을 고르고 "전쟁 선포" → 확인 팝업 → 진행자 승인 대기 (docs/99 §8). 진행자가 승인하면 그때 비용(보석·골드·크레딧)이 빠지고 전쟁이 시작된다.
+ * 거절되면 재화 변동 없이 다시 선포할 수 있다. 낸 비용은 소멸하고, 결과가 나올 때까지 모든 팀 거래가 멈춘다. 승패는 진행자가 오프라인 게임 결과로 정한다.
  */
 import { computed, ref } from 'vue'
 import { RESOURCE_LABELS, WAR_COST_KINDS, type Resources } from '../../../shared/game'
@@ -21,6 +21,8 @@ const error = ref('')
 const confirmOpen = ref(false)
 
 const war = computed(() => game.state?.war)
+/** 내 팀이 선포해 승인을 기다리는 전쟁 (공격팀만 안다) */
+const pending = computed(() => game.team?.warPending ?? null)
 const cost = computed(() => war.value?.cost ?? null)
 const others = computed(() => teams.teams.filter((t) => t.id !== props.myTeamId))
 const nameOf = (id: number | null | undefined) => teams.byId(id)?.name ?? ''
@@ -65,10 +67,14 @@ async function declare() {
       <strong>전쟁 중: {{ nameOf(war.active.attacker) }} → {{ nameOf(war.active.defender) }}</strong><br />
       진행자가 오프라인 게임으로 승패를 정합니다. 결과가 나올 때까지 모든 거래가 멈춥니다.
     </p>
+    <p v-else-if="pending" class="pending">
+      <strong>⏳ 승인 대기 중: → {{ nameOf(pending.defender) }}</strong> <span class="muted">(비용 {{ costText }})</span><br />
+      <span class="muted">진행자가 승인하면 비용이 빠지고 전쟁이 시작됩니다. 거절되면 다시 선포할 수 있습니다. 대기 중에는 새 거래를 올릴 수 없습니다.</span>
+    </p>
     <template v-else>
       <p class="muted">
-        이번 라운드 선포 비용: <strong>{{ costText }}</strong> · 라운드에 한 번, 먼저 선포한 팀만. 낸 비용은 돌려받지 못하고,
-        선포하면 결과가 나올 때까지 모든 팀이 거래할 수 없습니다. 이기면 상대 팀 재화의 절반을 가져옵니다.
+        이번 라운드 선포 비용: <strong>{{ costText }}</strong> · 라운드에 한 번, 먼저 선포한 팀만. 진행자가 승인해야 전쟁이 시작되고 그때 비용이 빠집니다(돌려받지 못함).
+        전쟁 중에는 결과가 나올 때까지 모든 팀이 거래할 수 없습니다. 이기면 상대 팀 재화의 절반을 가져옵니다.
       </p>
       <template v-if="isLeader && !blocker">
         <div class="teams">
@@ -94,7 +100,7 @@ async function declare() {
     <ModalDialog
       :open="confirmOpen"
       :title="`${nameOf(target)}에 전쟁을 선포할까요?`"
-      :message="`선포 비용 ${costText}을(를) 냅니다. 낸 비용은 돌려받지 못합니다.\n선포하면 되돌릴 수 없고, 결과가 나올 때까지 모든 팀이 거래할 수 없습니다.`"
+      :message="`진행자에게 선포 승인을 요청합니다. 승인되면 선포 비용 ${costText}을(를) 내고(돌려받지 못함) 전쟁이 시작됩니다.\n선포하면 되돌릴 수 없고, 전쟁 중에는 결과가 나올 때까지 모든 팀이 거래할 수 없습니다.`"
       confirm-label="전쟁 선포"
       cancel-label="취소"
       danger
@@ -108,6 +114,7 @@ async function declare() {
 <style scoped>
 .war-card { border-left: 3px solid var(--red); }
 .active { color: var(--red); margin: 0; }
+.pending { margin: 0; color: var(--amber, #b7791f); }
 .teams { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 6px; }
 .team-btn { text-align: left; padding: 10px 12px; }
 .team-btn.on { border-color: var(--red); box-shadow: inset 0 0 0 1px var(--red); }
