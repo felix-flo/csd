@@ -5,7 +5,9 @@
  *
  * 규칙:
  * - 투표: 활성 참가자(스파이·테스트 계정 포함, 탈락자 제외) 1인 1회, 보석/골드. 한 번 내면 바꿀 수 없다 (final_votes PRIMARY KEY)
- * - 라이프 투표권: 안건 통과 시 투표할 때 체크하면 +1표, 팀 라이프 1개 즉시 차감 (선착순, 1인 1장). 투표 기록과 차감은 한 트랜잭션
+ * - 기본 1표는 리더만 (2026-10-30 결정, final_votes.base). 안건 부결이면 리더만 투표한다
+ * - 라이프 투표권: 안건 통과 시 팀 라이프 1개로 1표(extra), 즉시 차감 (선착순, 1인 1장). 리더는 기본표에 더하고(2표), 일반 팀원은 이것으로만 투표한다(1표).
+ *   투표 기록과 차감은 한 트랜잭션
  * - 득표는 마감 전에는 아무도(관리자 포함) 볼 수 없고 인원 현황만 공개. 미투표자는 기권
  * - 동점이면 관리자가 가위바위보 결과(화이트 승 = 보석 / 옐로우 승 = 골드)를 넣어야 결과 발표로 넘어간다
  * - 결과 발표 단계부터 마지막 라운드 발행량(보석·골드)을 공개한다
@@ -69,33 +71,48 @@ export function getLifeVote(): boolean | null {
 
 // ---- 투표 ----
 
-/** 팀별 투표 진행. eligible = 지금 활성 팀원 수 (최종장에는 탈락·이주가 없다) */
+/** 팀별 투표 진행. eligible = 안건 통과면 활성 팀원 수, 부결이면 리더 수(0~1) (최종장에는 탈락·이주가 없다) */
 export function finalVoteProgress(): { teamId: number; done: number; eligible: number }[] {
+  const passed = getRow().life_vote_passed === 1
   const done = new Map(
     (db.prepare('SELECT group_id, COUNT(*) AS n FROM final_votes GROUP BY group_id').all() as { group_id: number; n: number }[]).map((r) => [r.group_id, r.n]),
   )
-  return listGroups().map((t) => ({ teamId: t.id, done: done.get(t.id) ?? 0, eligible: listGroupMembers(t.id).length }))
+  return listGroups().map((t) => {
+    const members = listGroupMembers(t.id)
+    return { teamId: t.id, done: done.get(t.id) ?? 0, eligible: passed ? members.length : members.filter((m) => m.isLeader).length }
+  })
 }
 
 function tally(): { gem: number; gold: number } {
-  const rows = db.prepare('SELECT choice, SUM(1 + extra) AS n FROM final_votes GROUP BY choice').all() as { choice: Choice; n: number }[]
+  const rows = db.prepare('SELECT choice, SUM(base + extra) AS n FROM final_votes GROUP BY choice').all() as { choice: Choice; n: number }[]
   return { gem: rows.find((r) => r.choice === 'gem')?.n ?? 0, gold: rows.find((r) => r.choice === 'gold')?.n ?? 0 }
 }
 
-export function getMyFinalVote(userId: number): { choice: Choice; extra: boolean } | null {
-  const r = db.prepare('SELECT choice, extra FROM final_votes WHERE user_id = ?').get(userId) as { choice: Choice; extra: number } | undefined
-  return r ? { choice: r.choice, extra: r.extra === 1 } : null
+export function getMyFinalVote(userId: number): { choice: Choice; extra: boolean; weight: number } | null {
+  const r = db.prepare('SELECT choice, extra, base FROM final_votes WHERE user_id = ?').get(userId) as { choice: Choice; extra: number; base: number } | undefined
+  return r ? { choice: r.choice, extra: r.extra === 1, weight: r.base + r.extra } : null
 }
 
-/** 투표 1회. extra = 라이프 투표권 사용 (안건 통과 시, 팀 라이프 1개). 반환: 투표한 사람의 팀 */
-export function castFinalVote(userId: number, choice: Choice, extra: boolean): { teamId: number } {
+/**
+ * 투표 1회. extra = 라이프 투표권 사용 (안건 통과 시, 팀 라이프 1개).
+ * 리더: 기본 1표 (+ extra). 일반 팀원: 안건 통과 시 extra 로만 1표, 부결이면 투표 불가. 반환: 투표한 사람의 팀과 득표
+ */
+export function castFinalVote(userId: number, choice: Choice, extra: boolean): { teamId: number; weight: number } {
   return db.transaction(() => {
     const r = requireFinal('vote')
     if (r.votes_closed) throw new GameError('votes_closed', '투표가 마감되었습니다')
-    const u = db.prepare(`SELECT group_id FROM users WHERE id = ? AND role = 'member' AND active = 1`).get(userId) as { group_id: number | null } | undefined
+    const u = db.prepare(`SELECT group_id, is_leader FROM users WHERE id = ? AND role = 'member' AND active = 1`).get(userId) as
+      | { group_id: number | null; is_leader: number }
+      | undefined
     if (!u?.group_id) throw new GameError('not_eligible', '투표할 수 없는 계정입니다', 403)
-    if (extra && r.life_vote_passed !== 1) throw new GameError('no_life_vote', '라이프 투표권 안건이 통과되지 않았습니다')
-    const ok = db.prepare('INSERT OR IGNORE INTO final_votes (user_id, group_id, choice, extra) VALUES (?, ?, ?, ?)').run(userId, u.group_id, choice, extra ? 1 : 0).changes === 1
+    const leader = u.is_leader === 1
+    const passed = r.life_vote_passed === 1
+    if (extra && !passed) throw new GameError('no_life_vote', '라이프 투표권 안건이 통과되지 않았습니다')
+    if (!leader && !passed) throw new GameError('leader_only', '라이프 투표권 안건이 부결되어 리더만 투표합니다', 403)
+    if (!leader && !extra) throw new GameError('life_required', '팀원은 라이프 투표권(팀 라이프 1개)으로만 투표할 수 있습니다', 400)
+    const base = leader ? 1 : 0
+    const ok = db.prepare('INSERT OR IGNORE INTO final_votes (user_id, group_id, choice, extra, base) VALUES (?, ?, ?, ?, ?)')
+      .run(userId, u.group_id, choice, extra ? 1 : 0, base).changes === 1
     if (!ok) throw new GameError('already_voted', '이미 투표했습니다')
     if (extra) {
       try {
@@ -105,7 +122,7 @@ export function castFinalVote(userId: number, choice: Choice, extra: boolean): {
         throw e
       }
     }
-    return { teamId: u.group_id }
+    return { teamId: u.group_id, weight: base + (extra ? 1 : 0) }
   })()
 }
 

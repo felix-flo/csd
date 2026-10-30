@@ -2,6 +2,7 @@
  * 리더 선출 (팀원 전원 무기명 투표). 일차마다 '리더 선출' 단계에서 팀별로 1회.
  * - 투표 대상·투표자: 그 팀의 활성 참가자. 결과 확정 전까지는 투표를 바꿀 수 있다.
  * - 활성 팀원 전원이 투표하면 바로 집계한다. 최다 득표자가 리더.
+ * - 활성 팀원이 1명뿐이면 투표 없이 그 사람이 자동 리더 (선거 시작 때, 또는 이주로 1명이 된 때. 2026-10-30 결정)
  * - 동표: 동표자 중 현재 리더가 있으면 재신임. 없으면 'tie' 로 두고 관리자가 동표자 중에서 지정한다.
  * - 관리자가 투표가 끝나기 전에 다음 단계로 넘기면 그때까지의 표로 집계하고, 표가 없거나 동표가 풀리지 않으면 현재 리더를 유지한다.
  */
@@ -32,12 +33,13 @@ function currentLeaderId(teamId: number): number | null {
   return listGroupMembers(teamId).find((m) => m.isLeader)?.id ?? null
 }
 
-/** 해당 일차 선거 행을 팀마다 만든다. 활성 팀원이 없는 팀은 바로 done */
+/** 해당 일차 선거 행을 팀마다 만든다. 활성 팀원이 없는 팀은 바로 done, 1명뿐인 팀은 투표 없이 그 사람이 리더 */
 export function openElections(day: number) {
   const insert = db.prepare('INSERT OR IGNORE INTO leader_elections (day, group_id, status, leader_id) VALUES (?, ?, ?, ?)')
   for (const g of listGroups()) {
-    const empty = activeMemberIds(g.id).length === 0
-    insert.run(day, g.id, empty ? 'done' : 'voting', null)
+    const n = activeMemberIds(g.id).length
+    insert.run(day, g.id, n === 0 ? 'done' : 'voting', null)
+    if (n === 1) finalizeElection(day, g.id)
   }
 }
 
@@ -90,6 +92,14 @@ export function finalizeElection(day: number, teamId: number, force = false): Fi
   if (!row || row.status === 'done') return null
   if (row.status === 'tie' && !force) return null
   const active = activeMemberIds(teamId)
+  // 활성 팀원이 1명뿐이면 투표 없이 자동 리더
+  if (active.length === 1) {
+    const only = active[0]!
+    const changed = only !== currentLeaderId(teamId)
+    if (changed) setTeamLeader(teamId, only)
+    db.prepare(`UPDATE leader_elections SET status = 'done', leader_id = ?, tied = NULL, tally = NULL WHERE day = ? AND group_id = ?`).run(only, day, teamId)
+    return { status: 'done', leaderId: only, votes: 0, changed }
+  }
   const votedCount = (db.prepare('SELECT COUNT(*) AS n FROM leader_votes WHERE day = ? AND group_id = ? AND voter_id IN (SELECT id FROM users WHERE active = 1)')
     .get(day, teamId) as { n: number }).n
   if (!force && votedCount < active.length) return null

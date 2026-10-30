@@ -274,6 +274,8 @@ export interface TeamMigrationView {
   startDay: number
   /** 내 대기 신청 (일반 팀원) */
   mine: MigrationView | null
+  /** 이미 끝난 내 이주 (수락됨). 이주는 1인 1회라 있으면 다시 신청할 수 없다 */
+  done: MigrationView | null
   /** 우리 팀으로 온 대기 신청 (리더에게만) */
   incoming: MigrationView[]
 }
@@ -459,7 +461,8 @@ export interface TeamGameView {
   /** 내 팀이 선포해 관리자 승인을 기다리는 전쟁 (docs/99 §8). 공격팀만 안다 */
   warPending: { id: number; defender: number; cost: WarCost } | null
   /** 내 최종 투표 (최종장, 본인만) */
-  myFinalVote: { choice: 'gem' | 'gold'; extra: boolean } | null
+  /** weight = 득표 (리더 기본 1 + 라이프 투표권 1). 팀원은 라이프 투표권으로만 투표하므로 1 */
+  myFinalVote: { choice: 'gem' | 'gold'; extra: boolean; weight: number } | null
   /** 이주 (진행 중에만) */
   migration: TeamMigrationView | null
   /** 내가 스파이면 현황 (본인에게만. 아니면 null) */

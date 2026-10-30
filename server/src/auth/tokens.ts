@@ -30,10 +30,11 @@ export function hashPin(pin: string): string {
   return crypto.createHmac('sha256', config.pinSecret).update(normalizePin(pin)).digest('hex')
 }
 
-export function signAccessToken(user: PublicUser): string {
+/** ttl 기본 = 일반 모드 수명. 테스트 모드(탭 로그인)는 재발급이 없어 config.tabAccessTokenTtl 로 더 길게 발급한다 */
+export function signAccessToken(user: PublicUser, ttl: string = config.accessTokenTtl): string {
   const claims: AccessClaims = { sub: user.id, role: user.role }
   return jwt.sign(claims, config.jwtSecret, {
-    expiresIn: config.accessTokenTtl as jwt.SignOptions['expiresIn'],
+    expiresIn: ttl as jwt.SignOptions['expiresIn'],
   })
 }
 

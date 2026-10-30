@@ -104,7 +104,7 @@ function recompute() {
     <template v-if="f.step === 'vote'">
       <h3>최종 투표 <span class="muted">{{ f.votes.done }} / {{ f.votes.eligible }}명</span>
         <span v-if="view.state.lifeVote" class="badge on">라이프 투표권 사용 가능</span>
-        <span v-else class="badge">1인 1표</span>
+        <span v-else class="badge">리더만 1표</span>
       </h3>
       <table class="tbl">
         <tbody>

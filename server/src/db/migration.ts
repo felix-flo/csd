@@ -6,7 +6,8 @@
  *
  * 규칙:
  * - 진행 중 · 이주 시작 라운드(game.migration_start_day)부터 · 라이프 제출 단계 제외. 최종장 없음
- * - 리더는 신청할 수 없다 (수락 때도 다시 확인). 1인 대기 1건 (idx_migrations_one_pending), 횟수 제한 없음
+ * - 리더는 신청할 수 없다 (수락 때도 다시 확인). 1인 대기 1건 (idx_migrations_one_pending)
+ * - 한 번 이주(accepted)한 사람은 다시 신청할 수 없다 (2026-10-30 결정. 거절·취소는 횟수에 넣지 않음)
  * - 받는 팀 인원 제한 없음
  * - 대기 신청이 있으면 리더 협의 → 라이프 제출로 넘어가지 못한다 (game.ts advance). 관리자가 강제 취소로 풀 수 있다
  * - 리더 선출 단계에 수락되면: 원래 팀 선거가 투표 중이면 이주자가 낸 표와 이주자를 찍은 표를 지운다 (이주자는 새 팀에서 투표).
@@ -92,6 +93,7 @@ export function requestMigration(userId: number, toTeamId: number): MigrationVie
     if (u.is_leader === 1) throw new GameError('leader', '리더는 이주를 신청할 수 없습니다', 403)
     if (!listGroups().some((t) => t.id === toTeamId)) throw new GameError('not_found', '', 404)
     if (toTeamId === u.group_id) throw new GameError('same_team', '지금 팀으로는 이주할 수 없습니다', 400)
+    if (acceptedMigration(userId)) throw new GameError('already_migrated', '이미 이주했습니다. 이주는 한 번만 할 수 있습니다')
     const r = db.prepare(`INSERT OR IGNORE INTO migrations (day, user_id, from_group, to_group) VALUES (?, ?, ?, ?)`).run(g.day, userId, u.group_id, toTeamId)
     if (r.changes !== 1) throw new GameError('migration_pending', '이미 대기 중인 이주 신청이 있습니다. 취소한 뒤 다시 신청하세요')
     return getMigration(Number(r.lastInsertRowid))!
@@ -175,6 +177,12 @@ export function cancelAllPendingMigrations(): MigrationView[] {
 }
 
 /** 참가자 화면용 */
+/** 이미 수락된(완료된) 이주. 1인 1회라 최대 1건 */
+function acceptedMigration(userId: number): MigrationView | null {
+  const r = db.prepare(`${SELECT} WHERE m.user_id = ? AND m.status = 'accepted' ORDER BY m.id DESC`).get(userId) as MigrationRow | undefined
+  return r ? toView(r) : null
+}
+
 export function getTeamMigrationView(userId: number, teamId: number, isLeader: boolean): TeamMigrationView {
   const g = getGameRow()
   const mine = db.prepare(`${SELECT} WHERE m.user_id = ? AND m.status = 'pending'`).get(userId) as MigrationRow | undefined
@@ -183,6 +191,7 @@ export function getTeamMigrationView(userId: number, teamId: number, isLeader: b
     open: isMigrationOpen(g.status, g.day, g.phase, g.migration_start_day),
     startDay: g.migration_start_day,
     mine: mine ? toView(mine) : null,
+    done: acceptedMigration(userId),
     incoming,
   }
 }

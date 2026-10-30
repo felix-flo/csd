@@ -99,6 +99,7 @@ const final = computed(() => (s.value?.status === 'final' || s.value?.status ===
       :life-vote="!!s.lifeVote"
       :team-lives="game.team.resources.life"
       :my-vote="game.team.myFinalVote"
+      :is-leader="isLeader"
     />
     <div class="card">
       <h2>팀 재화</h2>
@@ -127,7 +128,7 @@ const final = computed(() => (s.value?.status === 'final' || s.value?.status ===
       <!-- 마지막 라운드 필수 안건 (docs/100 N2) -->
       <p v-if="phase === 'council' && isLastRound" style="margin: 8px 0 0">
         📜 <strong>필수 안건: 남은 라이프를 최종 투표권으로 인정할까요?</strong>
-        <span class="muted">— 통과 시 최종 투표 때 팀 라이프 1개로 1표 더 (1인 1장).
+        <span class="muted">— 부결이면 최종 투표는 리더만 1표. 통과 시 팀 라이프 1개로 1표 (1인 1장): 리더는 1표 더, 팀원은 이것으로 투표.
           {{ s?.lifeVote == null ? '' : s.lifeVote ? '결과: 통과' : '결과: 부결' }}</span>
       </p>
     </div>

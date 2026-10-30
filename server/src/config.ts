@@ -19,8 +19,10 @@ export const config = {
   dbPath: env.DB_PATH ?? path.resolve(process.cwd(), '../data/csd.sqlite'),
   jwtSecret: required('JWT_SECRET', 'dev-jwt-secret'),
   pinSecret: required('PIN_SECRET', 'dev-pin-secret'),
-  /** 액세스 토큰 수명 (두 모드 공통, docs/101). .env 가 있으면 그 값이 우선 */
+  /** 액세스 토큰 수명 (일반 모드, docs/101). .env 가 있으면 그 값이 우선 */
   accessTokenTtl: env.ACCESS_TOKEN_TTL ?? '1h',
+  /** 테스트 모드(탭 로그인) 액세스 토큰 수명. 재발급이 없으므로 더 길게 (2026-10-30 결정: 3시간) */
+  tabAccessTokenTtl: env.TAB_ACCESS_TOKEN_TTL ?? '3h',
   /** 리프레시 토큰 수명(ms). REFRESH_TOKEN_TTL_HOURS 기본 12. 예전 REFRESH_TOKEN_TTL_DAYS 가 있으면 그 값(일) 우선 */
   refreshTokenTtlMs: env.REFRESH_TOKEN_TTL_DAYS
     ? Number(env.REFRESH_TOKEN_TTL_DAYS) * 86_400_000

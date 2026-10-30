@@ -64,7 +64,7 @@ authRouter.post('/login', loginLimiter, (req, res) => {
   // 테스트 모드(탭 로그인, docs/101): 리프레시 쿠키를 심지 않는다. 클라이언트가 액세스 토큰을 탭 저장소에 둔다
   if (isTabLogin()) {
     res.clearCookie(REFRESH_COOKIE, { path: cookieOpts.path })
-    const body: LoginResponse = { accessToken: signAccessToken(user), user, tabLogin: true }
+    const body: LoginResponse = { accessToken: signAccessToken(user, config.tabAccessTokenTtl), user, tabLogin: true }
     res.json(body)
     return
   }

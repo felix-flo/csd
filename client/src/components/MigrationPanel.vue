@@ -3,6 +3,7 @@
  * 이주 (참가자, docs/100 N3). 이주 시작 라운드부터 보인다.
  * - 일반 팀원: 받을 팀을 골라 신청 (확인 팝업: 빈손 이동) → 대기 중이면 취소. 1인 대기 1건
  * - 리더: 우리 팀으로 온 신청을 수락/거절 (리더 본인은 신청 불가)
+ * - 이주는 1인 1회: 이미 이주한 사람(migration.done)은 신청 화면 대신 완료 안내만 본다
  * - 라이프 제출 단계에는 신청·수락이 없다. 신청은 받는 팀 리더에게만 가고, 수락되면 전체에 공지된다
  */
 import { computed, ref } from 'vue'
@@ -89,6 +90,14 @@ function onConfirm() {
         <TeamMark :color="teams.byId(migration.mine.toTeamId)?.color ?? ''" /><strong>{{ nameOf(migration.mine.toTeamId) }}</strong> 에 이주 신청 중 — 그 팀 리더의 수락을 기다립니다
       </p>
       <button class="secondary small" :disabled="busy" @click="modal = { kind: 'cancel' }">신청 취소</button>
+    </template>
+    <template v-else-if="migration.done">
+      <p>
+        <span class="badge on">이주 완료</span>
+        {{ migration.done.day }}라운드에 <TeamMark :color="teams.byId(migration.done.fromTeamId)?.color ?? ''" />{{ nameOf(migration.done.fromTeamId) }} →
+        <TeamMark :color="teams.byId(migration.done.toTeamId)?.color ?? ''" /><strong>{{ nameOf(migration.done.toTeamId) }}</strong>
+      </p>
+      <p class="muted">이주는 한 번만 할 수 있습니다.</p>
     </template>
     <template v-else-if="migration.open">
       <p class="muted">다른 팀으로 옮길 수 있습니다. 신청은 받는 팀 리더에게만 전달되고, 수락되면 바로 소속이 바뀝니다 (빈손 이동).</p>

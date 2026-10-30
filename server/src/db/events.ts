@@ -64,10 +64,13 @@ export function insertEvent(ev: NewEvent): GameEvent {
 }
 
 /** 해당 유저가 볼 수 있는 이벤트 중 afterId 이후 것들 (재접속 replay 용). 진행자(admin)는 전부 본다 */
+/** 관리자는 모든 이벤트를 보되, 두 팀에 같은 내용을 따로 보낸 것의 두 번째(payload.adminSkip)는 뺀다 (realtime publishEvent 와 같은 기준) */
+const NOT_ADMIN_SKIP = `COALESCE(json_extract(payload, '$.adminSkip'), 0) = 0`
+
 export function listEventsForUser(user: PublicUser, afterId: number, limit = 200): GameEvent[] {
   if (user.role === 'admin') {
     const rows = db
-      .prepare('SELECT * FROM events WHERE id > ? ORDER BY id ASC LIMIT ?')
+      .prepare(`SELECT * FROM events WHERE id > ? AND ${NOT_ADMIN_SKIP} ORDER BY id ASC LIMIT ?`)
       .all(afterId, limit) as EventRow[]
     return rows.map(toEvent)
   }
@@ -91,7 +94,7 @@ export function listEventsForUser(user: PublicUser, afterId: number, limit = 200
 export function listRecentEventsForUser(user: PublicUser, limit = 50): GameEvent[] {
   const where =
     user.role === 'admin'
-      ? ''
+      ? `WHERE ${NOT_ADMIN_SKIP}`
       : `WHERE scope = 'all'
            OR (scope = 'role'  AND target_role = ?)
            OR (scope = 'group' AND target_id = ?)

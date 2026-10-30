@@ -194,7 +194,7 @@ const modalText = computed(() => {
       return { title: last ? `마지막 라운드(${st.day + 1}라운드)로 넘길까요?` : `${st.day + 1}라운드로 넘길까요?`, message: `이번 라운드가 끝나고 ${st.day + 1}라운드 리더 선출이 시작됩니다.${warn}${last}` }
     }
     case 'end': {
-      const lv = st.lifeVote ? '라이프 투표권 사용 가능 (팀 라이프 1개로 1표 더, 1인 1장)' : '1인 1표 (라이프 투표권 안건 부결)'
+      const lv = st.lifeVote ? '리더 1표 + 라이프 투표권 (팀 라이프 1개로 1표, 1인 1장. 팀원은 라이프 투표권으로만)' : '리더만 1표 (라이프 투표권 안건 부결)'
       return {
         title: '게임을 종료하고 최종장을 시작할까요?',
         message: `${st.day}라운드 모든 팀의 라이프 제출이 끝났습니다. 거래·발행·원조는 더 이상 할 수 없습니다.\n최종 투표(보석 vs 골드)가 열립니다 · ${lv}.`,
@@ -571,7 +571,7 @@ const tradeLine = (t: TradeView) => `${team(t.from.teamId)?.name} → ${team(t.t
     </p>
     <div v-if="lifeVoteOpen" class="life-vote" :class="{ missing: s.lifeVote == null }">
       <div><strong>📜 필수 안건: 남은 라이프를 최종 투표권으로 인정할까요?</strong></div>
-      <div class="muted">리더 4명 중 3명 찬성이면 통과. 통과 시 최종 투표 때 팀 라이프 1개로 1표 더 (1인 1장). 라이프 제출로 넘어가면 바꿀 수 없습니다.</div>
+      <div class="muted">리더 4명 중 3명 찬성이면 통과. 부결이면 최종 투표는 리더만 1표. 통과 시 팀 라이프 1개로 1표 (1인 1장): 리더는 1표 더, 팀원은 이것으로만 투표. 라이프 제출로 넘어가면 바꿀 수 없습니다.</div>
       <div class="row" style="margin-top: 6px">
         <button :class="{ secondary: s.lifeVote !== true }" :disabled="busy" @click="setLifeVote(true)">통과</button>
         <button :class="{ secondary: s.lifeVote !== false }" :disabled="busy" @click="setLifeVote(false)">부결</button>

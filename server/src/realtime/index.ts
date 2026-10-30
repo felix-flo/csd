@@ -92,7 +92,8 @@ export function moveUserRooms(userId: number, fromGroupId: number | null, toGrou
 export function publishEvent(ev: GameEvent) {
   if (!io) return
   const adminAlreadyIncluded = ev.scope === 'all' || (ev.scope === 'role' && ev.targetRole === 'admin')
-  if (!adminAlreadyIncluded) io.to(rooms.role('admin')).emit('event', ev)
+  // payload.adminSkip: 같은 일을 두 팀에 따로 알릴 때(거래) 두 번째 것은 관리자에게 보내지 않는다 (피드 조회도 같은 기준: db/events.ts)
+  if (!adminAlreadyIncluded && !ev.payload.adminSkip) io.to(rooms.role('admin')).emit('event', ev)
   switch (ev.scope) {
     case 'all':
       io.to(rooms.all).emit('event', ev)

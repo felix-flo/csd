@@ -123,9 +123,10 @@ function announceAllLeaders(day: number, by: number, extra: Record<string, unkno
   emit('game', 'all', null, 'election.all_done', '모든팀의 리더 선출이 완료되었습니다.', by, { day, ...extra })
 }
 
+/** 거래 당사자 두 팀에 각각 알린다. 관리자는 두 팀 알림을 모두 받으므로 두 번째(받는 팀) 것은 adminSkip 으로 뺀다 (한 번만 뜨게) */
 function announceTrade(t: TradeView, kind: string, messages: { from: string; to: string }, by: number, extra: Record<string, unknown> = {}) {
   emit('trade', 'group', t.from.teamId, kind, messages.from, by, { tradeId: t.id, status: t.status, ...extra })
-  emit('trade', 'group', t.to.teamId, kind, messages.to, by, { tradeId: t.id, status: t.status, ...extra })
+  emit('trade', 'group', t.to.teamId, kind, messages.to, by, { tradeId: t.id, status: t.status, adminSkip: true, ...extra })
 }
 
 function announceCancelled(t: TradeView | null, reason: string, by: number) {
@@ -303,8 +304,10 @@ gameRouter.post('/admin/game/end', requireRole('admin'), handle(null, (req, res)
   for (const r of cancelled.issues) {
     emit('game', 'group', r.teamId, 'issue.cancelled', `게임 종료로 ${issueText(r)} 발행 요청이 취소되었습니다`, req.auth!.sub, { issueId: r.id, muted: true })
   }
-  const extra = getGameRow().life_vote_passed === 1 ? ' · 라이프 투표권: 팀 라이프 1개로 1표 더 (1인 1장, 선착순)' : ''
-  emit('game', 'all', null, 'final.started', `🗳️ 최종장이 시작되었습니다 · 최종 투표: 보석과 골드 중 하나에 투표하세요 (1인 1표${extra})`, req.auth!.sub)
+  const extra = getGameRow().life_vote_passed === 1
+    ? '리더 1표 + 라이프 투표권: 팀 라이프 1개로 1표 (1인 1장, 선착순. 팀원은 라이프 투표권으로만 투표)'
+    : '리더만 1표 (라이프 투표권 안건 부결)'
+  emit('game', 'all', null, 'final.started', `🗳️ 최종장이 시작되었습니다 · 최종 투표: 보석과 골드 중 하나에 투표하세요 (${extra})`, req.auth!.sub)
   res.json(adminView())
 }))
 
@@ -430,8 +433,8 @@ gameRouter.post('/admin/migration/:id/cancel', requireRole('admin'), handle(null
 gameRouter.post('/admin/game/life-vote', requireRole('admin'), handle(z.object({ passed: z.boolean() }), (req, res, body) => {
   setLifeVote(body.passed)
   const msg = body.passed
-    ? '📜 라이프 투표권 안건 통과: 최종 투표 때 남은 팀 라이프 1개로 1표 더 (1인 1장)'
-    : '📜 라이프 투표권 안건 부결: 최종 투표는 1인 1표입니다'
+    ? '📜 라이프 투표권 안건 통과: 최종 투표 때 남은 팀 라이프 1개로 1표 (1인 1장). 리더는 기본 1표에 더할 수 있고, 팀원은 라이프 투표권으로만 투표합니다'
+    : '📜 라이프 투표권 안건 부결: 최종 투표는 리더만 1표입니다'
   emit('game', 'all', null, 'final.life_vote', msg, req.auth!.sub)
   res.json(adminView())
 }))
@@ -439,8 +442,8 @@ gameRouter.post('/admin/game/life-vote', requireRole('admin'), handle(z.object({
 /** 최종 투표 (활성 참가자). 득표는 공개하지 않고 인원 현황만 갱신 (기록 없는 신호) */
 gameRouter.post('/final/vote', requireRole('member'), handle(z.object({ choice: z.enum(['gem', 'gold']), extra: z.boolean() }), (req, res, body) => {
   const by = req.auth!.sub
-  const { teamId } = castFinalVote(by, body.choice, body.extra)
-  const votes = body.extra ? '2표 · 라이프 투표권 사용' : '1표'
+  const { teamId, weight } = castFinalVote(by, body.choice, body.extra)
+  const votes = `${weight}표${body.extra ? ' · 라이프 투표권 사용' : ''}`
   emit('game', 'user', by, 'final.voted', `최종 투표 완료: ${RESOURCE_LABELS[body.choice]} (${votes})`, by, { silent: true })
   if (body.extra) emit('game', 'group', teamId, 'resources.updated', `라이프 투표권: ${userName(by)} 님 · 라이프 -1`, by, { silent: true })
   signalLobby()
