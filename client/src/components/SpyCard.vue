@@ -1,63 +1,80 @@
 <script setup lang="ts">
 /**
  * 스파이 카드 (docs/100 N4, 룰 05 "스파이 카드"). 본인에게만, 평소에는 숨김.
- * - 상단바 내 이름을 3번 연속 누르면 뜬다 (TopBar). 카드를 누르면 바로 숨고, 10초 뒤 저절로 숨는다
+ * - 룰 화면(RulesView)과 같은 틀: 흰 바탕 전체 화면 · 제목 "룰"(아래 작은 글씨 "당신에게만 보이는 화면") + 돌아가기 · 헤어라인 카드 한 장 · 본문은 MarkdownView (2026-10-30).
+ *   옆에서 봐도 룰 보는 화면처럼 보이게 제목·구성을 룰 화면과 맞춘다
+ * - 상단바 내 이름을 3번 연속 누르면 뜬다 (TopBar). 화면 아무 곳이나 누르거나 "돌아가기" 로 닫히고, 10초 뒤 저절로 닫힌다
  * - intro: 게임 시작 때 1번 보여주는 무음 안내 (다시 보는 방법 포함). 기록·소리 없음
  */
-import { onBeforeUnmount, onMounted } from 'vue'
+import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { SPY_REWARD_MAX, SPY_REWARD_PER, type SpyStatus } from '../../../shared/game'
+import MarkdownView from './MarkdownView.vue'
 
 const props = defineProps<{ spy: SpyStatus; intro?: boolean }>()
 const emit = defineEmits<{ close: [] }>()
+const AUTO_CLOSE_MS = 10_000
 let timer: ReturnType<typeof setTimeout> | null = null
 onMounted(() => {
-  timer = setTimeout(() => emit('close'), props.intro ? 20_000 : 10_000)
+  timer = setTimeout(() => emit('close'), AUTO_CLOSE_MS)
 })
 onBeforeUnmount(() => {
   if (timer) clearTimeout(timer)
 })
 const won = (n: number) => `${n.toLocaleString('ko-KR')}원`
+
+/** 룰 문서와 같은 마크다운으로 본문을 만든다 (MarkdownView 가 정화해서 그린다) */
+const markdown = computed(() => {
+  const s = props.spy
+  const reward = s.alive
+    ? `지금까지 탈락자 **${s.eliminated}**명 · 적립 **${won(s.reward)}**`
+    : '탈락하여 적립금이 사라졌습니다'
+  const lines = [
+    '## 당신은 스파이입니다',
+    '',
+    '- 겉으로는 소속 팀원으로 행동합니다.',
+    '- 목표: **탈락자를 많이 만들기**',
+    `- 탈락자 1명당 \`${won(SPY_REWARD_PER)}\` (최대 \`${won(SPY_REWARD_MAX)}\`)`,
+    '- 본인이 탈락하면 적립금은 전부 사라집니다.',
+    '- 정체는 최종장 마지막에 공개됩니다.',
+    '',
+    '---',
+    '',
+    reward,
+  ]
+  if (props.intro) lines.push('', '> 상단의 **내 이름을 3번 연속 누르면** 이 화면을 다시 볼 수 있습니다.')
+  return lines.join('\n')
+})
 </script>
 
 <template>
-  <div class="spy-backdrop" @click="emit('close')">
-    <div class="spy-card" role="dialog" aria-label="스파이 카드">
-      <p class="eyebrow">{{ intro ? '당신에게만 보이는 카드' : '스파이 카드' }}</p>
-      <h2>🌙 당신은 스파이입니다</h2>
-      <ul>
-        <li>겉으로는 소속 팀원으로 행동</li>
-        <li>목표: 탈락자를 많이 만들기</li>
-        <li>탈락자 1명당 {{ won(SPY_REWARD_PER) }} (최대 {{ won(SPY_REWARD_MAX) }})</li>
-        <li>본인이 탈락하면 전부 사라짐</li>
-        <li>정체는 최종장 마지막에 공개</li>
-      </ul>
-      <p class="reward">
-        <template v-if="spy.alive">지금까지 탈락자 <strong>{{ spy.eliminated }}</strong>명 · 적립 <strong>{{ won(spy.reward) }}</strong></template>
-        <template v-else>탈락하여 적립금이 사라졌습니다</template>
-      </p>
-      <p v-if="intro" class="hint">상단의 <strong>내 이름을 3번 연속 누르면</strong> 이 카드를 다시 볼 수 있습니다.</p>
-      <p class="close">누르면 닫힙니다</p>
+  <div class="spy-page" role="dialog" aria-modal="true" aria-label="스파이 카드" @click="emit('close')">
+    <div class="page">
+      <div class="topbar">
+        <div>
+          <h1 style="margin: 0">룰</h1>
+          <span class="muted">당신에게만 보이는 화면</span>
+        </div>
+        <div class="row">
+          <button class="secondary" type="button" @click.stop="emit('close')">돌아가기</button>
+        </div>
+      </div>
+      <div class="card">
+        <MarkdownView :markdown="markdown" />
+        <p class="muted" style="margin-top: 16px">화면을 누르면 닫힙니다 · 10초 뒤 저절로 닫힙니다</p>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.spy-backdrop { position: fixed; inset: 0; z-index: 950; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(5, 7, 15, 0.6); }
-.spy-card {
-  width: 100%;
-  max-width: 380px;
-  padding: 22px 20px;
-  border-radius: 14px;
-  background: radial-gradient(ellipse at top, #1d2440 0%, #0b0e1a 80%);
-  color: #f3e6c4;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(243, 230, 196, 0.25);
+/* 룰 화면과 같은 바탕. .page/.topbar/.card/button 은 전역 스타일 그대로 */
+.spy-page {
+  position: fixed;
+  inset: 0;
+  z-index: 950;
+  background: var(--bg);
+  color: var(--ink);
+  overflow-y: auto;
   cursor: pointer;
 }
-.eyebrow { margin: 0 0 4px; font-size: 0.75rem; letter-spacing: 0.15em; color: rgba(243, 230, 196, 0.6); }
-h2 { margin: 0 0 12px; font-family: var(--font-display); font-size: 1.5rem; color: #f3e6c4; }
-ul { margin: 0; padding-left: 1.1em; line-height: 1.8; font-size: 0.95rem; }
-.reward { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid rgba(243, 230, 196, 0.25); }
-.reward strong { color: #f3d68c; font-size: 1.15rem; }
-.hint { margin: 10px 0 0; font-size: 0.88rem; color: rgba(243, 230, 196, 0.85); }
-.close { margin: 12px 0 0; font-size: 0.75rem; text-align: right; color: rgba(243, 230, 196, 0.5); }
 </style>
