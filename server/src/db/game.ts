@@ -26,8 +26,8 @@ import { clearFinalVotes, getFinalState, isResultRevealed } from './final.js'
 import { clearMigrations, pendingMigrations } from './migration.js'
 import { clearSpy, prepareSpiesForStart } from './spy.js'
 import { GameError } from './gameError.js'
-import { DEFAULT_ISSUE_LIMITS, DEFAULT_LAST_ISSUE_PHASES, DEFAULT_MIGRATION_START_DAY, emptyResources, isBeforeStart, PHASE_LABELS, PHASES, sortPhases, sumResources, teamLetter } from '../../../shared/game.js'
-import type {
+import { PHASE_TIMER_SECONDS, DEFAULT_ISSUE_LIMITS, DEFAULT_LAST_ISSUE_PHASES, DEFAULT_MIGRATION_START_DAY, emptyResources, isBeforeStart, PHASE_LABELS, PHASES, sortPhases, sumResources, teamLetter } from '../../../shared/game.js'
+import type { PhaseTimer,
   GameResults, GameSettings, GameState, GameStatus, IssueLimits, IssueRequestView, LobbyTeam, Phase, Resources, RosterTeam, TradeView, WarCost,
 } from '../../../shared/game.js'
 import type { GroupInfo } from '../../../shared/types.js'
@@ -37,6 +37,8 @@ const GAME_TITLE = '더 트래픽 커뮤니티 2 : 보이지 않는 손'
 
 interface GameRow {
   status: GameStatus
+  phase_started_at: string | null
+  phase_timer_fired: number
   total_days: number | null
   day: number
   phase: Phase | null
@@ -78,6 +80,25 @@ function updateGame(set: string, params: unknown[] = []) {
   db.prepare(`UPDATE game SET ${set}, updated_at = datetime('now') WHERE id = 1`).run(...params)
 }
 
+/** SQLite datetime('now') ("YYYY-MM-DD HH:MM:SS", UTC) → Date */
+function sqliteDate(s: string): Date {
+  return new Date(s.replace(' ', 'T') + 'Z')
+}
+
+/** 단계 타이머 (거래·리더 협의, docs/103 §14). 단계 시작 시각 + 길이 */
+export function getPhaseTimer(g: GameRow = getGameRow()): PhaseTimer | null {
+  if (g.status !== 'running' || !g.phase || !g.phase_started_at) return null
+  const seconds = PHASE_TIMER_SECONDS[g.phase]
+  if (!seconds) return null
+  const start = sqliteDate(g.phase_started_at)
+  return { phase: g.phase, endsAt: new Date(start.getTime() + seconds * 1000).toISOString(), serverNow: new Date().toISOString(), seconds, fired: g.phase_timer_fired === 1 }
+}
+
+/** 타이머 종료 알림을 보냈다고 표시. 아직 같은 단계이고 안 보냈을 때만 true (스케줄러가 호출) */
+export function markPhaseTimerFired(day: number, phase: Phase): boolean {
+  return db.prepare(`UPDATE game SET phase_timer_fired = 1 WHERE id = 1 AND status = 'running' AND day = ? AND phase = ? AND phase_timer_fired = 0`).run(day, phase).changes === 1
+}
+
 export function getGameState(): GameState {
   const g = getGameRow()
   const { initial } = getAllResources()
@@ -89,6 +110,7 @@ export function getGameState(): GameState {
     phase: g.phase,
     leadersDone: g.status === 'running' && allElectionsDone(g.day),
     livesDone: g.status === 'running' && g.phase === 'life' && allLivesDone(g.day),
+    timer: getPhaseTimer(g),
     initialTotals: sumResources([...initial].filter(([id]) => teamIds.has(id)).map(([, r]) => r)),
     results: g.results ? (JSON.parse(g.results) as GameResults) : null,
     lifeVote: g.life_vote_passed == null ? null : g.life_vote_passed === 1,
@@ -355,7 +377,7 @@ export function startGame(by: number): number[] {
     clearMigrations()
     resetAmountsToInitial()
     recordInitialLedger(1, by)
-    updateGame(`status = 'running', day = 1, phase = 'leader', aid_used = 0, results = NULL,
+    updateGame(`status = 'running', day = 1, phase = 'leader', aid_used = 0, results = NULL, phase_started_at = datetime('now'), phase_timer_fired = 0,
                 started_at = datetime('now'), ended_at = NULL, ${CLEAR_FINAL}`)
     // 시작 전에는 리더 표시를 그대로 두므로 여기서 정리 (비활성 리더 해제. 활성 리더는 위에서 팀마다 확인했다)
     for (const t of listGroups()) ensureLeader(t.id)
@@ -403,13 +425,13 @@ export function advance(expect: { day: number; phase: Phase }): AdvanceResult {
         }
       }
       result.phase = PHASES[idx + 1]!
-      updateGame('phase = ?', [result.phase])
+      updateGame(`phase = ?, phase_started_at = datetime('now'), phase_timer_fired = 0`, [result.phase])
     } else {
       if (g.day >= (g.total_days ?? 0)) throw new GameError('last_day', '마지막 라운드입니다. 게임 종료를 누르세요')
       if (!getWarCost(g.day + 1)) throw new GameError('no_war_cost', `${g.day + 1}라운드 전쟁 선포 비용을 먼저 정하세요`)
       result.day = g.day + 1
       result.phase = 'leader'
-      updateGame(`day = ?, phase = 'leader'`, [result.day])
+      updateGame(`day = ?, phase = 'leader', phase_started_at = datetime('now'), phase_timer_fired = 0`, [result.day])
       openElections(result.day)
     }
     return result

@@ -106,6 +106,7 @@ export type EventType = 'notice' | 'system' | 'document.updated' | 'game' | 'tra
  * - life.all_done      : 모든 팀 라이프 제출 완료 (scope=all)
  * - issue.decided      : 발행 완료 — 요청 즉시 자동 발행 (보석은 화이트팀만 scope=group, 골드는 scope=all 로 공개)
  * 발행 알림은 payload.muted (팝업은 뜨지만 소리는 없음)
+ * - phase.timeout      : 거래·리더 협의 단계 타이머 종료 (scope=all, 소리 있음. docs/103 §14)
  * - war.allowed        : 다음 라운드 전쟁 허용/제재 (리더 협의 결과, scope=all)
  * - war.declared       : 전쟁 시작 = 리더 선포 즉시 (scope=all, 소리 있음). payload.war = 강조 팝업
  * - war.resolved       : 전쟁 결과 — 승리팀 이름·무승부·취소 (scope=all)
@@ -131,7 +132,7 @@ export type GameKind =
   | 'game.updated' | 'game.reset'
   | 'migration.requested' | 'migration.accepted' | 'migration.rejected' | 'migration.cancelled'
   | 'final.life_vote' | 'final.started' | 'final.voted' | 'final.closed' | 'final.tiebreak' | 'final.result' | 'final.settled' | 'final.spy' | 'final.ended'
-  | 'election.done' | 'election.all_done'
+  | 'election.done' | 'election.all_done' | 'phase.timeout'
   | 'resources.updated' | 'life.submitted' | 'life.eliminated' | 'life.all_done'
   | 'issue.decided'
   | 'war.allowed' | 'war.declared' | 'war.resolved' | 'war.spoils' | 'war.lost'

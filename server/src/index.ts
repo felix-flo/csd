@@ -11,6 +11,7 @@ import { listGroups, rehashPins } from './db/users.js'
 import { isTabLogin } from './db/game.js'
 import { ensureLeader, ensureTeams } from './db/teams.js'
 import { seedDefaultRulesIfPristine } from './db/rulesDefaults.js'
+import { schedulePhaseTimer } from './phaseTimer.js'
 import { pruneRefreshTokens } from './auth/tokens.js'
 import { authRouter } from './routes/auth.js'
 import { apiRouter } from './routes/api.js'
@@ -74,6 +75,7 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
 
 const server = http.createServer(app)
 initRealtime(server)
+schedulePhaseTimer() // 단계 타이머 (docs/103 §14). 재시작 뒤에도 남은 시간에 맞춰 알림
 
 server.listen(config.port, () => {
   console.log(`[csd] ${config.nodeEnv} server listening on :${config.port} (db: ${config.dbPath}, client: ${clientVersion})`)

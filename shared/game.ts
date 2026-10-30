@@ -28,6 +28,23 @@ export const PHASE_LABELS: Record<Phase, string> = {
 
 export type GameStatus = 'setup' | 'ready' | 'running' | 'final' | 'ended'
 
+/** 단계 타이머(초, docs/103 §14): 거래 15분 · 리더 협의 5분. 강제는 없고 0이 되면 전체에 "시간 종료" 알림 1회 */
+export const PHASE_TIMER_SECONDS: Partial<Record<Phase, number>> = { trade: 15 * 60, council: 5 * 60 }
+export const PHASE_TIMEOUT_MESSAGES: Partial<Record<Phase, string>> = { trade: '⏱️ 거래 시간이 종료되었습니다.', council: '⏱️ 리더간 협의가 종료되었습니다.' }
+
+/** 진행 중 단계 타이머 (프레젠테이션 카운트다운용). 클라이언트는 serverNow 와 자기 시계의 차이로 보정한다 */
+export interface PhaseTimer {
+  phase: Phase
+  /** 끝나는 시각 (ISO) */
+  endsAt: string
+  /** 서버 현재 시각 (ISO) */
+  serverNow: string
+  /** 전체 길이 (초) */
+  seconds: number
+  /** 이미 0 이 되어 알림을 보냈는지 */
+  fired: boolean
+}
+
 /** 최종장 단계 (docs/100 N2): 최종 투표 → 결과 발표 → 정산 → 테러리스트 공개(N4) → 끝 */
 export const FINAL_STEPS = ['vote', 'result', 'settle', 'spy'] as const
 export type FinalStep = (typeof FINAL_STEPS)[number]
@@ -114,6 +131,8 @@ export interface GameState {
   leadersDone: boolean
   /** 모든 팀 라이프 제출 완료 (현재 일차) */
   livesDone: boolean
+  /** 단계 타이머 (거래·리더 협의 단계에서만, docs/103 §14) */
+  timer: PhaseTimer | null
   /** 모든 팀 초기 재화 합계 (프레젠테이션 공개용. 게임 중 변동은 공개하지 않는다) */
   initialTotals: Resources
   /** 정산 결과 (최종장 정산 단계부터) */

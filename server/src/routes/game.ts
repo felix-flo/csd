@@ -42,6 +42,7 @@ import {
 import { listAids, recordAid } from '../db/council.js'
 import { declareWar, describeCost, getWarCost, getWarOfDay, getWarRule, isWarAllowed, resolveWar, setWarCost, setWarRule } from '../db/war.js'
 import { db } from '../db/index.js'
+import { schedulePhaseTimer } from '../phaseTimer.js'
 import { insertEvent } from '../db/events.js'
 import { disconnectUsers, moveUserRooms, publishEvent, signalLobby } from '../realtime/index.js'
 import { revokeUserRefreshTokens } from '../auth/tokens.js'
@@ -267,12 +268,14 @@ gameRouter.post('/admin/game/prepare', requireRole('admin'), handle(null, (req, 
 
 gameRouter.post('/admin/game/revert', requireRole('admin'), handle(null, (req, res) => {
   revertToSetup()
+  schedulePhaseTimer()
   emit('game', 'all', null, 'game.updated', '게임 설정 단계로 돌아갔습니다', req.auth!.sub, { silent: true })
   res.json(adminView())
 }))
 
 gameRouter.post('/admin/game/start', requireRole('admin'), handle(null, (req, res) => {
   const deactivated = startGame(req.auth!.sub)
+  schedulePhaseTimer()
   endSessions(deactivated)
   const g = getGameRow()
   emit('game', 'all', null, 'game.updated', `게임이 시작되었습니다 · 1라운드 / 총 ${g.total_days}라운드 · 리더 선출 중 · ${todayCostText(1)}${migrationOpensText(1)}`, req.auth!.sub, { day: 1, phase: 'leader' })
@@ -285,6 +288,7 @@ const advanceSchema = z.object({ day: z.number().int().min(1), phase: z.enum(PHA
 function advanceAndAnnounce(expect: { day: number; phase: Phase }, by: number, prefix = '') {
   const leadersWereDone = expect.phase === 'leader' && allElectionsDone(expect.day)
   const r = advance(expect)
+  schedulePhaseTimer()
   for (const f of r.finalized) announceElection(expect.day, f.teamId, f.result, by)
   if (expect.phase === 'leader' && !leadersWereDone && r.finalized.length > 0) announceAllLeaders(expect.day, by)
   announceMigrationSweep(by)
@@ -306,6 +310,7 @@ gameRouter.post('/admin/game/next', requireRole('admin'), handle(advanceSchema, 
 
 gameRouter.post('/admin/game/end', requireRole('admin'), handle(null, (req, res) => {
   const cancelled = endGame()
+  schedulePhaseTimer()
   announceCancelled(cancelled.trade, '게임 종료로', req.auth!.sub)
   for (const r of cancelled.issues) {
     emit('game', 'group', r.teamId, 'issue.cancelled', `게임 종료로 ${issueText(r)} 발행 요청이 취소되었습니다`, req.auth!.sub, { issueId: r.id, muted: true })
@@ -507,6 +512,7 @@ gameRouter.post('/admin/final/recompute', requireRole('admin'), handle(null, (re
 gameRouter.post('/admin/game/reset', requireRole('admin'), handle(z.object({ clearSettings: z.boolean().optional() }), (req, res, body) => {
   const by = req.auth!.sub
   const { removed, ...summary } = resetGame(body.clearSettings ?? false)
+  schedulePhaseTimer()
   const self = removed.includes(by)
   // 남아 있는 화면(관리자·프레젠테이션)은 이 이벤트를 받고 피드를 비운다
   emit('game', 'all', null, 'game.reset', '게임이 초기화되었습니다', self ? null : by, { silent: true })

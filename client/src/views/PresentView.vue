@@ -24,7 +24,7 @@ import { useRoute } from 'vue-router'
 import { useGameStore } from '../stores/game'
 import { useTeamsStore } from '../stores/teams'
 import { api } from '../lib/api'
-import { isBeforeStart, RESOURCE_LABELS, WAR_COST_KINDS, WAR_STATUS_LABELS, type IntroResponse, type RosterTeam, type WarCost } from '../../../shared/game'
+import { isBeforeStart, PHASE_LABELS, RESOURCE_LABELS, WAR_COST_KINDS, WAR_STATUS_LABELS, type IntroResponse, type RosterTeam, type WarCost } from '../../../shared/game'
 
 const game = useGameStore()
 onMounted(() => void game.load())
@@ -101,6 +101,23 @@ const warLine = computed(() => {
   if (!w.allowed) return { text: '이번 라운드 전쟁 금지 (리더 협의)', hot: false }
   return { text: w.cost ? `이번 라운드 선포 비용: ${costText(w.cost)}` : '이번 라운드 선포 비용 미정', hot: false }
 })
+// ---- 단계 타이머 (docs/103 §14): 거래 15분 · 리더 협의 5분. 서버 시각으로 보정한 카운트다운 ----
+const nowTick = ref(Date.now())
+let tickHandle: ReturnType<typeof setInterval> | null = null
+onMounted(() => { tickHandle = setInterval(() => (nowTick.value = Date.now()), 500) })
+onBeforeUnmount(() => { if (tickHandle) clearInterval(tickHandle) })
+/** 서버 시각 − 내 시계 (상태를 받을 때마다 갱신) */
+const clockOffset = ref(0)
+watch(() => s.value?.timer?.serverNow, (now) => { if (now) clockOffset.value = new Date(now).getTime() - Date.now() }, { immediate: true })
+const timer = computed(() => {
+  const t = s.value?.timer
+  if (!t || s.value?.status !== 'running') return null
+  const left = Math.max(0, Math.round((new Date(t.endsAt).getTime() - (nowTick.value + clockOffset.value)) / 1000))
+  const mm = String(Math.floor(left / 60)).padStart(2, '0')
+  const ss = String(left % 60).padStart(2, '0')
+  return { label: PHASE_LABELS[t.phase], text: `${mm}:${ss}`, left, over: left === 0, warn: left > 0 && left <= 60, ratio: left / t.seconds }
+})
+
 /** 리더 협의 단계 안건 (docs/103 §12): 원조 · 다음 라운드 전쟁 허용/제재 · (마지막 라운드) 라이프 투표권 */
 const council = computed(() => {
   if (s.value?.status !== 'running' || s.value.phase !== 'council') return null
@@ -129,6 +146,11 @@ const council = computed(() => {
     </div>
     <div v-if="s?.status === 'running' && (s.phase === 'leader' && s.leadersDone || s.phase === 'life' && s.livesDone)" class="card done-banner">
       {{ s.phase === 'leader' ? '모든팀의 리더 선출이 완료되었습니다.' : '모든 팀의 라이프가 제출되었습니다.' }}
+    </div>
+    <div v-if="timer" class="card timer" :class="{ over: timer.over, warn: timer.warn }">
+      <span class="t-label">⏱️ {{ timer.label }} 남은 시간</span>
+      <span class="t-time mono">{{ timer.over ? '종료' : timer.text }}</span>
+      <div class="t-bar"><div class="t-fill" :style="{ width: `${timer.ratio * 100}%` }" /></div>
     </div>
     <div v-if="council" class="card council">
       <h2>🗣️ 리더 협의 안건</h2>
@@ -220,6 +242,15 @@ const council = computed(() => {
 .board .war { margin: 10px 0 0; font-size: 1.15rem; }
 .board .war.hot { color: var(--red); font-weight: 700; font-size: 1.4rem; }
 .done-banner .sub { font-size: 1.2rem; margin-left: 8px; }
+.timer { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; position: relative; overflow: hidden; border-left: 3px solid var(--blue); }
+.timer .t-label { font-size: 1.3rem; color: var(--muted); }
+.timer .t-time { font-size: 3.2rem; font-weight: 700; line-height: 1; }
+.timer.warn .t-time { color: var(--red); }
+.timer.over { border-left-color: var(--red); background: var(--red-bg); }
+.timer.over .t-time { color: var(--red); font-size: 2.4rem; }
+.t-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--line-soft); }
+.t-fill { height: 100%; background: var(--blue); transition: width 0.5s linear; }
+.timer.warn .t-fill { background: var(--red); }
 .council { border-left: 3px solid var(--blue); }
 .council ul { list-style: none; margin: 0; padding: 0; font-size: 1.4rem; line-height: 1.5; }
 .council li { padding: 6px 0; border-top: 1px solid var(--line-soft); }
