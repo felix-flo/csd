@@ -592,11 +592,11 @@ const tradeLine = (t: TradeView) => `${team(t.from.teamId)?.name} → ${team(t.t
             <td><TeamMark :color="team(t.teamId)?.color ?? ''" />{{ team(t.teamId)?.name }}</td>
             <td>
               <template v-if="t.lifeSubmission">
-                제출 · 생존 {{ t.lifeSubmission.saved.map(nameOf).join(', ') }}
+                제출 · 생존 {{ t.lifeSubmission.saved.map((id) => t.lifeSubmission!.names[id] ?? nameOf(id)).join(', ') }}
                 <template v-if="t.lifeSubmission.livesUsed">(라이프 {{ t.lifeSubmission.livesUsed }})</template>
                 <template v-else>(라이프 0 · 1명 생존)</template>
                 <span v-if="t.lifeSubmission.selfEliminated" class="badge">리더 자진 탈락</span>
-                <span v-if="t.lifeSubmission.eliminated.length" class="error"> · 탈락 {{ t.lifeSubmission.eliminated.map(nameOf).join(', ') }}</span>
+                <span v-if="t.lifeSubmission.eliminated.length" class="error"> · 탈락 {{ t.lifeSubmission.eliminated.map((id) => t.lifeSubmission!.names[id] ?? nameOf(id)).join(', ') }}</span>
               </template>
               <span v-else-if="t.activeMembers === 0" class="muted">활성 팀원 없음</span>
               <span v-else-if="isLifeExempt(t.activeMembers)" class="muted">제출 불필요 · 팀원 1명 (자동 생존, 라이프 {{ t.resources.life }} 유지)</span>

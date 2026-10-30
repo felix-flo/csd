@@ -108,7 +108,8 @@ async function submit() {
   }
 }
 
-const nameOf = (id: number) => props.members.find((m) => m.id === id)?.name ?? `#${id}`
+// 탈락자는 활성 팀원 목록(members)에서 빠지므로 서버가 결과에 실어 준 이름을 먼저 쓴다
+const nameOf = (id: number) => shown.value?.names[id] ?? props.members.find((m) => m.id === id)?.name ?? `#${id}`
 </script>
 
 <template>

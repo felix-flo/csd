@@ -380,6 +380,8 @@ export function lifeSubmitMax(activeMembers: number, lives: number, selfEliminat
 export interface LifeSubmissionView {
   saved: number[]
   eliminated: number[]
+  /** 생존자·탈락자 이름 (id → 이름). 탈락자는 활성 팀원 목록에서 빠지므로 화면이 이것으로 이름을 그린다 */
+  names: Record<number, string>
   livesUsed: number
   /** 리더 자진 탈락 (리더 외 팀원 중 무작위로 생존자를 정함) */
   selfEliminated: boolean

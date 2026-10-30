@@ -28,9 +28,17 @@ export function getLifeSubmission(day: number, teamId: number): LifeSubmissionVi
   const r = db.prepare('SELECT saved, eliminated, lives_used, self_eliminated, created_at FROM life_submissions WHERE day = ? AND group_id = ?').get(day, teamId) as
     | SubmissionRow
     | undefined
-  return r
-    ? { saved: JSON.parse(r.saved), eliminated: JSON.parse(r.eliminated), livesUsed: r.lives_used, selfEliminated: r.self_eliminated === 1, createdAt: r.created_at }
-    : null
+  if (!r) return null
+  const saved = JSON.parse(r.saved) as number[]
+  const eliminated = JSON.parse(r.eliminated) as number[]
+  return { saved, eliminated, names: namesOf([...saved, ...eliminated]), livesUsed: r.lives_used, selfEliminated: r.self_eliminated === 1, createdAt: r.created_at }
+}
+
+/** 비활성(탈락) 계정 포함 이름 조회. 탈락자는 listGroupMembers 에서 빠지므로 결과 표시용 이름을 따로 싣는다 */
+function namesOf(ids: number[]): Record<number, string> {
+  if (ids.length === 0) return {}
+  const rows = db.prepare(`SELECT id, name FROM users WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids) as { id: number; name: string }[]
+  return Object.fromEntries(rows.map((u) => [u.id, u.name]))
 }
 
 /** 무작위로 n명 (Fisher–Yates, crypto 난수) */
