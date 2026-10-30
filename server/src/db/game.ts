@@ -1,6 +1,6 @@
 /**
  * 게임 전역 상태 (game 테이블 1행) 와 진행 제어.
- * - setup  : 관리자가 총 일수·팀별 최대 인원·테스트 계정 포함·라이프 매장량·팀별 초기 재화를 설정
+ * - setup  : 관리자가 총 일수·팀별 최대 인원·테스트 계정 포함·팀별 초기 재화를 설정 (라이프 매장량은 2026-10-30 폐지, docs/103 §3)
  * - ready  : "초기셋팅완료" 로 진입. 최대 인원 합계만큼 팀 없는 PIN 을 만들고, 참가자가 로그인해 이름을 입력하고 팀(A, B, C…)을 고른다.
  *            설정은 계속 바꿀 수 있고 setup 으로 되돌릴 수도 있다 (배정된 참가자 유지). 관리자가 팀별 리더를 지정해야 시작할 수 있다
  * - running: day 1..totalDays, phase 는 PHASES 순서. 관리자 "다음 단계" 로만 넘어간다. 라이프 제출 다음은 +1일 리더 선출
@@ -19,7 +19,7 @@ import {
 import { allElectionsDone, clearElections, finalizeElection, openElections, type FinalizeResult } from './election.js'
 import { cancelActiveTrade, clearTrades } from './trades.js'
 import { allLivesDone, clearLifeSubmissions } from './life.js'
-import { cancelPendingIssues, clearIssues, pendingIssueTeams, publicGoldIssued } from './issuance.js'
+import { cancelPendingIssues, clearIssues, publicGoldIssued } from './issuance.js'
 import { clearCouncilActions } from './council.js'
 import { clearWars, getActiveWar, getPublicWar, getWarCost, setWarCost } from './war.js'
 import { clearFinalVotes, getFinalState, isResultRevealed } from './final.js'
@@ -122,7 +122,6 @@ export function getSettings(): GameSettings {
     totalDays: g.total_days,
     capacity: Object.fromEntries(listGroups().map((t) => [t.id, capacityOf(t.id)])),
     includeTest: g.include_test === 1,
-    lifeReserve: g.life_reserve_initial,
     initial: Object.fromEntries(listGroups().map((t) => [t.id, initial.get(t.id) ?? emptyResources()])),
     issueLimit: { gem: g.gem_issue_limit, gold: g.gold_issue_limit },
     warCost: getWarCost(1),
@@ -154,22 +153,9 @@ export function setLastIssuePhases(phases: Phase[]) {
   updateGame('last_issue_phases = ?', [JSON.stringify(sorted)])
 }
 
-/** 마지막 라운드에 대기 발행 요청이 있으면 허용 단계를 벗어나지 못하게 한다 (next = 넘어갈 단계, 종료면 null) */
-function guardLastRoundIssue(g: GameRow, next: Phase | null) {
-  if (!isLastRound(g)) return
-  if (next && parsePhases(g.last_issue_phases).includes(next)) return
-  const pending = pendingIssueTeams()
-  if (!pending.length) return
-  const where = next ? `${PHASE_LABELS[next]} 단계에서는 발행할 수 없습니다` : '게임을 종료하면 처리할 수 없습니다'
-  throw new GameError('issue_pending', `처리하지 않은 발행 요청이 있습니다 (${pending.map(teamLabel).join(', ')}). ${where}. 수락 또는 거절하세요`)
-}
-
-/** 승인 대기·진행 중 전쟁이 있으면 단계 넘기기·게임 종료 불가 */
+/** 진행 중 전쟁이 있으면 단계 넘기기·게임 종료 불가 */
 function requireNoWar() {
-  const war = getActiveWar()
-  if (!war) return
-  if (war.status === 'pending') throw new GameError('war_pending', '전쟁 선포를 승인하거나 거절하세요')
-  throw new GameError('war_active', '전쟁 결과를 먼저 정하세요')
+  if (getActiveWar()) throw new GameError('war_active', '전쟁 결과를 먼저 정하세요')
 }
 
 export function requireRunning(phase?: Phase): GameRow {
@@ -213,7 +199,6 @@ export function saveSettings(input: {
   totalDays: number | null
   capacity: Record<string, number>
   includeTest: boolean
-  lifeReserve: number
   initial: Record<string, Resources>
   /** 없으면 기존 값 유지 */
   issueLimit?: IssueLimits
@@ -241,9 +226,7 @@ export function saveSettings(input: {
     }
     if (status === 'ready' && listGroups().some((t) => capacityOf(t.id) < 1)) throw new GameError('no_capacity', '모든 팀의 최대 인원은 1명 이상이어야 합니다', 400)
     resetAmountsToInitial()
-    updateGame('total_days = ?, include_test = ?, life_reserve_initial = ?, life_reserve = ?', [
-      input.totalDays, input.includeTest ? 1 : 0, input.lifeReserve, input.lifeReserve,
-    ])
+    updateGame('total_days = ?, include_test = ?', [input.totalDays, input.includeTest ? 1 : 0])
     if (input.warCost) setWarCost(1, input.warCost)
     if (input.lastIssuePhases) setLastIssuePhases(input.lastIssuePhases)
     if (input.migrationStartDay) updateGame('migration_start_day = ?', [input.migrationStartDay])
@@ -372,7 +355,7 @@ export function startGame(by: number): number[] {
     clearMigrations()
     resetAmountsToInitial()
     recordInitialLedger(1, by)
-    updateGame(`status = 'running', day = 1, phase = 'leader', life_reserve = life_reserve_initial, aid_used = 0, results = NULL,
+    updateGame(`status = 'running', day = 1, phase = 'leader', aid_used = 0, results = NULL,
                 started_at = datetime('now'), ended_at = NULL, ${CLEAR_FINAL}`)
     // 시작 전에는 리더 표시를 그대로 두므로 여기서 정리 (비활성 리더 해제. 활성 리더는 위에서 팀마다 확인했다)
     for (const t of listGroups()) ensureLeader(t.id)
@@ -408,7 +391,6 @@ export function advance(expect: { day: number; phase: Phase }): AdvanceResult {
     if (g.phase === 'trade') result.cancelledTrade = cancelActiveTrade()
     const idx = PHASES.indexOf(g.phase!)
     if (idx < PHASES.length - 1) {
-      guardLastRoundIssue(g, PHASES[idx + 1]!)
       // 마지막 라운드 필수 안건(라이프 투표권)은 리더 협의 단계에서 통과/부결을 넣어야 넘어간다 (docs/100 N2-a′)
       if (isLastRound(g) && g.phase === 'council' && g.life_vote_passed == null) {
         throw new GameError('life_vote_undecided', '라이프 투표권 안건의 통과/부결을 먼저 입력하세요')
@@ -425,11 +407,6 @@ export function advance(expect: { day: number; phase: Phase }): AdvanceResult {
     } else {
       if (g.day >= (g.total_days ?? 0)) throw new GameError('last_day', '마지막 라운드입니다. 게임 종료를 누르세요')
       if (!getWarCost(g.day + 1)) throw new GameError('no_war_cost', `${g.day + 1}라운드 전쟁 선포 비용을 먼저 정하세요`)
-      // 발행은 라운드당 1회라 대기 요청을 다음 라운드로 넘기지 않는다 (docs/100 D3)
-      const pendingIssue = pendingIssueTeams()
-      if (pendingIssue.length) {
-        throw new GameError('issue_pending', `처리하지 않은 발행 요청이 있습니다 (${pendingIssue.map(teamLabel).join(', ')}). 수락 또는 거절하세요`)
-      }
       result.day = g.day + 1
       result.phase = 'leader'
       updateGame(`day = ?, phase = 'leader'`, [result.day])
@@ -452,7 +429,6 @@ export function endGame(): { trade: TradeView | null; issues: IssueRequestView[]
     if (g.phase !== 'life' || !allLivesDone(g.day)) {
       throw new GameError('not_finished', '마지막 라운드 라이프 제출 단계에서 모든 팀이 제출해야 종료할 수 있습니다')
     }
-    guardLastRoundIssue(g, null)
     const trade = cancelActiveTrade()
     const issues = cancelPendingIssues()
     clearFinalVotes()
@@ -467,7 +443,7 @@ export function endGame(): { trade: TradeView | null; issues: IssueRequestView[]
  * - 진행 기록(재화 이력·투표·거래·라이프)과 알림(공지 포함 모든 종류)을 비운다. events id 는 AUTOINCREMENT 라 재사용되지 않아 클라이언트 replay 가 꼬이지 않는다
  * - 시드 테스트 계정을 고정 PIN 으로 다시 만든다 (팀·리더 미리 배정)
  * - 팀 정의·룰 문서는 유지. 총 일수는 비운다
- * - 설정값(최대 인원·초기 재화·매장량·테스트 계정 포함·발행 한도)은 기본 유지. clearSettings 면 0 (테스트 계정은 포함, 발행 한도는 기본값 250/200) 으로 비운다
+ * - 설정값(최대 인원·초기 재화·테스트 계정 포함·발행 한도)은 기본 유지. clearSettings 면 0 (테스트 계정은 포함, 발행 한도는 기본값 250/200) 으로 비운다
  */
 export interface ResetResult {
   /** 지운 계정 id (접속 중인 소켓을 끊는다) */
@@ -499,13 +475,13 @@ export function resetGame(clearSettings = false): ResetResult {
     if (clearSettings) {
       db.prepare('UPDATE groups SET capacity = 0').run()
       db.prepare('UPDATE team_resources SET initial = 0').run()
-      updateGame('include_test = 1, life_reserve_initial = 0, tab_login = 0, gem_issue_limit = ?, gold_issue_limit = ?, last_issue_phases = ?, migration_start_day = ?', [
+      updateGame('include_test = 1, tab_login = 0, gem_issue_limit = ?, gold_issue_limit = ?, last_issue_phases = ?, migration_start_day = ?', [
         DEFAULT_ISSUE_LIMITS.gem, DEFAULT_ISSUE_LIMITS.gold, JSON.stringify(DEFAULT_LAST_ISSUE_PHASES), DEFAULT_MIGRATION_START_DAY,
       ])
       setWarCost(1, { gem: 0, gold: 0, credit: 0 })
     }
     resetAmountsToInitial()
-    updateGame(`status = 'setup', total_days = NULL, day = 0, phase = NULL, life_reserve = life_reserve_initial, aid_used = 0,
+    updateGame(`status = 'setup', total_days = NULL, day = 0, phase = NULL, aid_used = 0,
                 results = NULL, started_at = NULL, ended_at = NULL, ${CLEAR_FINAL}`)
     applyTestAccounts(getGameRow().include_test === 1)
     return {
@@ -516,23 +492,6 @@ export function resetGame(clearSettings = false): ResetResult {
       clearedSettings: clearSettings,
     }
   })()
-}
-
-/**
- * 남은 라이프 매장량 재설정 (시작 후, docs/95 §10). 절대값으로 덮어쓴다.
- * 초기값(life_reserve_initial)은 건드리지 않으므로 리셋·준비 단계로 되돌리면 원래 설정값으로 돌아간다
- */
-export function setLifeReserve(amount: number) {
-  const g = getGameRow()
-  if (isBeforeStart(g.status)) throw new GameError('not_running', '시작 전에는 게임 설정의 라이프 매장량을 수정하세요')
-  updateGame('life_reserve = ?', [amount])
-}
-
-/** 생산 활동 라이프 지급: 매장량에서 차감 (음수 delta 는 매장량으로 반환) */
-export function takeFromLifeReserve(delta: number) {
-  const g = getGameRow()
-  if (delta > g.life_reserve) throw new GameError('reserve_exhausted', `라이프 매장량이 부족합니다 (남은 ${g.life_reserve})`)
-  updateGame('life_reserve = life_reserve - ?', [delta])
 }
 
 /**

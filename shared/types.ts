@@ -90,7 +90,7 @@ export type EventScope = 'all' | 'role' | 'group' | 'user'
 /**
  * 이벤트 종류.
  * - game  : 게임 진행 (단계·일차 전환, 리더 선출, 재화 변동, 라이프 제출, 최종장). payload.kind 는 GameKind
- * - trade : 거래 (요청·수락·제안·완료·취소). 거래 당사자 두 팀에 scope=group 으로만 보낸다 (관리자는 전부 받음)
+ * - trade : 거래 (진행자 제안·리더 수락·완료·거부·취소). 거래 당사자 두 팀에 scope=group 으로만 보낸다 (관리자는 전부 받음)
  */
 export type EventType = 'notice' | 'system' | 'document.updated' | 'game' | 'trade'
 
@@ -98,21 +98,16 @@ export type EventType = 'notice' | 'system' | 'document.updated' | 'game' | 'tra
  * game 이벤트의 payload.kind.
  * - game.updated       : 시작·단계/일차 전환·종료 (scope=all). 클라이언트는 게임 상태 재조회
  * - game.reset         : 리셋 (scope=all)
- * - election.progress  : 팀원이 투표함 (scope=group, 팝업 없음)
- * - election.done      : 팀 리더 확정 (scope=group)
- * - election.tie       : 동표 → 관리자 지정 대기 (scope=group)
+ * - election.done      : 팀 리더 확정 — 진행자 지정·자동·유지 (scope=group)
  * - election.all_done  : 모든 팀 리더 선출 완료 (scope=all)
  * - resources.updated  : 팀 재화 변동 (scope=group)
  * - life.submitted     : 팀 라이프 제출 — 사용 개수·생존·탈락 (scope=group)
  * - life.eliminated    : 팀 탈락자 이름 (scope=all, 탈락자가 있을 때만)
  * - life.all_done      : 모든 팀 라이프 제출 완료 (scope=all)
- * - issue.requested    : 보석·골드 발행 요청 (scope=role admin, 팝업 대신 관리자 화면의 요청 창)
- * - issue.decided      : 발행 수락/거절 (보석은 화이트팀만 scope=group, 골드 수락은 scope=all 로 공개, 거절은 옐로우팀만)
- * - issue.cancelled    : 게임 종료로 대기 요청 취소 (scope=group)
+ * - issue.decided      : 발행 완료 — 요청 즉시 자동 발행 (보석은 화이트팀만 scope=group, 골드는 scope=all 로 공개)
  * 발행 알림은 payload.muted (팝업은 뜨지만 소리는 없음)
- * - war.pending        : 선포 승인 요청 (scope=role admin, 무음) / 공격팀에는 "승인 대기 중" (scope=group, 강조)
- * - war.rejected       : 선포 거절 (scope=group 공격팀, 사유 포함)
- * - war.declared       : 전쟁 시작 = 관리자 승인 (scope=all, 소리 있음). payload.war = 강조 팝업
+ * - war.allowed        : 다음 라운드 전쟁 허용/제재 (리더 협의 결과, scope=all)
+ * - war.declared       : 전쟁 시작 = 리더 선포 즉시 (scope=all, 소리 있음). payload.war = 강조 팝업
  * - war.resolved       : 전쟁 결과 — 승리팀 이름·무승부·취소 (scope=all)
  * - war.spoils         : 승리팀이 빼앗은 재화 (scope=group 승리팀만)
  * - war.lost           : 패배 알림 (scope=group 패배팀, 수량 없음)
@@ -136,10 +131,10 @@ export type GameKind =
   | 'game.updated' | 'game.reset'
   | 'migration.requested' | 'migration.accepted' | 'migration.rejected' | 'migration.cancelled'
   | 'final.life_vote' | 'final.started' | 'final.voted' | 'final.closed' | 'final.tiebreak' | 'final.result' | 'final.settled' | 'final.spy' | 'final.ended'
-  | 'election.progress' | 'election.done' | 'election.tie' | 'election.all_done'
+  | 'election.done' | 'election.all_done'
   | 'resources.updated' | 'life.submitted' | 'life.eliminated' | 'life.all_done'
-  | 'issue.requested' | 'issue.decided' | 'issue.cancelled'
-  | 'war.pending' | 'war.rejected' | 'war.declared' | 'war.resolved' | 'war.spoils' | 'war.lost'
+  | 'issue.decided'
+  | 'war.allowed' | 'war.declared' | 'war.resolved' | 'war.spoils' | 'war.lost'
 
 /**
  * system 이벤트의 payload.kind.

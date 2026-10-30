@@ -9,19 +9,22 @@
  * - 준비 상태: 팀별 입장 현황(A 3/5)과 리더. 리더가 없는 팀이 있으면 시작할 수 없다. 팀을 고르지 않은 참가자는 시작할 때 비활성.
  * - 리셋은 어느 상태에서나: 참가자·진행자 계정과 모든 기록·알림을 지우고 설정 단계로 (리셋한 사람이 진행자면 본인도 로그아웃).
  * - 다음 단계 요청에 보고 있던 일차·단계를 함께 보내 중복 클릭·관리자 2명 동시 조작을 막는다 (서버 stale 거부).
- * - 리더 선출 동표(동표자 중 현 리더 없음)는 여기서 지정한다.
- * - 제재(대가 없는 제재)는 아직 없음. 추가 시 리더간 협의 패널에 "다음날 거래 제재 팀" 선택을 둔다.
+ * - 리더 선출 단계: 팀이 오프라인 협의 결과를 알려 오면 여기서 팀별로 리더를 지정한다 (docs/100 §7-6, 투표 없음). 팀원 1명은 자동.
+ * - 거래 단계 (docs/103 §10): 오프라인 협의 내용을 여기서 입력해 "거래 진행" → 두 리더가 수락하면 체결. 강제 취소 가능.
+ * - 전쟁 (docs/103 §4): 리더 선포 즉시 시작. 여기서는 결과만 지정하고, 승·패·무승부면 리더 협의로 자동 전환된다.
+ * - 리더 협의 (docs/103 §11·§12): 원조는 팀 재화 카드에서, 다음 라운드 전쟁 허용/제재는 여기서 입력.
  */
 import { computed, reactive, ref, watch } from 'vue'
 import type { AdminUser, GroupInfo } from '../../../shared/types'
 import {
-  FINAL_STEP_LABELS, MIGRATION_CANCEL_LABELS, PHASE_LABELS, PHASES, RESOURCE_LABELS, DEFAULT_LAST_ISSUE_PHASES, WAR_COST_KINDS, WAR_STATUS_LABELS, isLifeExempt, josa, teamLetter,
+  FINAL_STEP_LABELS, MIGRATION_CANCEL_LABELS, PHASE_LABELS, PHASES, RESOURCE_KINDS, RESOURCE_LABELS, DEFAULT_LAST_ISSUE_PHASES, WAR_COST_KINDS, WAR_STATUS_LABELS, emptyResources, isLifeExempt, josa, teamLetter,
   type AdminGameView, type Phase, type Resources, type TradeView, type WarCost, type WarResult,
 } from '../../../shared/game'
 import { useRouter } from 'vue-router'
 import { api } from '../lib/api'
 import { useGameStore } from '../stores/game'
 import { useAuthStore } from '../stores/auth'
+import { teamInk } from '../lib/teamColor'
 import TeamMark from './TeamMark.vue'
 import ModalDialog from './ModalDialog.vue'
 import ResourceRow from './ResourceRow.vue'
@@ -48,27 +51,26 @@ const isLastDay = computed(() => !!s.value && s.value.day >= (s.value.totalDays 
  * 게임 종료: 마지막 날에는 버튼을 계속 보여 주되, 그날 턴이 모두 끝나야(라이프 제출 단계 + 모든 팀 제출) 활성.
  * 서버도 같은 조건으로 막는다 (409 not_finished). 0·1명 팀은 제출 불필요라 완료로 본다
  */
-const pendingIssues = computed(() => view.value?.issues.pending.length ?? 0)
-const canEnd = computed(() => isLastDay.value && s.value?.phase === 'life' && !!s.value.livesDone && !warBlocker.value && !pendingIssues.value)
+const canEnd = computed(() => isLastDay.value && s.value?.phase === 'life' && !!s.value.livesDone && !warBlocker.value)
 /** 아직 라이프를 제출하지 않은(제출 대상인) 팀 이름 */
 const lifePending = computed(() =>
-  (view.value?.teams ?? []).filter((t) => !t.lifeSubmission && t.activeMembers > 0 && !isLifeExempt(t.activeMembers)).map((t) => team(t.teamId)?.name ?? `#${t.teamId}`),
+  (view.value?.teams ?? []).filter((t) => !t.lifeSubmission && t.activeMembers > 0 && !isLifeExempt(t.activeMembers, t.resources.life)).map((t) => team(t.teamId)?.name ?? `#${t.teamId}`),
 )
 const endBlocker = computed(() => {
   if (!isLastDay.value || canEnd.value) return ''
   if (warBlocker.value) return warBlocker.value
-  if (pendingIssues.value) return '처리하지 않은 발행 요청이 있습니다. 수락 또는 거절해야 종료할 수 있습니다'
   if (s.value?.phase !== 'life') return '마지막 라운드 라이프 제출 단계에서 모든 팀이 제출하면 종료할 수 있습니다'
   return `라이프 미제출: ${lifePending.value.join(', ')} — 모든 팀이 제출하면 종료할 수 있습니다`
 })
 // ---- 전쟁 (docs/99) ----
 const warToday = computed(() => view.value?.war.today ?? null)
-/** 진행 중 전쟁이 있으면 단계 넘기기·게임 종료 불가 (서버도 409 war_active). 승인 대기(pending)도 같다 (409 war_pending) */
+/** 진행 중 전쟁이 있으면 단계 넘기기·게임 종료 불가 (서버도 409 war_active) */
 const warActive = computed(() => warToday.value?.status === 'declared')
-const warPending = computed(() => warToday.value?.status === 'pending')
-const warBlocker = computed(() => (warPending.value ? '⚔️ 전쟁 선포를 승인하거나 거절하세요' : warActive.value ? '⚔️ 전쟁 결과를 먼저 정하세요' : ''))
-/** 거절 사유 (선택) */
-const rejectReason = ref('')
+const warBlocker = computed(() => (warActive.value ? '⚔️ 전쟁 결과를 먼저 정하세요' : ''))
+/** 다음 라운드 전쟁 허용/제재 (리더 협의 단계, docs/103 §12) */
+function setWarAllowed(allowed: boolean) {
+  return run(`${(s.value?.day ?? 0) + 1}라운드 전쟁 ${allowed ? '허용' : '제재'}`, () => api.post('/api/admin/war/allow', { allowed }))
+}
 const costText = (c: WarCost | null | undefined) =>
   !c ? '미정' : WAR_COST_KINDS.filter((k) => c[k] > 0).map((k) => `${RESOURCE_LABELS[k]} ${c[k]}`).join(', ') || '없음 (무료)'
 /** 다음 날 선포 비용 입력 (저장해야 "다음 날로" 가 눌린다) */
@@ -82,8 +84,6 @@ const lastPhasesDirty = computed(() => lastPhases.value.join() !== (view.value?.
 function saveLastPhases() {
   return run('마지막 라운드 발행 단계 저장', () => api.put('/api/admin/game/last-issue', { phases: lastPhases.value }))
 }
-/** 다음으로 넘어가는 단계가 마지막 라운드 발행 허용 단계가 아닌지 */
-const leavingIssuePhases = computed(() => isLastDay.value && !!nextPhase.value && !view.value?.settings.lastIssuePhases.includes(nextPhase.value))
 
 function saveNextCost() {
   const day = (s.value?.day ?? 0) + 1
@@ -128,8 +128,6 @@ const advanceBlocker = computed(() => {
   if (warBlocker.value) return warBlocker.value
   if (s.value?.phase === 'council' && view.value?.migrations.pending.length) return '처리하지 않은 이주 신청이 있습니다. 받는 팀 리더가 처리하거나 아래 "이주" 에서 취소해야 라이프 제출로 넘어갈 수 있습니다'
   if (lifeVoteOpen.value && s.value?.lifeVote == null) return '라이프 투표권 안건의 통과/부결을 아래에서 입력해야 라이프 제출로 넘어갈 수 있습니다'
-  if (leavingIssuePhases.value && pendingIssues.value) return `처리하지 않은 발행 요청이 있습니다. ${PHASE_LABELS[nextPhase.value!]} 단계에서는 발행할 수 없어 수락 또는 거절해야 넘어갈 수 있습니다`
-  if (!nextPhase.value && !isLastDay.value && pendingIssues.value) return '처리하지 않은 발행 요청이 있습니다. 수락 또는 거절해야 다음 라운드로 넘어갈 수 있습니다'
   if (!nextPhase.value && !isLastDay.value && !view.value?.war.nextCost) return `${(s.value?.day ?? 0) + 1}라운드 전쟁 선포 비용을 아래 "전쟁" 에서 정해야 다음 라운드로 넘어갈 수 있습니다`
   return ''
 })
@@ -172,7 +170,7 @@ const clearSettings = ref(false)
 const resetDone = ref<ResetSummary | null>(null)
 
 // ---- 확인 팝업 ----
-type ModalKind = 'next' | 'end' | 'reset' | 'cancelTrade' | 'start' | 'revert' | 'war' | 'warApprove' | 'warReject'
+type ModalKind = 'next' | 'end' | 'reset' | 'cancelTrade' | 'start' | 'revert' | 'war' | 'trade'
 const modal = ref<ModalKind | null>(null)
 const modalText = computed(() => {
   const st = s.value
@@ -181,7 +179,7 @@ const modalText = computed(() => {
     case 'next': {
       if (nextPhase.value) {
         const warn = st.phase === 'leader' && !st.leadersDone
-          ? '\n투표가 끝나지 않은 팀은 지금까지의 표로 정하고, 표가 없거나 동표면 현재 리더를 유지합니다.'
+          ? '\n아직 리더를 지정하지 않은 팀은 현재 리더를 유지합니다.'
           : st.phase === 'trade' && view.value?.trade ? '\n진행 중인 거래는 취소됩니다.' : ''
         return { title: `${PHASE_LABELS[nextPhase.value]} 단계로 넘길까요?`, message: `${st.day}라운드 · ${PHASE_LABELS[st.phase!]} → ${PHASE_LABELS[nextPhase.value]}${warn}` }
       }
@@ -225,22 +223,11 @@ const modalText = computed(() => {
       return { title: '설정 단계로 되돌릴까요?', message: '참가자는 팀을 고를 수 없게 됩니다. 이미 팀을 고른 참가자와 PIN 은 그대로 남습니다.' }
     case 'cancelTrade':
       return { title: '진행 중인 거래를 취소할까요?', message: '이미 낸 크레딧은 돌려주지 않습니다.' }
-    case 'warApprove': {
-      const w = warToday.value
-      if (!w) return { title: '', message: '' }
+    case 'trade':
       return {
-        title: '전쟁 선포를 승인할까요?',
-        message: `⚔️ ${team(w.attacker)?.name} → ${team(w.defender)?.name}\n승인하면 ${team(w.attacker)?.name}에서 선포 비용 ${costText(w.cost)}이(가) 빠지고(소멸) 전쟁이 시작됩니다. 진행 중인 거래는 취소되고, 결과가 나올 때까지 모든 거래가 멈춥니다.`,
+        title: '거래를 진행할까요?',
+        message: `${tradeSummaryText.value}\n두 팀 리더 화면에 이 내용이 뜨고, 둘 다 "예" 를 누르면 크레딧 1개(${team(tradeForm.creditPayer ?? 0)?.name ?? ''})가 빠지고 재화가 교환됩니다. 한쪽이라도 "아니오" 면 취소됩니다.`,
       }
-    }
-    case 'warReject': {
-      const w = warToday.value
-      if (!w) return { title: '', message: '' }
-      return {
-        title: '전쟁 선포를 거절할까요?',
-        message: `⚔️ ${team(w.attacker)?.name} → ${team(w.defender)?.name}\n재화 변동 없이 선포를 취소합니다. ${team(w.attacker)?.name}에만 알리고, 이번 라운드에 다시 선포할 수 있습니다.`,
-      }
-    }
     case 'war': {
       const w = warToday.value
       if (!w) return { title: '', message: '' }
@@ -280,13 +267,8 @@ function onConfirm() {
       return run('설정 단계로 되돌림', () => api.post('/api/admin/game/revert'))
     case 'war':
       return run('전쟁 결과 지정', () => api.post(`/api/admin/war/${warToday.value!.id}/resolve`, { result: warResult.value }))
-    case 'warApprove':
-      return run('전쟁 선포 승인', () => api.post(`/api/admin/war/${warToday.value!.id}/approve`))
-    case 'warReject': {
-      const reason = rejectReason.value.trim()
-      rejectReason.value = ''
-      return run('전쟁 선포 거절', () => api.post(`/api/admin/war/${warToday.value!.id}/reject`, reason ? { reason } : {}))
-    }
+    case 'trade':
+      return submitTrade()
   }
 }
 
@@ -312,23 +294,54 @@ async function pickLeader(e: Event) {
   }
 }
 
-// ---- 리더 동표 지정 ----
-const tiePick = ref<Record<number, number>>({})
-function resolveTie(teamId: number) {
-  const userId = tiePick.value[teamId]
+// ---- 리더 선출 단계: 팀별 수동 지정 ----
+const leaderPick = ref<Record<number, number>>({})
+function designate(teamId: number) {
+  const userId = leaderPick.value[teamId] ?? leaderOf(teamId)?.id
   if (!userId) return
-  return run(`${team(teamId)?.name} 리더 지정`, () => api.post('/api/admin/game/election', { teamId, userId }))
+  return run(`${team(teamId)?.name} 리더 지정: ${nameOf(userId)}`, () => api.post('/api/admin/game/leader', { teamId, userId }))
 }
 
-// ---- 거래 표시 ----
-const TRADE_STATUS: Record<string, string> = {
-  requested: '요청 대기',
-  awaiting_credit: '크레딧 제출 대기',
-  negotiating: '제안·수락 중',
-}
+// ---- 거래 (docs/103 §10): 진행자가 내용을 입력해 올린다 ----
 const offerText = (o: Resources | null) =>
-  o ? (Object.entries(o).filter(([, n]) => n > 0).map(([k, n]) => `${RESOURCE_LABELS[k as keyof Resources]} ${n}`).join(', ') || '없음') : '제안 전'
-const tradeLine = (t: TradeView) => `${team(t.from.teamId)?.name} → ${team(t.to.teamId)?.name}`
+  o ? (Object.entries(o).filter(([, n]) => n > 0).map(([k, n]) => `${RESOURCE_LABELS[k as keyof Resources]} ${n}`).join(', ') || '없음') : '-'
+const tradeLine = (t: TradeView) => `${team(t.from.teamId)?.name} ↔ ${team(t.to.teamId)?.name}`
+const tradeForm = reactive<{ from: number | null; to: number | null; creditPayer: number | null; fromOffer: Resources; toOffer: Resources }>({
+  from: null, to: null, creditPayer: null, fromOffer: emptyResources(), toOffer: emptyResources(),
+})
+// 팀을 바꾸면 크레딧 부담 팀이 거래 팀 밖이 되지 않게
+watch(() => [tradeForm.from, tradeForm.to], ([f, t]) => {
+  if (tradeForm.creditPayer !== f && tradeForm.creditPayer !== t) tradeForm.creditPayer = f ?? null
+})
+const teamRes = (id: number | null) => view.value?.teams.find((t) => t.teamId === id)?.resources ?? emptyResources()
+/** 보유량 초과·크레딧 부족 등 제출 전 점검 */
+const tradeProblem = computed(() => {
+  const f = tradeForm.from, t = tradeForm.to
+  if (!f || !t) return '두 팀을 고르세요'
+  if (f === t) return '같은 팀끼리는 거래할 수 없습니다'
+  if (!tradeForm.creditPayer) return '크레딧을 낼 팀을 고르세요'
+  if (RESOURCE_KINDS.every((k) => !tradeForm.fromOffer[k] && !tradeForm.toOffer[k])) return '교환할 재화를 입력하세요'
+  for (const [id, offer] of [[f, tradeForm.fromOffer], [t, tradeForm.toOffer]] as const) {
+    const own = teamRes(id)
+    const need = { ...offer, credit: (offer.credit || 0) + (tradeForm.creditPayer === id ? 1 : 0) }
+    const short = RESOURCE_KINDS.find((k) => (need[k] || 0) > own[k])
+    if (short) return `${team(id)?.name}의 ${RESOURCE_LABELS[short]}이(가) 부족합니다 (필요 ${need[short]}, 보유 ${own[short]})`
+  }
+  return ''
+})
+const tradeSummaryText = computed(() =>
+  `${team(tradeForm.from ?? 0)?.name} (${offerText(tradeForm.fromOffer)}) ↔ ${team(tradeForm.to ?? 0)?.name} (${offerText(tradeForm.toOffer)}) · 크레딧 ${team(tradeForm.creditPayer ?? 0)?.name} 부담`)
+async function submitTrade() {
+  const body = {
+    fromTeamId: tradeForm.from, toTeamId: tradeForm.to, creditPayer: tradeForm.creditPayer,
+    fromOffer: Object.fromEntries(RESOURCE_KINDS.map((k) => [k, Math.max(0, Math.floor(tradeForm.fromOffer[k] || 0))])),
+    toOffer: Object.fromEntries(RESOURCE_KINDS.map((k) => [k, Math.max(0, Math.floor(tradeForm.toOffer[k] || 0))])),
+  }
+  await run('거래 제안을 두 팀 리더에게 보냈습니다', () => api.post('/api/admin/game/trade', body))
+  Object.assign(tradeForm.fromOffer, emptyResources())
+  Object.assign(tradeForm.toOffer, emptyResources())
+}
+const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(team(id)!.color) ?? '' } : {})
 
 </script>
 
@@ -369,8 +382,8 @@ const tradeLine = (t: TradeView) => `${team(t.from.teamId)?.name} → ${team(t.t
     <div v-if="resetDone" class="reset-done">
       <strong>리셋 완료</strong> · 참가자 {{ resetDone.members }}명 · 진행자 {{ resetDone.staff }}명 · 알림 {{ resetDone.events }}건 삭제, 테스트 계정은 같은 PIN 으로 다시 생성.
       <br />
-      <template v-if="resetDone.clearedSettings">게임 설정값(최대 인원·초기 재화·라이프 매장량)도 0 으로 비웠습니다 (발행 한도는 기본값 250·200).</template>
-      <template v-else>게임 설정값(최대 인원·초기 재화·라이프 매장량)은 이전 값을 남겼습니다. 아래 "게임 설정" 카드에서 수정하세요.</template>
+      <template v-if="resetDone.clearedSettings">게임 설정값(최대 인원·초기 재화)도 0 으로 비웠습니다 (발행 한도는 기본값 250·200).</template>
+      <template v-else>게임 설정값(최대 인원·초기 재화)은 이전 값을 남겼습니다. 아래 "게임 설정" 카드에서 수정하세요.</template>
       <button class="secondary small" type="button" @click="resetDone = null">닫기</button>
     </div>
 
@@ -445,22 +458,22 @@ const tradeLine = (t: TradeView) => `${team(t.from.teamId)?.name} → ${team(t.t
 
     <!-- 리더 선출 -->
     <template v-if="s.status === 'running' && s.phase === 'leader'">
-      <h3>리더 선출 <span v-if="s.leadersDone" class="badge on">모든 팀 완료</span></h3>
+      <h3>리더 선정 <span v-if="s.leadersDone" class="badge on">모든 팀 완료</span></h3>
+      <div class="muted">팀이 협의한 리더를 알려 오면 팀별로 지정하세요. 팀원 1명은 자동. 지정 없이 넘기면 현재 리더가 유지됩니다.</div>
       <table class="tbl">
         <tbody>
           <tr v-for="t in view.teams" :key="t.teamId">
             <td><TeamMark :color="team(t.teamId)?.color ?? ''" />{{ team(t.teamId)?.name }}</td>
             <td>
-              <template v-if="!t.election">-</template>
-              <template v-else-if="t.election.status === 'voting'">투표 {{ t.election.voted.length }} / {{ t.election.voters }}</template>
-              <template v-else-if="t.election.status === 'done'">완료 · 리더 <strong>{{ nameOf(t.election.leaderId) }}</strong></template>
+              <template v-if="!t.election || membersOf(t.teamId).length === 0">-</template>
               <span v-else class="row">
-                <span class="badge warn">동표</span>
-                <select v-model="tiePick[t.teamId]">
-                  <option :value="undefined" disabled>동표자 선택</option>
-                  <option v-for="id in t.election.tied" :key="id" :value="id">{{ nameOf(id) }} ({{ t.election.tally?.[id] }}표)</option>
+                <span v-if="t.election.status === 'done'" class="badge on">지정 완료</span>
+                <span v-else class="badge warn">대기</span>
+                <select v-model="leaderPick[t.teamId]">
+                  <option :value="undefined" disabled>{{ leaderOf(t.teamId) ? `현재: ${leaderOf(t.teamId)?.name}` : '리더 선택' }}</option>
+                  <option v-for="u in membersOf(t.teamId)" :key="u.id" :value="u.id">{{ u.name }}{{ u.isLeader ? ' (현재 리더)' : '' }}</option>
                 </select>
-                <button class="small" :disabled="busy || !tiePick[t.teamId]" @click="resolveTie(t.teamId)">리더 지정</button>
+                <button class="small" :disabled="busy || (!leaderPick[t.teamId] && !leaderOf(t.teamId)) || membersOf(t.teamId).length === 1" :title="leaderPick[t.teamId] ? '' : '고르지 않으면 현재 리더를 그대로 확정합니다'" @click="designate(t.teamId)">리더 지정</button>
               </span>
             </td>
           </tr>
@@ -470,43 +483,64 @@ const tradeLine = (t: TradeView) => `${team(t.from.teamId)?.name} → ${team(t.t
 
     <!-- 생산 -->
     <p v-if="s.status === 'running' && s.phase === 'production'" class="muted">
-      오프라인 미니게임 결과를 아래 "팀 재화" 카드에서 "생산" 으로 입력하세요. 라이프는 남은 매장량({{ view.lifeReserve }}) 안에서만 지급됩니다.
+      오프라인 미니게임 결과를 아래 "팀 재화" 카드에서 "생산" 으로 입력하세요. 팀 선택 칸이 고른 팀의 색으로 바뀌니 팀을 확인하고 적용하세요.
     </p>
 
     <!-- 거래 -->
     <template v-if="s.status === 'running' && s.phase === 'trade'">
-      <h3>거래</h3>
-      <p v-if="!view.trade" class="muted">진행 중인 거래 없음</p>
-      <div v-else class="trade">
-        <div><strong>{{ tradeLine(view.trade) }}</strong> <span class="badge warn">{{ TRADE_STATUS[view.trade.status] }}</span></div>
-        <div v-if="view.trade.creditPayer" class="muted">크레딧 제출: {{ team(view.trade.creditPayer)?.name }}</div>
-        <div v-if="view.trade.status === 'negotiating'" class="muted">
-          {{ team(view.trade.from.teamId)?.name }}: {{ offerText(view.trade.from.offer) }}{{ view.trade.from.accepted ? ' ✓수락' : '' }}
-          · {{ team(view.trade.to.teamId)?.name }}: {{ offerText(view.trade.to.offer) }}{{ view.trade.to.accepted ? ' ✓수락' : '' }}
+      <h3>🤝 거래 <span class="muted">오프라인 협의 → 여기서 입력 → 두 리더 수락</span></h3>
+      <div v-if="view.trade" class="trade">
+        <div><strong>{{ tradeLine(view.trade) }}</strong> <span class="badge warn">리더 수락 대기</span></div>
+        <div class="muted">
+          {{ team(view.trade.from.teamId)?.name }} 줌: {{ offerText(view.trade.from.offer) }} <span class="badge" :class="view.trade.from.accepted ? 'on' : 'warn'">{{ view.trade.from.accepted ? '수락' : '대기' }}</span>
+          · {{ team(view.trade.to.teamId)?.name }} 줌: {{ offerText(view.trade.to.offer) }} <span class="badge" :class="view.trade.to.accepted ? 'on' : 'warn'">{{ view.trade.to.accepted ? '수락' : '대기' }}</span>
+          · 크레딧 {{ team(view.trade.creditPayer)?.name }} 부담
         </div>
         <button class="secondary small" :disabled="busy" @click="modal = 'cancelTrade'">강제 취소</button>
       </div>
+      <div v-else-if="warActive" class="muted">⚔️ 전쟁 중에는 거래할 수 없습니다.</div>
+      <form v-else class="trade-form" @submit.prevent="!tradeProblem && (modal = 'trade')">
+        <div class="row">
+          <select v-model="tradeForm.from" class="team-select" :class="{ picked: !!tradeForm.from }" :style="teamStyle(tradeForm.from)">
+            <option :value="null" disabled>팀 A</option>
+            <option v-for="g in groups" :key="g.id" :value="g.id" :disabled="g.id === tradeForm.to">{{ g.name }}</option>
+          </select>
+          ↔
+          <select v-model="tradeForm.to" class="team-select" :class="{ picked: !!tradeForm.to }" :style="teamStyle(tradeForm.to)">
+            <option :value="null" disabled>팀 B</option>
+            <option v-for="g in groups" :key="g.id" :value="g.id" :disabled="g.id === tradeForm.from">{{ g.name }}</option>
+          </select>
+          <span class="muted">🎟️ 크레딧 1개 부담:</span>
+          <label v-for="id in [tradeForm.from, tradeForm.to]" :key="id ?? 0" class="row" style="gap: 4px">
+            <input v-model="tradeForm.creditPayer" type="radio" :value="id" :disabled="!id" /> {{ id ? team(id)?.name : '-' }}
+          </label>
+        </div>
+        <div v-for="side in (['from', 'to'] as const)" :key="side" class="row offer-row" :style="teamStyle(tradeForm[side])">
+          <span class="who"><TeamMark :color="team(tradeForm[side] ?? 0)?.color ?? ''" />{{ tradeForm[side] ? josa(team(tradeForm[side]!)?.name ?? '', '이/가') : (side === 'from' ? '팀 A가' : '팀 B가') }} 줌</span>
+          <label v-for="k in RESOURCE_KINDS" :key="k" class="row" style="gap: 4px">
+            {{ RESOURCE_LABELS[k] }} <input v-model.number="tradeForm[side === 'from' ? 'fromOffer' : 'toOffer'][k]" type="number" min="0" style="width: 4.5em" :title="`보유 ${teamRes(tradeForm[side])[k]}`" />
+          </label>
+          <span class="muted">보유: {{ offerText(teamRes(tradeForm[side])) }}</span>
+        </div>
+        <div class="row">
+          <button type="submit" :disabled="busy || !!tradeProblem">거래 진행 →</button>
+          <span v-if="tradeProblem" class="muted">{{ tradeProblem }}</span>
+          <span v-else class="muted">두 팀 리더 화면에 요약이 뜨고, 둘 다 "예" 를 누르면 체결됩니다</span>
+        </div>
+      </form>
     </template>
 
     <!-- 전쟁: 오늘 비용·진행 중 전쟁 결과 지정·다음 날 비용 -->
     <template v-if="s.status === 'running'">
       <h3>⚔️ 전쟁</h3>
       <p class="muted" style="margin-top: 0">
-        이번 라운드({{ s.day }}라운드) 선포 비용: <strong>{{ costText(view.war.todayCost) }}</strong> · 거래 단계에서 리더가 라운드당 1회(게임 전체) 선포. 낸 비용은 소멸합니다.
+        이번 라운드({{ s.day }}라운드)
+        <template v-if="!view.war.todayAllowed"><strong class="error">전쟁 금지</strong> (리더 협의 결과 · 선포 불가)</template>
+        <template v-else>선포 비용: <strong>{{ costText(view.war.todayCost) }}</strong> · 거래 단계에서 리더가 선포하면 즉시 시작 (라운드당 1회, 먼저 선포한 팀만). 낸 비용은 소멸합니다.</template>
       </p>
-      <!-- 선포 승인 대기 (docs/99 §8): 승인하면 비용 차감·전쟁 시작, 거절하면 재화 변동 없음 -->
-      <div v-if="warToday && warPending" class="war-pending">
-        <div><strong>⏳ 전쟁 선포 승인 요청: {{ team(warToday.attacker)?.name }} → {{ team(warToday.defender)?.name }}</strong> <span class="muted">(비용 {{ costText(warToday.cost) }})</span></div>
-        <div class="muted">리더 협의 결과(전쟁 금지 등)에 따라 승인하거나 거절하세요. 대기 중에는 새 거래와 단계 넘기기가 멈춥니다.</div>
-        <div class="row" style="margin-top: 6px">
-          <button class="danger" :disabled="busy" @click="modal = 'warApprove'">승인 (전쟁 시작)</button>
-          <input v-model="rejectReason" type="text" maxlength="200" placeholder="거절 사유 (선택)" style="width: 16em" />
-          <button class="secondary" :disabled="busy" @click="modal = 'warReject'">거절</button>
-        </div>
-      </div>
-      <div v-else-if="warToday && warActive" class="war-active">
+      <div v-if="warToday && warActive" class="war-active">
         <div><strong>⚔️ 전쟁 중: {{ team(warToday.attacker)?.name }} → {{ team(warToday.defender)?.name }}</strong> <span class="muted">(비용 {{ costText(warToday.cost) }})</span></div>
-        <div class="muted">오프라인 게임 결과를 지정하세요. 결과가 나올 때까지 모든 거래와 단계 넘기기가 멈춥니다.</div>
+        <div class="muted">오프라인 게임 결과를 지정하세요. 결과가 나올 때까지 모든 거래와 단계 넘기기가 멈춥니다. 승·패·무승부를 넣으면 거래 단계가 끝나고 리더 협의로 넘어갑니다.</div>
         <div class="row" style="margin-top: 6px">
           <button class="danger" :disabled="busy" @click="askWar('attacker')">{{ team(warToday.attacker)?.name }} 승리</button>
           <button class="danger" :disabled="busy" @click="askWar('defender')">{{ team(warToday.defender)?.name }} 승리</button>
@@ -565,10 +599,22 @@ const tradeLine = (t: TradeView) => `${team(t.from.teamId)?.name} → ${team(t.t
     </template>
 
     <!-- 리더간 협의 -->
-    <p v-if="s.status === 'running' && s.phase === 'council'" class="muted">
-      대가 없는 원조는 아래 "팀 재화" 카드의 원조 입력으로 처리합니다 (주는 팀 라운드당 1회{{ view.aidsToday.length ? ` · 이번 라운드 ${view.aidsToday.length}건` : '' }}).
-      제재 기능은 아직 없습니다. 전쟁은 거래 단계에서 선포됩니다 (아래 "전쟁").
-    </p>
+    <template v-if="s.status === 'running' && s.phase === 'council'">
+      <h3>🗣️ 리더 협의</h3>
+      <p class="muted" style="margin: 0">
+        🤝 대가 없는 원조는 아래 "팀 재화" 카드의 원조 입력으로 처리합니다 (게임 전체 라운드당 1회{{ view.aidsToday.length ? ' · 이번 라운드 처리됨' : '' }}. 리더 4명 중 3명 찬성).
+      </p>
+      <div v-if="!isLastDay" class="life-vote" :class="{ missing: view.war.nextAllowed == null }" style="margin-top: 8px">
+        <div><strong>⚔️ {{ s.day + 1 }}라운드 전쟁 허용 / 제재</strong></div>
+        <div class="muted">제재면 다음 라운드에는 어느 팀도 전쟁을 선포할 수 없습니다. 입력하지 않으면 허용입니다.</div>
+        <div class="row" style="margin-top: 6px">
+          <button :class="{ secondary: view.war.nextAllowed !== true }" :disabled="busy" @click="setWarAllowed(true)">허용</button>
+          <button :class="{ secondary: view.war.nextAllowed !== false }" :disabled="busy" @click="setWarAllowed(false)">제재 (전쟁 금지)</button>
+          <span v-if="view.war.nextAllowed == null" class="muted">아직 입력하지 않음 (허용으로 진행)</span>
+          <span v-else class="muted">입력됨: <strong>{{ view.war.nextAllowed ? '허용' : '제재' }}</strong> (전체 공지됨)</span>
+        </div>
+      </div>
+    </template>
     <div v-if="lifeVoteOpen" class="life-vote" :class="{ missing: s.lifeVote == null }">
       <div><strong>📜 필수 안건: 남은 라이프를 최종 투표권으로 인정할까요?</strong></div>
       <div class="muted">리더 4명 중 3명 찬성이면 통과. 부결이면 최종 투표는 리더만 1표. 통과 시 팀 라이프 1개로 1표 (1인 1장): 리더는 1표 더, 팀원은 이것으로만 투표. 라이프 제출로 넘어가면 바꿀 수 없습니다.</div>
@@ -599,7 +645,7 @@ const tradeLine = (t: TradeView) => `${team(t.from.teamId)?.name} → ${team(t.t
                 <span v-if="t.lifeSubmission.eliminated.length" class="error"> · 탈락 {{ t.lifeSubmission.eliminated.map((id) => t.lifeSubmission!.names[id] ?? nameOf(id)).join(', ') }}</span>
               </template>
               <span v-else-if="t.activeMembers === 0" class="muted">활성 팀원 없음</span>
-              <span v-else-if="isLifeExempt(t.activeMembers)" class="muted">제출 불필요 · 팀원 1명 (자동 생존, 라이프 {{ t.resources.life }} 유지)</span>
+              <span v-else-if="isLifeExempt(t.activeMembers, t.resources.life)" class="muted">제출 불필요 · 팀원 1명 · 라이프 0 (자동 생존)</span>
               <span v-else class="muted">미제출 (라이프 {{ t.resources.life }} · 팀원 {{ t.activeMembers }}명)</span>
             </td>
           </tr>
@@ -620,16 +666,16 @@ const tradeLine = (t: TradeView) => `${team(t.from.teamId)?.name} → ${team(t.t
       :open="modal !== null"
       :title="modalText.title"
       :message="modalText.message"
-      :confirm-label="modal === 'reset' ? '리셋' : modal === 'end' ? '최종장 시작' : modal === 'start' ? '시작' : modal === 'war' ? '결과 확정' : modal === 'warApprove' ? '승인' : modal === 'warReject' ? '거절' : '확인'"
+      :confirm-label="modal === 'reset' ? '리셋' : modal === 'end' ? '최종장 시작' : modal === 'start' ? '시작' : modal === 'war' ? '결과 확정' : modal === 'trade' ? '거래 진행' : '확인'"
       cancel-label="취소"
-      :danger="modal === 'reset' || modal === 'end' || modal === 'cancelTrade' || modal === 'war' || modal === 'warApprove'"
+      :danger="modal === 'reset' || modal === 'end' || modal === 'cancelTrade' || modal === 'war'"
       :busy="busy"
       @confirm="onConfirm"
       @cancel="modal = null"
     >
       <label v-if="modal === 'reset'" class="row clear-opt">
         <input v-model="clearSettings" type="checkbox" />
-        게임 설정값(팀별 최대 인원·초기 재화·라이프 매장량)도 0 으로 초기화 (발행 한도는 기본값 250·200 으로)
+        게임 설정값(팀별 최대 인원·초기 재화)도 0 으로 초기화 (발행 한도는 기본값 250·200 으로)
       </label>
     </ModalDialog>
   </div>
@@ -645,13 +691,17 @@ h3 { font-size: 0.95rem; margin: 16px 0 6px; font-weight: 600; }
 .letter { display: inline-block; min-width: 1.4em; font-weight: 600; }
 .life-vote { margin-top: 8px; border: 1px solid var(--line); border-left: 4px solid var(--blue); border-radius: var(--radius); background: var(--bg-soft); padding: 10px 12px; }
 .life-vote.missing { border-color: var(--red); border-left-color: var(--red); }
-.war-pending { border: 2px solid var(--amber, #b7791f); border-left-width: 6px; border-radius: var(--radius); background: var(--bg-soft); padding: 10px 12px; }
 .war-active { border: 2px solid var(--red); border-left-width: 6px; border-radius: var(--radius); background: var(--red-bg); padding: 10px 12px; }
 .war-active strong { color: var(--red); }
 .war-cost { gap: 8px; align-items: center; margin-top: 6px; }
 .war-cost input { width: 5em; padding: 3px 6px; }
 .blocker { color: var(--red); font-size: 0.88rem; }
 .trade { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.trade-form { display: flex; flex-direction: column; gap: 8px; }
+.trade-form input[type="number"] { padding: 3px 6px; }
+.offer-row { padding: 6px 10px; border: 1px solid var(--line-soft); border-left: 4px solid var(--team, var(--line)); border-radius: var(--radius); }
+.offer-row .who { font-weight: 600; min-width: 9em; color: var(--team, var(--ink)); }
+.team-select.picked { border: 2px solid var(--team); color: var(--team); font-weight: 700; background: color-mix(in srgb, var(--team) 12%, var(--surface)); }
 button.small { padding: 4px 10px; font-size: 0.85rem; }
 .reset-done { margin-top: 8px; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--blue); border-radius: var(--radius); background: var(--bg-soft); line-height: 1.6; }
 .reset-done button { margin-left: 8px; }

@@ -13,13 +13,14 @@ const large = computed(() => auth.user?.role === 'presenter')
   <div class="toast-host" :class="{ large }" role="status" aria-live="polite"
        @mouseenter="toasts.setPaused(true)" @mouseleave="toasts.setPaused(false)">
     <TransitionGroup name="toast">
-      <div v-for="t in toasts.items" :key="t.id" class="toast" :class="{ war: t.war }">
+      <div v-for="(t, i) in toasts.items" :key="t.id" class="toast" :class="{ war: t.war, sticky: i === toasts.items.length - 1 }">
         <div class="toast-head">
           <span class="label">📢 {{ t.label }}</span>
           <button class="close" type="button" aria-label="닫기" @click="toasts.dismiss(t.id)">✕</button>
         </div>
         <div class="toast-body">{{ t.message }}</div>
-        <div class="bar" :style="{ width: `${(t.remaining / toasts.duration) * 100}%` }" />
+        <div v-if="i !== toasts.items.length - 1" class="bar" :style="{ width: `${(t.remaining / toasts.duration) * 100}%` }" />
+        <div v-else class="hold">닫기(✕)를 누르면 사라집니다</div>
       </div>
     </TransitionGroup>
   </div>
@@ -68,6 +69,8 @@ const large = computed(() => auth.user?.role === 'presenter')
 }
 .close:hover { background: var(--bg-soft); color: var(--ink); border-color: var(--line-strong); }
 .bar { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--blue); transition: width 0.1s linear; }
+.hold { margin-top: 6px; font-size: 0.72rem; color: var(--muted); }
+.toast.sticky .close { border-color: var(--blue); color: var(--blue); }
 .toast.war { border: 2px solid var(--red); border-left-width: 6px; background: var(--red-bg); }
 .toast.war .toast-body { font-weight: 700; color: var(--red); font-size: 1.2rem; }
 .large .toast.war .toast-body { font-size: 2.2rem; }

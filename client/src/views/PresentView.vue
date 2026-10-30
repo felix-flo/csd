@@ -98,7 +98,17 @@ const warLine = computed(() => {
   const pair = w.today ? `${nameOf(w.today.attacker)} → ${nameOf(w.today.defender)}` : ''
   if (w.today?.status === 'declared') return { text: `전쟁 중: ${pair}`, hot: true }
   if (w.today) return { text: `이번 라운드 전쟁: ${pair} · ${WAR_STATUS_LABELS[w.today.status]}`, hot: false }
+  if (!w.allowed) return { text: '이번 라운드 전쟁 금지 (리더 협의)', hot: false }
   return { text: w.cost ? `이번 라운드 선포 비용: ${costText(w.cost)}` : '이번 라운드 선포 비용 미정', hot: false }
+})
+/** 리더 협의 단계 안건 (docs/103 §12): 원조 · 다음 라운드 전쟁 허용/제재 · (마지막 라운드) 라이프 투표권 */
+const council = computed(() => {
+  if (s.value?.status !== 'running' || s.value.phase !== 'council') return null
+  const next = s.value.war?.nextAllowed
+  return {
+    warText: isLastRound.value ? null : next == null ? '협의 중' : next ? '허용' : '제재 (전쟁 금지)',
+    lifeVote: isLastRound.value ? (s.value.lifeVote == null ? '협의 중' : s.value.lifeVote ? '통과' : '부결') : null,
+  }
 })
 </script>
 
@@ -119,6 +129,15 @@ const warLine = computed(() => {
     </div>
     <div v-if="s?.status === 'running' && (s.phase === 'leader' && s.leadersDone || s.phase === 'life' && s.livesDone)" class="card done-banner">
       {{ s.phase === 'leader' ? '모든팀의 리더 선출이 완료되었습니다.' : '모든 팀의 라이프가 제출되었습니다.' }}
+    </div>
+    <div v-if="council" class="card council">
+      <h2>🗣️ 리더 협의 안건</h2>
+      <ul>
+        <li>🤝 <strong>원조</strong> <span class="muted">대가 없이 재화 양도 · 라운드당 1건 · 리더 4명 중 3명 찬성</span></li>
+        <li v-if="council.warText">⚔️ <strong>다음 라운드 전쟁 허용 / 제재</strong> <span class="muted">제재면 다음 라운드 전쟁 선포 불가</span> · 결과: <strong>{{ council.warText }}</strong></li>
+        <li v-if="council.lifeVote">📜 <strong>남은 라이프를 최종 투표권으로 인정할까요?</strong> · 결과: <strong>{{ council.lifeVote }}</strong></li>
+      </ul>
+      <p class="muted" style="margin: 8px 0 0">협의 결과는 진행자에게 알려 주세요.</p>
     </div>
     <div class="present-grid">
       <div v-if="s?.status === 'ready' && s.lobby" class="card span2">
@@ -201,5 +220,10 @@ const warLine = computed(() => {
 .board .war { margin: 10px 0 0; font-size: 1.15rem; }
 .board .war.hot { color: var(--red); font-weight: 700; font-size: 1.4rem; }
 .done-banner .sub { font-size: 1.2rem; margin-left: 8px; }
+.council { border-left: 3px solid var(--blue); }
+.council ul { list-style: none; margin: 0; padding: 0; font-size: 1.4rem; line-height: 1.5; }
+.council li { padding: 6px 0; border-top: 1px solid var(--line-soft); }
+.council li:first-child { border-top: 0; }
+.council .muted { font-size: 1rem; }
 .done-banner { font-family: var(--font-display); font-size: 2.4rem; line-height: 1.2; border-left: 3px solid var(--blue); }
 </style>

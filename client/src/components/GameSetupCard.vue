@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 게임 설정 (시작 전: 설정·준비 상태): 총 일수, 팀별 최대 인원, 테스트 계정 포함 여부, 라이프 매장량, 발행 한도, 마지막 라운드 발행 단계, 이주 시작 라운드, 팀별 초기 재화.
+ * 게임 설정 (시작 전: 설정·준비 상태): 총 일수, 팀별 최대 인원, 테스트 계정 포함 여부, 발행 한도, 마지막 라운드 발행 단계, 이주 시작 라운드, 팀별 초기 재화. (라이프 매장량은 2026-10-30 폐지)
  * - 설정 상태: "초기셋팅완료" → 준비 상태 (최대 인원 합계만큼 팀 없는 PIN 생성, 참가자가 로그인해 팀 선택)
  * - 준비 상태: 계속 수정 가능. 최대 인원을 늘리면 PIN 이 추가되고, 줄이면 쓰지 않은 PIN 이 지워진다. 게임 시작은 "게임 진행" 카드
  * 리셋하면 총 일수만 비워지고 나머지 설정은 유지된다.
@@ -26,7 +26,6 @@ const status = computed(() => game.admin?.state.status)
 const totalDays = ref<number | null>(null)
 const capacity = reactive<Record<number, number>>({})
 const includeTest = ref(true)
-const lifeReserve = ref(0)
 const issueLimit = reactive({ ...DEFAULT_ISSUE_LIMITS })
 /** 마지막 라운드 발행 허용 단계 (진행 중에는 게임 진행 카드에서 마지막 라운드 전날까지 바꿀 수 있다) */
 const lastIssuePhases = ref<Phase[]>([...DEFAULT_LAST_ISSUE_PHASES])
@@ -46,7 +45,6 @@ function resetInputs() {
   if (!s) return
   totalDays.value = s.totalDays
   includeTest.value = s.includeTest
-  lifeReserve.value = s.lifeReserve
   Object.assign(issueLimit, s.issueLimit)
   lastIssuePhases.value = [...s.lastIssuePhases]
   migrationStartDay.value = s.migrationStartDay
@@ -84,7 +82,6 @@ const dirty = computed(() => {
   return (
     totalDays.value !== s.totalDays ||
     includeTest.value !== s.includeTest ||
-    lifeReserve.value !== s.lifeReserve ||
     issueLimit.gem !== s.issueLimit.gem ||
     issueLimit.gold !== s.issueLimit.gold ||
     lastIssuePhases.value.join() !== s.lastIssuePhases.join() ||
@@ -104,7 +101,6 @@ async function save(): Promise<boolean> {
       totalDays: totalDays.value || null,
       capacity: Object.fromEntries(props.groups.map((g) => [String(g.id), Math.max(0, capacity[g.id] || 0)])),
       includeTest: includeTest.value,
-      lifeReserve: Math.max(0, lifeReserve.value || 0),
       issueLimit: { gem: Math.max(0, issueLimit.gem || 0), gold: Math.max(0, issueLimit.gold || 0) },
       lastIssuePhases: lastIssuePhases.value,
       migrationStartDay: Math.min(30, Math.max(1, Math.floor(migrationStartDay.value || DEFAULT_MIGRATION_START_DAY))),
@@ -154,7 +150,6 @@ async function prepare() {
 
     <div class="row" style="margin-bottom: 10px">
       <label>총 라운드 수 <input v-model.number="totalDays" type="number" min="1" max="30" placeholder="6" style="width: 5em" :class="{ missing: !totalDays }" /></label>
-      <label>라이프 매장량 <input v-model.number="lifeReserve" type="number" min="0" style="width: 6em" /></label>
       <label class="row" style="gap: 6px"><input v-model="includeTest" type="checkbox" /> 팀별 테스트 계정(리더 1·팀원 1) 포함 <span class="muted">— 최대 인원에 포함</span></label>
     </div>
     <div class="row" style="margin-bottom: 10px">
@@ -184,7 +179,7 @@ async function prepare() {
       <span v-if="!settings?.warCost" class="error" style="font-size: 0.85rem">저장해야 게임을 시작할 수 있습니다</span>
     </div>
     <p class="muted" style="margin-top: 0">
-      라이프 매장량: 생산게임으로 지급할 수 있는 라이프 총량. 테스트 계정은 팀·리더가 미리 정해져 있고 최대 인원에 들어갑니다 (팀마다 리더 → 팀원 순으로 최대 인원까지만 활성, 최대 인원 1이면 리더만). 빼면 탈락(로그인 차단) 처리됩니다.
+      테스트 계정은 팀·리더가 미리 정해져 있고 최대 인원에 들어갑니다 (팀마다 리더 → 팀원 순으로 최대 인원까지만 활성, 최대 인원 1이면 리더만). 빼면 탈락(로그인 차단) 처리됩니다.
       전쟁 선포 비용: 2라운드부터는 게임 진행 카드에서 전 라운드가 끝나기 전에 정합니다(0 이면 무료).
       발행 한도: 화이트팀 리더는 보석을 라운드마다 한도까지(이월 없음), 옐로우팀 리더는 골드를 라운드마다 한도씩 쌓아서(안 쓴 만큼 이월) 발행 요청할 수 있습니다.
     </p>

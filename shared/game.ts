@@ -140,14 +140,12 @@ export interface GameState {
 /** 선포 비용으로 낼 수 있는 재화 (보석·골드·크레딧). 일차마다 관리자가 정한다 */
 export const WAR_COST_KINDS = ['gem', 'gold', 'credit'] as const
 export type WarCost = Record<(typeof WAR_COST_KINDS)[number], number>
-/** pending = 관리자 승인 대기, rejected = 거절 (docs/99 §8). declared 부터가 "전쟁 중" */
-export type WarStatus = 'pending' | 'rejected' | 'declared' | 'attacker_won' | 'defender_won' | 'draw' | 'cancelled'
+/** declared = 전쟁 중 (선포 즉시 시작, 2026-10-30 승인 단계 폐지 docs/103 §4). 결과는 관리자가 지정 */
+export type WarStatus = 'declared' | 'attacker_won' | 'defender_won' | 'draw' | 'cancelled'
 /** 관리자 결과 지정: 공격팀 승 / 방어팀 승 / 무승부 / 전쟁 취소 */
 export type WarResult = 'attacker' | 'defender' | 'draw' | 'cancel'
 
 export const WAR_STATUS_LABELS: Record<WarStatus, string> = {
-  pending: '승인 대기',
-  rejected: '거절',
   declared: '전쟁 중',
   attacker_won: '공격팀 승리',
   defender_won: '방어팀 승리',
@@ -157,12 +155,16 @@ export const WAR_STATUS_LABELS: Record<WarStatus, string> = {
 
 /** 모든 역할 공개 */
 export interface PublicWarState {
-  /** 진행 중 전쟁 (승인~결과). 이 동안 모든 팀 거래 금지. 승인 대기(pending)는 공개하지 않는다 */
+  /** 진행 중 전쟁 (선포~결과). 이 동안 모든 팀 거래 금지 */
   active: { id: number; attacker: number; defender: number } | null
   /** 오늘 이미 선포됐는지 (하루 게임 전체 1회) */
   usedToday: boolean
   /** 오늘 선포 비용 (게임 진행 중에만) */
   cost: WarCost | null
+  /** 오늘 전쟁 허용 여부 (리더 협의 결과, docs/103 §12). false 면 선포 불가 */
+  allowed: boolean
+  /** 다음 라운드 전쟁 허용/제재 (리더 협의 단계에 관리자가 입력. null = 아직 입력 안 함 → 허용). 프레젠테이션 협의 안건 표시용 */
+  nextAllowed: boolean | null
   /** 오늘 전쟁 기록 (현황판 공개용, docs/100 D5). 전리품은 넣지 않는다 */
   today: { attacker: number; defender: number; status: WarStatus } | null
 }
@@ -176,8 +178,6 @@ export interface WarView {
   status: WarStatus
   cost: WarCost
   spoils: Resources | null
-  /** 거절 사유 (rejected 일 때, 선택) */
-  rejectReason: string | null
   createdAt: string
   decidedAt: string | null
 }
@@ -196,8 +196,6 @@ export interface GameSettings {
   capacity: Record<number, number>
   /** 팀별 테스트 계정(시드 리더·팀원) 포함 여부. 미포함이면 비활성 처리돼 게임에서 빠진다 */
   includeTest: boolean
-  /** 라이프 매장량 초기값. 생산 활동으로 지급하는 라이프는 남은 매장량 안에서만 가능 */
-  lifeReserve: number
   /** teamId → 초기 재화 */
   initial: Record<number, Resources>
   /** 일차당 발행 한도 (보석: 이월 없음, 골드: 안 쓴 만큼 이월) */
@@ -316,33 +314,29 @@ export interface GameResults {
 
 // ---- 리더 선출 (팀원 전원 투표) ----
 
-export type ElectionStatus = 'voting' | 'tie' | 'done'
+/** 리더 선정 (진행자 수동 지정, docs/100 §7-6). pending: 지정 대기 · done: 지정 완료(자동 포함) */
+export type ElectionStatus = 'pending' | 'done'
 
 export interface ElectionView {
   status: ElectionStatus
-  /** 투표한 팀원 id (무기명: 누가 누구를 찍었는지는 공개하지 않는다) */
-  voted: number[]
-  /** 투표 대상 (활성 팀원) 수 */
-  voters: number
-  /** 내 투표 대상 (팀원 본인 화면에만) */
-  myVote: number | null
-  /** 결과 리더 (done) */
+  /** 결과 리더 (done). 지정 전에 단계를 넘기면 현 리더 */
   leaderId: number | null
-  /** 동표자 (tie → 관리자 지정 대기) */
-  tied: number[]
-  /** 득표 (done / tie 일 때만) */
-  tally: Record<number, number> | null
 }
 
 // ---- 거래 ----
 
-export type TradeStatus = 'requested' | 'awaiting_credit' | 'negotiating' | 'completed' | 'rejected' | 'cancelled'
-export const ACTIVE_TRADE_STATUSES: readonly TradeStatus[] = ['requested', 'awaiting_credit', 'negotiating']
+/**
+ * 거래 (2026-10-30 docs/103 §10): 오프라인 협의 → 진행자가 내용을 입력해 "거래 진행" (proposed) → 두 팀 리더가 각각 수락하면 completed
+ * (크레딧 1개 차감 + 재화 교환). 한쪽이라도 거부하면 rejected. 관리자 강제 취소·단계 종료는 cancelled
+ */
+export type TradeStatus = 'proposed' | 'completed' | 'rejected' | 'cancelled'
+export const ACTIVE_TRADE_STATUSES: readonly TradeStatus[] = ['proposed']
 
 export interface TradeSide {
   teamId: number
-  /** 제안한 재화 (제안 전 null). 상대에게는 제안 후에만 보인다 */
-  offer: Resources | null
+  /** 이 팀이 상대에게 주는 재화 (진행자가 입력) */
+  offer: Resources
+  /** 이 팀 리더가 수락했는지 */
   accepted: boolean
 }
 
@@ -350,12 +344,12 @@ export interface TradeView {
   id: number
   day: number
   status: TradeStatus
-  /** 요청한 팀 */
   from: TradeSide
-  /** 요청받은 팀 */
   to: TradeSide
-  /** 크레딧을 낸 팀 */
-  creditPayer: number | null
+  /** 크레딧(수수료 1개)을 내는 팀 */
+  creditPayer: number
+  /** 거부한 팀 (rejected 일 때) */
+  closedBy: number | null
   updatedAt: string
 }
 
@@ -365,8 +359,12 @@ export interface TradeView {
  * 활성 팀원이 1명만 남은 팀은 라이프 제출이 없다 (자동 생존, 라이프 소모 없음). 인원은 그 시점 기준이라
  * 제출 단계 도중에 1명이 되면 바로 제출 불필요로 바뀐다. 0명인 팀은 제출할 사람이 없어 완료로 본다.
  */
-export function isLifeExempt(activeMembers: number): boolean {
-  return activeMembers === 1
+/**
+ * 라이프 제출이 필요 없는 팀: 활성 팀원 1명이고 라이프가 0개 (자동 생존, 탈락 없음. docs/103 §8).
+ * 1명이라도 라이프가 있으면 제출해야 한다 (1명 생존 = 라이프 1개 소모)
+ */
+export function isLifeExempt(activeMembers: number, lives: number): boolean {
+  return activeMembers === 1 && lives === 0
 }
 
 /**
@@ -450,12 +448,11 @@ export interface TeamIssueView {
   open: boolean
   /** 마지막 라운드일 때만: 발행 허용 단계 (안내용). 마지막 라운드 발행량은 공개되지 않는다 */
   lastRoundPhases: Phase[] | null
-  /** 이번 라운드(일차)에 수락된 발행이 있는지. 라운드당 1회라 있으면 더 요청할 수 없다 (거절은 횟수에 넣지 않음) */
+  /** 이번 라운드(일차)에 발행했는지. 라운드당 1회라 있으면 더 요청할 수 없다 */
   issuedToday: boolean
-  /** 이번 일차 남은 발행 가능량 (대기 중 요청도 뺀 값) */
+  /** 이번 일차 남은 발행 가능량 */
   remaining: number
-  pending: IssueRequestView | null
-  /** 최근 요청 (최신순) */
+  /** 최근 발행 (최신순) */
   recent: IssueRequestView[]
 }
 
@@ -468,8 +465,6 @@ export interface TeamGameView {
   trade: TradeView | null
   /** 화이트(보석)·옐로우(골드)팀만 */
   issue: TeamIssueView | null
-  /** 내 팀이 선포해 관리자 승인을 기다리는 전쟁 (docs/99 §8). 공격팀만 안다 */
-  warPending: { id: number; defender: number; cost: WarCost } | null
   /** 내 최종 투표 (최종장, 본인만) */
   /** weight = 득표 (리더 기본 1 + 라이프 투표권 1). 팀원은 라이프 투표권으로만 투표하므로 1 */
   myFinalVote: { choice: 'gem' | 'gold'; extra: boolean; weight: number } | null
@@ -528,9 +523,7 @@ export interface AdminGameView {
   state: GameState
   settings: GameSettings
   teams: AdminTeamRow[]
-  /** 남은 라이프 매장량 */
-  lifeReserve: number
-  /** 이번 라운드 원조 (주는 팀 라운드당 1회, docs/100 D2). 진행 중이 아니면 빈 배열 */
+  /** 이번 라운드 원조 (게임 전체 라운드당 1회, docs/103 §11). 진행 중이 아니면 빈 배열 */
   aidsToday: CouncilAidView[]
   trade: TradeView | null
   ledger: LedgerEntry[]
@@ -543,9 +536,7 @@ export interface AdminGameView {
   }
   /** 보석·골드 발행 */
   issues: {
-    /** 수락 대기 (오래된 순) */
-    pending: IssueRequestView[]
-    /** 최근 처리·요청 (최신순) */
+    /** 최근 발행 (최신순). 요청 즉시 자동 발행 (docs/103 §9) */
     recent: IssueRequestView[]
     /** 이번 일차 남은 발행 가능량 (해당 팀이 없으면 null) */
     remaining: Record<IssueKind, number | null>
@@ -562,6 +553,10 @@ export interface AdminGameView {
     todayCost: WarCost | null
     /** 다음 날 선포 비용 (입력해야 다음 날로 넘어간다. 마지막 날에는 필요 없음) */
     nextCost: WarCost | null
+    /** 오늘 전쟁 허용 여부 (리더 협의 결과) */
+    todayAllowed: boolean
+    /** 다음 라운드 전쟁 허용/제재. null = 아직 입력 안 함 (→ 허용) */
+    nextAllowed: boolean | null
   }
   /** 최종 투표 팀별 진행 (최종장). 득표는 state.final.tally (마감 뒤) */
   finalVotes: { teamId: number; done: number; eligible: number }[]

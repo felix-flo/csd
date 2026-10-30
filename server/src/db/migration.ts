@@ -10,7 +10,7 @@
  * - 한 번 이주(accepted)한 사람은 다시 신청할 수 없다 (2026-10-30 결정. 거절·취소는 횟수에 넣지 않음)
  * - 받는 팀 인원 제한 없음
  * - 대기 신청이 있으면 리더 협의 → 라이프 제출로 넘어가지 못한다 (game.ts advance). 관리자가 강제 취소로 풀 수 있다
- * - 리더 선출 단계에 수락되면: 원래 팀 선거가 투표 중이면 이주자가 낸 표와 이주자를 찍은 표를 지운다 (이주자는 새 팀에서 투표).
+ * - 리더 선출 단계에 수락되면: 원래 팀 리더가 아직 지정 전이면 호출자가 다시 확인한다 (남은 팀원이 1명이면 자동 리더).
  *   이미 끝난 선거는 그대로
  *
  * 동시성: 상태 변경은 `UPDATE … WHERE status = 'pending'` 의 changes 로 판정 → 수락·취소가 겹쳐도 한 번만 반영된다.
@@ -115,7 +115,7 @@ export function cancelMigration(id: number, reason: MigrationCancelReason, by: n
 
 export interface MigrationDecision {
   migration: MigrationView
-  /** 수락: 리더 선출 단계에 원래 팀 표를 정리했으면 그 팀 (호출자가 재집계) */
+  /** 수락: 리더 선출 단계에 원래 팀이 아직 지정 전이면 그 팀 (호출자가 자동 리더 여부 확인) */
   electionTeam: number | null
 }
 
@@ -143,11 +143,8 @@ export function decideMigration(id: number, leaderId: number, accept: boolean): 
     let electionTeam: number | null = null
     if (g.phase === 'leader') {
       const row = db.prepare('SELECT status FROM leader_elections WHERE day = ? AND group_id = ?').get(g.day, m.fromTeamId) as { status: string } | undefined
-      if (row?.status === 'voting') {
-        // 원래 팀 표 무효: 이주자가 낸 표 + 이주자를 찍은 표. 이주자는 새 팀에서 다시 투표할 수 있다
-        db.prepare('DELETE FROM leader_votes WHERE day = ? AND group_id = ? AND (voter_id = ? OR candidate_id = ?)').run(g.day, m.fromTeamId, m.userId, m.userId)
-        electionTeam = m.fromTeamId
-      }
+      // 원래 팀이 아직 지정 전이면 호출자가 다시 확인한다 (남은 팀원이 1명이면 자동 리더)
+      if (row?.status === 'pending') electionTeam = m.fromTeamId
     }
     return { migration: getMigration(id)!, electionTeam }
   })()

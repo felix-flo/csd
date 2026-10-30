@@ -4,9 +4,15 @@ import { useRealtimeStore } from '../stores/realtime'
 import { useTeamsStore } from '../stores/teams'
 import { eventMessage, scopeLabel } from '../lib/eventLabel'
 
+/** collapsible: 참가자 화면용 — 최신 3건만 보이고 나머지는 "펼치기" 로 (docs/103 §7) */
+const props = defineProps<{ collapsible?: boolean }>()
 const rt = useRealtimeStore()
 const teams = useTeamsStore()
-const items = computed(() => [...rt.events].reverse())
+const all = computed(() => [...rt.events].reverse())
+const SHOWN = 3
+const expanded = ref(false)
+const items = computed(() => (props.collapsible && !expanded.value ? all.value.slice(0, SHOWN) : all.value))
+const hidden = computed(() => (props.collapsible ? Math.max(0, all.value.length - SHOWN) : 0))
 const busy = ref(false)
 const status = ref('')
 
@@ -30,7 +36,7 @@ async function reload() {
         <button class="secondary small" :disabled="busy" @click="reload">다시 불러오기</button>
       </span>
     </div>
-    <p v-if="items.length === 0" class="muted">받은 알림이 없습니다.</p>
+    <p v-if="all.length === 0" class="muted">받은 알림이 없습니다.</p>
     <ul v-else class="feed">
       <li v-for="ev in items" :key="ev.id">
         <span class="badge" :class="ev.scope" :style="ev.scope === 'group' ? { '--team': teams.colorOf(ev.targetId) } : undefined">{{ scopeLabel(ev) }}</span>
@@ -38,6 +44,9 @@ async function reload() {
         <div>{{ eventMessage(ev) }}</div>
       </li>
     </ul>
+    <button v-if="collapsible && (hidden > 0 || expanded)" class="secondary small" style="margin-top: 8px" type="button" @click="expanded = !expanded">
+      {{ expanded ? '접기 (최신 3건만)' : `펼치기 (이전 ${hidden}건 더)` }}
+    </button>
   </div>
 </template>
 

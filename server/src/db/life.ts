@@ -5,7 +5,8 @@
  * - 라이프 0개 팀: 숫자 없이 1명만 생존 (리더, 자진 탈락이면 리더 외 무작위 1명). 라이프 소모 없음
  * 쓴 개수만큼 팀 라이프를 소모하고, 살지 못한 활성 팀원은 바로 탈락(비활성) 처리한다. 세션 종료(refresh 폐기·소켓 끊기)는 라우터가 한다.
  * 리더가 탈락하면 남은 활성 팀원 중 id 최소가 리더를 잇는다 (ensureLeader).
- * 팀별·일차별 1회. 활성 팀원이 1명뿐인 팀은 제출하지 않는다 (isLifeExempt: 자동 생존, 라이프 소모 없음).
+ * 팀별·일차별 1회. 활성 팀원이 1명이고 라이프가 0개인 팀만 제출하지 않는다 (isLifeExempt: 자동 생존, 탈락 없음).
+ * 1명이라도 라이프가 있으면 제출해야 하고 라이프 1개를 소모해 생존한다. 자진 탈락은 할 수 없다 (2026-10-30 docs/103 §8)
  */
 import { randomInt } from 'node:crypto'
 import { db } from './index.js'
@@ -55,11 +56,12 @@ export function submitLife(day: number, teamId: number, leaderId: number, input:
   return db.transaction(() => {
     if (getLifeSubmission(day, teamId)) throw new GameError('already_submitted', '이미 제출했습니다')
     const members = listGroupMembers(teamId)
-    if (isLifeExempt(members.length)) throw new GameError('not_required', '팀원이 1명이라 라이프 제출이 없습니다')
+    const lives = getTeamResources(teamId).life
+    if (isLifeExempt(members.length, lives)) throw new GameError('not_required', '팀원이 1명이고 라이프가 없어 라이프 제출이 없습니다')
     if (!members.some((m) => m.id === leaderId && m.isLeader)) throw new GameError('not_leader', '리더만 할 수 있습니다', 403)
     const others = members.filter((m) => m.id !== leaderId).map((m) => m.id)
-    const lives = getTeamResources(teamId).life
     const { count, selfEliminate } = input
+    if (members.length === 1 && selfEliminate) throw new GameError('bad_count', '팀원이 1명이면 자진 탈락할 수 없습니다', 400)
 
     let saved: number[]
     if (lives === 0) {
@@ -80,12 +82,12 @@ export function submitLife(day: number, teamId: number, leaderId: number, input:
   })()
 }
 
-/** 모든 팀 제출 완료. 활성 팀원이 없거나 1명뿐인 팀(제출 불필요)은 완료로 본다 */
+/** 모든 팀 제출 완료. 활성 팀원이 없거나 1명+라이프 0개인 팀(제출 불필요)은 완료로 본다 */
 export function allLivesDone(day: number): boolean {
   return listGroups().every((g) => {
     if (getLifeSubmission(day, g.id)) return true
     const n = listGroupMembers(g.id).length
-    return n === 0 || isLifeExempt(n)
+    return n === 0 || isLifeExempt(n, getTeamResources(g.id).life)
   })
 }
 

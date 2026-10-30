@@ -4,7 +4,7 @@ import TopBar from '../components/TopBar.vue'
 import EventFeed from '../components/EventFeed.vue'
 import NameSetup from '../components/NameSetup.vue'
 import ResourceRow from '../components/ResourceRow.vue'
-import LeaderVote from '../components/LeaderVote.vue'
+import LeaderSelect from '../components/LeaderSelect.vue'
 import TradePanel from '../components/TradePanel.vue'
 import LifeSubmit from '../components/LifeSubmit.vue'
 import ResultsBoard from '../components/ResultsBoard.vue'
@@ -67,7 +67,7 @@ const phase = computed(() => (s.value?.status === 'running' ? s.value.phase : nu
 const isLeader = computed(() => !!auth.user?.isLeader)
 const phaseHint: Record<string, string> = {
   production: '오프라인 미니게임(생산게임)을 합니다. 결과에 따라 진행자가 팀 재화를 지급합니다.',
-  council: '리더들이 대가 없는 원조를 협의합니다 (팀마다 라운드당 1회 줄 수 있음). 원조는 진행자가 재화를 조정합니다.',
+  council: '리더들이 오프라인에서 협의합니다 — 🤝 대가 없는 원조 (게임 전체 라운드당 1회, 리더 4명 중 3명 찬성) · ⚔️ 다음 라운드 전쟁 허용/제재. 결과는 진행자가 입력합니다.',
 }
 // 스파이(docs/100 N4): 게임이 시작되면 본인에게만 무음 안내 1번. 알림 기록·소리 없음 (서버도 이벤트로 보내지 않는다)
 const spyIntro = ref(false)
@@ -107,13 +107,12 @@ const final = computed(() => (s.value?.status === 'final' || s.value?.status ===
       <p class="muted" style="margin: 10px 0 0">우리 팀만 볼 수 있습니다.</p>
     </div>
 
-    <LeaderVote v-if="phase === 'leader'" :members="members" :election="game.team?.election ?? null" />
+    <LeaderSelect v-if="phase === 'leader'" :members="members" :election="game.team?.election ?? null" />
     <TradePanel
       v-else-if="phase === 'trade' && group && game.team"
       :my-team-id="group.id"
       :is-leader="isLeader"
       :trade="game.team.trade"
-      :resources="game.team.resources"
     />
     <LifeSubmit
       v-else-if="phase === 'life' && group && game.team"
@@ -159,7 +158,7 @@ const final = computed(() => (s.value?.status === 'final' || s.value?.status ===
         </li>
       </ul>
     </div>
-    <EventFeed />
+    <EventFeed collapsible />
     </template>
   </div>
 </template>

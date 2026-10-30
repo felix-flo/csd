@@ -3,14 +3,15 @@
  * - 모든 역할: GET /game (일차·단계·초기 재화 합계·발표된 등수)
  * - 프레젠테이션·관리자: GET /game/roster 팀 현황 (팀원 명단·탈락, 시작 후에만)
  * - 프레젠테이션·관리자: GET /game/intro 오프닝 영상 유무 (data/media/intro.mp4 → /media/intro.mp4)
- * - 참가자  : GET /game/team, 투표, 라이프 제출(리더), 거래(리더)
- * - 관리자  : /admin/game/* 설정·초기셋팅완료·설정으로 되돌리기·시작·다음 단계·종료(=최종장 시작)·리셋, 재화 조정, 원조, 동표 지정, 거래 강제 취소
+ * - 참가자  : GET /game/team, 라이프 제출(리더), 거래 수락/거부(리더, POST /trade/:id/decide). 리더는 투표가 아니라 진행자가 지정한다 (docs/100 §7-6)
+ * - 관리자  : /admin/game/* 설정·초기셋팅완료·설정으로 되돌리기·시작·다음 단계·종료(=최종장 시작)·리셋, 재화 조정, 원조, 리더 지정(/admin/game/leader),
+ *             거래 제안(POST /admin/game/trade, docs/103 §10)·강제 취소
  * - 이주 (docs/100 N3): 참가자 POST /migration/request · /migration/:id/cancel, 받는 팀 리더 POST /migration/:id/decide, 관리자 POST /admin/migration/:id/cancel
  * - 스파이 (docs/100 N4): 참가자 GET·POST /game/fate (준비 상태 운명의 카드), 관리자 PUT /admin/spies (후보 중 지정)
  * - 최종장 (docs/100 N2): 관리자 POST /admin/game/life-vote (마지막 라운드 안건), /admin/final/close · tiebreak · next · recompute, 참가자 POST /final/vote
  * - 참가자(준비 상태): POST /game/join 팀 선택. 시작 전에는 팀 게임 정보를 주지 않는다
- * - 보석·골드 발행 (docs/97): 화이트·옐로우 리더 POST /issue/request, 관리자 POST /admin/issue/:id/decide
- * - 전쟁 (docs/99): 리더 POST /war/declare, 관리자 POST /admin/war/cost (다음 날 비용) · /admin/war/:id/resolve
+ * - 보석·골드 발행 (docs/97): 화이트·옐로우 리더 POST /issue/request → 즉시 발행 (docs/103 §9)
+ * - 전쟁 (docs/99, docs/103 §4·§12): 리더 POST /war/declare → 즉시 시작, 관리자 POST /admin/war/cost (다음 날 비용) · /admin/war/allow (다음 라운드 허용/제재) · /admin/war/:id/resolve
  * 상태 변화는 events 에 기록 후 Socket.IO 로 알린다. 클라이언트는 game/trade 이벤트를 받으면 상태를 다시 조회한다.
  */
 import fs from 'node:fs'
@@ -24,30 +25,28 @@ import { INTRO_FILE, isBeforeStart, type IntroResponse } from '../../../shared/g
 import { GameError } from '../db/gameError.js'
 import {
   activeMemberCount, advance, endGame, getGameRow, getGameState, getPrep, getPublicRoster, getSettings, joinTeam, prepareGame, setLastIssuePhases, setTabLogin,
-  requireRunning, resetGame, revertToSetup, saveSettings, setLifeReserve, startGame, takeFromLifeReserve,
+  requireRunning, resetGame, revertToSetup, saveSettings, startGame,
 } from '../db/game.js'
 import { applyDeltas, describeDeltas, getAllResources, getTeamResources, listLedger } from '../db/resources.js'
-import { allElectionsDone, castVote, finalizeElection, getElection, resolveTie, type FinalizeResult } from '../db/election.js'
+import { allElectionsDone, designateLeader, finalizeElection, getElection, type FinalizeResult } from '../db/election.js'
 import {
   cancelMigration, decideMigration, getAdminMigrations, getTeamMigrationView, requestMigration, sweepMigrations, teamLeaderId,
 } from '../db/migration.js'
 import { chooseFate, getAdminSpyView, getMyFate, getMySpy, setSpies } from '../db/spy.js'
 import { allLivesDone, getLifeSubmission, submitLife } from '../db/life.js'
-import {
-  acceptOffer, cancelActiveTrade, cancelTrade, getActiveTrade, getActiveTradeForTeam, payCredit, proposeOffer, requestTrade, respondTrade,
-} from '../db/trades.js'
-import { decideIssue, getAdminIssues, getTeamIssue, issueTeamId, requestIssue } from '../db/issuance.js'
+import { cancelActiveTrade, decideTrade, getActiveTrade, getActiveTradeForTeam, proposeTrade } from '../db/trades.js'
+import { getAdminIssues, getTeamIssue, issueTeamId, requestIssue } from '../db/issuance.js'
 import {
   advanceFinal, castFinalVote, closeFinalVotes, finalVoteProgress, getMyFinalVote, recomputeResults, setLifeVote, setTiebreak,
 } from '../db/final.js'
 import { listAids, recordAid } from '../db/council.js'
-import { approveWar, declareWar, describeCost, getPendingWarForTeam, getWarCost, getWarOfDay, rejectWar, resolveWar, setWarCost } from '../db/war.js'
+import { declareWar, describeCost, getWarCost, getWarOfDay, getWarRule, isWarAllowed, resolveWar, setWarCost, setWarRule } from '../db/war.js'
 import { db } from '../db/index.js'
 import { insertEvent } from '../db/events.js'
 import { disconnectUsers, moveUserRooms, publishEvent, signalLobby } from '../realtime/index.js'
 import { revokeUserRefreshTokens } from '../auth/tokens.js'
 import { emptyResources, FINAL_STEPS, josa, MIGRATION_CANCEL_LABELS, PHASE_LABELS, PHASES, RESOURCE_KINDS, RESOURCE_LABELS, shareText } from '../../../shared/game.js'
-import type { AdminGameView, GameResults, IssueRequestView, MigrationView, Resources, SpyStatus, TeamGameView, TradeView } from '../../../shared/game.js'
+import type { AdminGameView, GameResults, IssueRequestView, MigrationView, Phase, Resources, SpyStatus, TeamGameView, TradeView } from '../../../shared/game.js'
 import type { EventScope, GameKind } from '../../../shared/types.js'
 
 export const gameRouter = Router()
@@ -112,13 +111,13 @@ function endSessions(ids: number[], reason?: 'eliminated') {
 const NOTIFY_SELF = { notifySelf: true } as const
 
 function announceElection(day: number, teamId: number, r: FinalizeResult, by: number, extra: Record<string, unknown> = {}) {
-  if (r.status === 'tie') {
-    emit('game', 'group', teamId, 'election.tie', `리더 투표 동표 (${r.tied.map(userName).join(', ')}) — 진행자가 리더를 지정합니다`, by, { day, ...extra })
-    return
-  }
   const who = r.leaderId != null ? `${userName(r.leaderId)} 님` : '없음'
-  const how = r.changed ? `새 리더 ${who}` : `리더 ${who} 재신임`
-  emit('game', 'group', teamId, 'election.done', `리더 선출 결과: ${how}${r.votes ? ` (${r.votes}표)` : ''}`, by, { day, leaderId: r.leaderId, ...extra })
+  const message = r.how === 'auto'
+    ? `팀원이 1명이라 ${who}이 리더입니다`
+    : r.how === 'keep'
+      ? `리더 지정 없이 단계가 넘어가 리더 ${who} 유지`
+      : r.changed ? `진행자가 새 리더 ${who}을 지정했습니다` : `진행자가 리더 ${who}을 다시 지정했습니다 (유지)`
+  emit('game', 'group', teamId, 'election.done', message, by, { day, leaderId: r.leaderId, ...extra })
   // 팀 알림을 받지 않는 프레젠테이션의 팀 현황(리더 표시) 갱신
   signalLobby()
 }
@@ -178,14 +177,10 @@ gameRouter.get('/game/team', requireRole('member'), (req, res) => {
   const running = g.status === 'running'
   const body: TeamGameView = {
     resources: getTeamResources(teamId),
-    election: running ? getElection(g.day, teamId, req.auth!.sub) : null,
+    election: running ? getElection(g.day, teamId) : null,
     lifeSubmission: running ? getLifeSubmission(g.day, teamId) : null,
     trade: getActiveTradeForTeam(teamId),
     issue: getTeamIssue(teamId),
-    warPending: (() => {
-      const w = running ? getPendingWarForTeam(teamId) : null
-      return w ? { id: w.id, defender: w.defender, cost: w.cost } : null
-    })(),
     myFinalVote: g.status === 'final' || g.status === 'ended' ? getMyFinalVote(req.auth!.sub) : null,
     migration: running ? getTeamMigrationView(req.auth!.sub, teamId, !!req.auth!.isLeader) : null,
     // 스파이 본인에게만 (시작 알림은 기록하지 않고, 화면이 이 값을 보고 무음 팝업을 1번 띄운다)
@@ -208,7 +203,6 @@ function adminView(): AdminGameView {
       election: g.status === 'running' ? getElection(g.day, t.id) : null,
       lifeSubmission: g.status === 'running' ? getLifeSubmission(g.day, t.id) : null,
     })),
-    lifeReserve: g.life_reserve,
     aidsToday: g.status === 'running' ? listAids(g.day) : [],
     trade: getActiveTrade(),
     ledger: listLedger(50),
@@ -218,6 +212,8 @@ function adminView(): AdminGameView {
       today: g.status === 'running' ? getWarOfDay(g.day) : null,
       todayCost: g.status === 'running' ? getWarCost(g.day) : null,
       nextCost: g.status === 'running' ? getWarCost(g.day + 1) : null,
+      todayAllowed: g.status === 'running' ? isWarAllowed(g.day) : true,
+      nextAllowed: g.status === 'running' ? getWarRule(g.day + 1) : null,
     },
     finalVotes: g.status === 'final' || g.status === 'ended' ? finalVoteProgress() : [],
     migrations: getAdminMigrations(),
@@ -235,7 +231,6 @@ const settingsSchema = z.object({
   totalDays: z.number().int().min(1).max(30).nullable(),
   capacity: z.record(z.string().regex(/^\d+$/), z.number().int().min(0).max(50)),
   includeTest: z.boolean(),
-  lifeReserve: amount,
   initial: z.record(z.string().regex(/^\d+$/), resourcesSchema),
   issueLimit: z.object({ gem: amount, gold: amount }).optional(),
   warCost: z.object({ gem: amount, gold: amount, credit: amount }).optional(),
@@ -254,12 +249,6 @@ gameRouter.put('/admin/game/settings', requireRole('admin'), handle(settingsSche
 /** 마지막 라운드 발행 허용 단계 (docs/100 D4). 진행 중에는 마지막 라운드 전날까지만 바꿀 수 있다. 참가자에게 알리지 않는다 */
 gameRouter.put('/admin/game/last-issue', requireRole('admin'), handle(z.object({ phases: z.array(z.enum(PHASES)).min(1).max(PHASES.length) }), (_req, res, body) => {
   setLastIssuePhases(body.phases)
-  res.json(adminView())
-}))
-
-/** 남은 라이프 매장량 재설정 (시작 후, docs/95 §10). 관리자만 보는 값이라 알림·이력 없음 */
-gameRouter.put('/admin/game/life-reserve', requireRole('admin'), handle(z.object({ amount }), (_req, res, body) => {
-  setLifeReserve(body.amount)
   res.json(adminView())
 }))
 
@@ -292,21 +281,26 @@ gameRouter.post('/admin/game/start', requireRole('admin'), handle(null, (req, re
 
 const advanceSchema = z.object({ day: z.number().int().min(1), phase: z.enum(PHASES) })
 
-gameRouter.post('/admin/game/next', requireRole('admin'), handle(advanceSchema, (req, res, body) => {
-  const by = req.auth!.sub
-  const leadersWereDone = body.phase === 'leader' && allElectionsDone(body.day)
-  const r = advance(body)
-  for (const f of r.finalized) announceElection(body.day, f.teamId, f.result, by)
-  if (body.phase === 'leader' && !leadersWereDone && r.finalized.length > 0) announceAllLeaders(body.day, by)
+/** 단계·일차 전환 + 알림. 관리자 "다음 단계" 와 전쟁 결과 뒤 자동 전환(docs/103 §4)이 함께 쓴다. prefix 는 전체 공지 앞에 붙는 사유 */
+function advanceAndAnnounce(expect: { day: number; phase: Phase }, by: number, prefix = '') {
+  const leadersWereDone = expect.phase === 'leader' && allElectionsDone(expect.day)
+  const r = advance(expect)
+  for (const f of r.finalized) announceElection(expect.day, f.teamId, f.result, by)
+  if (expect.phase === 'leader' && !leadersWereDone && r.finalized.length > 0) announceAllLeaders(expect.day, by)
   announceMigrationSweep(by)
   announceCancelled(r.cancelledTrade, '거래 단계 종료로', by)
-  // 날이 바뀔 때마다 오늘 전쟁 선포 비용을 전체에 알린다 (바뀌지 않아도. docs/100 D6-b). 단계만 바뀔 때는 붙이지 않는다
-  const message = r.day !== body.day
+  // 날이 바뀔 때마다 오늘 전쟁 선포 비용·허용 여부를 전체에 알린다 (바뀌지 않아도. docs/100 D6-b). 단계만 바뀔 때는 붙이지 않는다
+  const message = r.day !== expect.day
     ? `${r.day}라운드가 시작되었습니다 · ${PHASE_LABELS[r.phase]} 중 · ${todayCostText(r.day)}${migrationOpensText(r.day)}`
-    : `${r.day}라운드 · ${PHASE_LABELS[r.phase]} 중입니다`
+    : `${prefix}${r.day}라운드 · ${PHASE_LABELS[r.phase]} 중입니다`
   emit('game', 'all', null, 'game.updated', message, by, { day: r.day, phase: r.phase })
-  // 모든 팀이 제출 불필요(팀원 1명 이하)면 라이프 제출 단계에 들어가자마자 완료
+  // 모든 팀이 제출 불필요(팀원 없음 · 1명+라이프 0)면 라이프 제출 단계에 들어가자마자 완료
   if (r.phase === 'life' && allLivesDone(r.day)) emit('game', 'all', null, 'life.all_done', '모든 팀의 라이프가 제출되었습니다.', by, { day: r.day })
+  return r
+}
+
+gameRouter.post('/admin/game/next', requireRole('admin'), handle(advanceSchema, (req, res, body) => {
+  advanceAndAnnounce(body, req.auth!.sub)
   res.json(adminView())
 }))
 
@@ -528,7 +522,7 @@ const adjustSchema = z.object({
   reason: z.enum(['production', 'correction']),
 })
 
-/** 생산(라이프는 매장량 안에서) / 정정. 게임 진행 중·종료 후 */
+/** 생산 / 정정. 게임 진행 중·종료 후. 라이프 매장량 제한 없음 (docs/103 §3) */
 gameRouter.post('/admin/game/resources', requireRole('admin'), handle(adjustSchema, (req, res, body) => {
   const by = req.auth!.sub
   const g = getGameRow()
@@ -536,10 +530,7 @@ gameRouter.post('/admin/game/resources', requireRole('admin'), handle(adjustSche
   if (!findGroupById(body.teamId)) throw new GameError('not_found', '', 404)
   const text = describeDeltas(body.deltas)
   if (!text) throw new GameError('no_change', '변경할 수량을 입력하세요', 400)
-  db.transaction(() => {
-    if (body.reason === 'production' && body.deltas.life) takeFromLifeReserve(body.deltas.life)
-    applyDeltas(body.teamId, body.deltas, { reason: body.reason, day: g.day, by })
-  })()
+  applyDeltas(body.teamId, body.deltas, { reason: body.reason, day: g.day, by })
   const label = body.reason === 'production' ? '생산' : '정정'
   emit('game', 'group', body.teamId, 'resources.updated', `${label}: ${text}`, by)
   res.json(adminView())
@@ -551,7 +542,7 @@ const aidSchema = z.object({
   amounts: resourcesSchema,
 })
 
-/** 대가 없는 원조. 리더 협의 단계에서 오프라인 협의 결과를 관리자가 입력. 주는 팀 라운드당 1회 (docs/100 D2) */
+/** 대가 없는 원조. 리더 협의 단계에서 오프라인 협의 결과(리더 4명 중 3명 찬성)를 관리자가 입력. 게임 전체 라운드당 1회 (docs/103 §11) */
 gameRouter.post('/admin/game/aid', requireRole('admin'), handle(aidSchema, (req, res, body) => {
   const by = req.auth!.sub
   const g = requireRunning()
@@ -567,14 +558,18 @@ gameRouter.post('/admin/game/aid', requireRole('admin'), handle(aidSchema, (req,
   res.json(adminView())
 }))
 
-const tieSchema = z.object({ teamId: z.number().int().positive(), userId: z.number().int().positive() })
+const leaderSchema = z.object({ teamId: z.number().int().positive(), userId: z.number().int().positive() })
 
-gameRouter.post('/admin/game/election', requireRole('admin'), handle(tieSchema, (req, res, body) => {
+/** 리더 지정 (진행자 수동, docs/100 §7-6). 리더 선출 단계에서는 그 팀의 이번 라운드 선정을 완료로 표시한다. 다른 단계에서도 교체용으로 쓸 수 있다 */
+gameRouter.post('/admin/game/leader', requireRole('admin'), handle(leaderSchema, (req, res, body) => {
   const g = requireRunning()
-  resolveTie(g.day, body.teamId, body.userId)
-  announceElection(g.day, body.teamId, { status: 'done', leaderId: body.userId, votes: 0, changed: true }, req.auth!.sub)
-  if (allElectionsDone(g.day)) announceAllLeaders(g.day, req.auth!.sub)
-  announceMigrationSweep(req.auth!.sub)
+  const by = req.auth!.sub
+  const wereDone = allElectionsDone(g.day)
+  const r = designateLeader(g.day, body.teamId, body.userId)
+  announceElection(g.day, body.teamId, r, by)
+  if (!wereDone && allElectionsDone(g.day)) announceAllLeaders(g.day, by)
+  // 새 리더의 대기 중 이주 신청은 자동 취소
+  announceMigrationSweep(by)
   res.json(adminView())
 }))
 
@@ -585,8 +580,9 @@ gameRouter.post('/admin/game/trade/cancel', requireRole('admin'), handle(null, (
 
 // ---- 보석·골드 발행 ----
 
-/** 날 시작 알림에 붙이는 오늘 선포 비용 (docs/100 D6-b) */
+/** 날 시작 알림에 붙이는 오늘 선포 비용·허용 여부 (docs/100 D6-b, docs/103 §12) */
 function todayCostText(day: number): string {
+  if (!isWarAllowed(day)) return '⚔️ 이번 라운드는 전쟁 금지 (리더 협의)'
   const c = getWarCost(day)
   const text = c ? describeCost(c) : '미정'
   return `⚔️ 이번 라운드 전쟁 선포 비용: ${text === '없음' ? '없음 (무료)' : text}`
@@ -595,29 +591,6 @@ function todayCostText(day: number): string {
 function issueText(r: IssueRequestView): string {
   return `${RESOURCE_LABELS[r.kind]} ${r.amount}개`
 }
-
-/**
- * 관리자 수락/거절. 알림은 모두 무음(muted).
- * - 보석: 화이트팀만 (다른 팀·프레젠테이션은 모른다)
- * - 골드: 수락하면 이번 발행 수량을 전체에 1회 공개, 거절은 옐로우팀만
- *   마지막 라운드 골드는 공개하지 않는다 (옐로우팀만, docs/100 D4). 공개는 최종장(N2) 때
- */
-gameRouter.post('/admin/issue/:id/decide', requireRole('admin'), handle(z.object({ accept: z.boolean() }), (req, res, body) => {
-  const id = Number(req.params.id)
-  if (!Number.isInteger(id)) throw new GameError('not_found', '', 404)
-  const r = decideIssue(id, body.accept, req.auth!.sub)
-  const extra = { issueId: r.id, status: r.status, muted: true }
-  if (!body.accept) {
-    emit('game', 'group', r.teamId, 'issue.decided', `${issueText(r)} 발행 요청이 거절되었습니다`, req.auth!.sub, extra)
-  } else if (r.kind === 'gold' && r.day >= (getGameRow().total_days ?? Infinity)) {
-    emit('game', 'group', r.teamId, 'issue.decided', `${issueText(r)} 발행이 수락되었습니다 (골드 +${r.amount} · 마지막 라운드라 공개되지 않습니다)`, req.auth!.sub, extra)
-  } else if (r.kind === 'gold') {
-    emit('game', 'all', null, 'issue.decided', `${josa(teamName(r.teamId), '이/가')} 골드 ${r.amount}개를 발행했습니다`, req.auth!.sub, extra)
-  } else {
-    emit('game', 'group', r.teamId, 'issue.decided', `${issueText(r)} 발행이 수락되었습니다 (보석 +${r.amount})`, req.auth!.sub, extra)
-  }
-  res.json(adminView())
-}))
 
 // ---- 전쟁 ----
 
@@ -636,11 +609,25 @@ gameRouter.post('/admin/war/cost', requireRole('admin'), handle(warCostSchema, (
   res.json(adminView())
 }))
 
+/** 다음 라운드 전쟁 허용/제재 (리더 협의 결과, docs/103 §12). 리더 협의 단계에서 입력. 입력이 없으면 허용 */
+gameRouter.post('/admin/war/allow', requireRole('admin'), handle(z.object({ allowed: z.boolean() }), (req, res, body) => {
+  const g = requireRunning()
+  if (g.phase !== 'council') throw new GameError('wrong_phase', '다음 라운드 전쟁 허용/제재는 리더 협의 단계에서 입력합니다')
+  if (g.day >= (g.total_days ?? 0)) throw new GameError('last_day', '마지막 라운드에는 다음 라운드가 없습니다')
+  setWarRule(g.day + 1, body.allowed)
+  const msg = body.allowed
+    ? `🗣️ 리더 협의 결과: ${g.day + 1}라운드 전쟁 허용`
+    : `🗣️ 리더 협의 결과: ${g.day + 1}라운드 전쟁 제재 (전쟁 선포 불가)`
+  emit('game', 'all', null, 'war.allowed', msg, req.auth!.sub, { day: g.day + 1, allowed: body.allowed })
+  res.json(adminView())
+}))
+
 const warResultSchema = z.object({ result: z.enum(['attacker', 'defender', 'draw', 'cancel']) })
 
 /**
  * 관리자 결과 지정 (오프라인 게임 결과). 승패면 패배팀 재화 4종의 절반(내림)을 승리팀이 가져간다.
- * 결과(승리팀 이름)는 전체에, 오간 수량은 승리팀·패배팀(+진행자)에게만 (docs/100 D6-a). 룰 04 대로 "거래를 다시 시작합니다" 를 붙인다
+ * 결과(승리팀 이름)는 전체에, 오간 수량은 승리팀·패배팀(+진행자)에게만 (docs/100 D6-a).
+ * 승·패·무승부면 거래 단계를 끝내고 리더 협의로 자동 전환한다 (docs/103 §4). 취소는 거래 단계 유지 ("거래를 다시 시작합니다")
  */
 gameRouter.post('/admin/war/:id/resolve', requireRole('admin'), handle(warResultSchema, (req, res, body) => {
   const g = requireRunning()
@@ -649,15 +636,19 @@ gameRouter.post('/admin/war/:id/resolve', requireRole('admin'), handle(warResult
   const by = req.auth!.sub
   const r = resolveWar(id, body.result, g.day, by)
   const pair = `${teamName(r.war.attacker)} → ${teamName(r.war.defender)}`
+  // 승·패·무승부: 거래 단계였으면 바로 리더 협의로 (거래 단계가 아니면 — 비정상 — 그대로)
+  const toCouncil = body.result !== 'cancel' && g.phase === 'trade' && g.day === r.war.day
+  const tail = toCouncil ? '리더 협의로 넘어갑니다' : '거래를 다시 시작합니다'
   if (r.winner != null && r.loser != null) {
-    emit('game', 'all', null, 'war.resolved', `⚔️ 전쟁 종료: ${josa(teamName(r.winner), '이/가')} 승리했습니다 (${pair}). 거래를 다시 시작합니다`, by, { war: true, warId: id })
+    emit('game', 'all', null, 'war.resolved', `⚔️ 전쟁 종료: ${josa(teamName(r.winner), '이/가')} 승리했습니다 (${pair}). ${tail}`, by, { war: true, warId: id })
     const amounts = describeCost(r.spoils ?? {})
     emit('game', 'group', r.winner, 'war.spoils', `⚔️ 전리품: ${amounts === '없음' ? '없음 (상대 팀 재화 0)' : amounts}`, by, { war: true, warId: id })
     emit('game', 'group', r.loser, 'war.lost', amounts === '없음' ? '⚔️ 전쟁 패배: 빼앗긴 재화 없음 (보유 0)' : `⚔️ 전쟁 패배: ${amounts} 을 빼앗겼습니다`, by, { war: true, warId: id })
   } else {
-    const msg = body.result === 'draw' ? `⚔️ 전쟁 종료: 무승부 (${pair}). 거래를 다시 시작합니다` : `⚔️ 전쟁이 취소되었습니다 (${pair}). 거래를 다시 시작합니다`
+    const msg = body.result === 'draw' ? `⚔️ 전쟁 종료: 무승부 (${pair}). ${tail}` : `⚔️ 전쟁이 취소되었습니다 (${pair}). 거래를 다시 시작합니다`
     emit('game', 'all', null, 'war.resolved', msg, by, { war: true, warId: id })
   }
+  if (toCouncil) advanceAndAnnounce({ day: g.day, phase: 'trade' }, by, '⚔️ 전쟁 종료로 ')
   res.json(adminView())
 }))
 
@@ -684,21 +675,6 @@ function requireLeader(req: Request): number {
   return teamId
 }
 
-const voteSchema = z.object({ candidateId: z.number().int().positive() })
-
-gameRouter.post('/game/vote', requireRole('member'), handle(voteSchema, (req, res, body) => {
-  const g = requireRunning('leader')
-  const teamId = myTeam(req)
-  const by = req.auth!.sub
-  const result = castVote(g.day, teamId, by, body.candidateId)
-  emit('game', 'group', teamId, 'election.progress', `${userName(by)} 님이 투표했습니다`, by, { silent: true })
-  if (result) {
-    announceElection(g.day, teamId, result, by, NOTIFY_SELF)
-    if (result.status === 'done' && allElectionsDone(g.day)) announceAllLeaders(g.day, by, NOTIFY_SELF)
-    announceMigrationSweep(by)
-  }
-  res.json({ election: getElection(g.day, teamId, by), user: findUserById(by) })
-}))
 
 // ---- 참가자(리더): 라이프 제출 ----
 
@@ -725,131 +701,92 @@ gameRouter.post('/game/life', requireRole('member'), handle(lifeSchema, (req, re
   endSessions(sub.eliminated, 'eliminated')
 }))
 
-// ---- 참가자(리더): 보석·골드 발행 요청 ----
+// ---- 참가자(리더): 보석·골드 발행 (요청 즉시 발행, docs/103 §9) ----
 
-/** 화이트(보석)·옐로우(골드) 리더. 되돌릴 수 없다. 팀 알림(관리자도 받음)은 무음, 관리자 화면은 요청 창을 띄운다 */
+/**
+ * 화이트(보석)·옐로우(골드) 리더. 되돌릴 수 없다. 알림은 모두 무음(muted), 문구는 수락 때와 같다 (docs/97).
+ * - 보석: 화이트팀만 (다른 팀·프레젠테이션은 모른다)
+ * - 골드: 이번 발행 수량을 전체에 1회 공개. 마지막 라운드 골드는 공개하지 않는다 (옐로우팀만, docs/100 D4). 공개는 최종장(N2) 때
+ */
 gameRouter.post('/issue/request', requireRole('member'), handle(z.object({ amount: z.number().int().min(1).max(100_000) }), (req, res, body) => {
   const teamId = requireLeader(req)
   const by = req.auth!.sub
   const r = requestIssue(teamId, body.amount, by)
-  emit('game', 'group', teamId, 'issue.requested', `${userName(by)} 님이 ${issueText(r)} 발행을 요청했습니다`, by, { issueId: r.id, muted: true })
+  const extra = { issueId: r.id, status: r.status, muted: true, ...NOTIFY_SELF }
+  if (r.kind === 'gold' && r.day >= (getGameRow().total_days ?? Infinity)) {
+    emit('game', 'group', r.teamId, 'issue.decided', `${issueText(r)} 발행 완료 (골드 +${r.amount} · 마지막 라운드라 공개되지 않습니다)`, by, extra)
+  } else if (r.kind === 'gold') {
+    emit('game', 'all', null, 'issue.decided', `${josa(teamName(r.teamId), '이/가')} 골드 ${r.amount}개를 발행했습니다`, by, extra)
+  } else {
+    emit('game', 'group', r.teamId, 'issue.decided', `${issueText(r)} 발행 완료 (보석 +${r.amount})`, by, extra)
+  }
   res.json({ issue: getTeamIssue(teamId) })
 }))
 
-// ---- 참가자(리더): 전쟁 선포 ----
+// ---- 참가자(리더): 전쟁 선포 (즉시 시작, docs/103 §4) ----
 
 /**
- * 거래 단계, 리더만. 선포 → 관리자 승인 대기 (docs/99 §8). 비용은 승인될 때 차감.
- * 대기 중 알림은 공격팀(강조)과 관리자(무음 팝업)에만. 전체 공지는 승인 때
+ * 거래 단계, 리더만. 선포 즉시 비용 차감(소멸) → 진행 중 거래 취소 → 전체 강조 공지(소리 있음).
+ * 두 팀이 동시에 선포하면 먼저 들어온 것만 유효 (나중 것은 war_used). 리더 협의로 금지된 라운드면 war_banned
  */
 gameRouter.post('/war/declare', requireRole('member'), handle(z.object({ defenderId: z.number().int().positive() }), (req, res, body) => {
   const g = requireRunning('trade')
   const teamId = requireLeader(req)
   const by = req.auth!.sub
-  const war = declareWar(g.day, teamId, body.defenderId, by)
-  emit('game', 'group', teamId, 'war.pending', `⚔️ 전쟁 선포: → ${teamName(war.defender)} · 진행자 승인 대기 중`, by, { war: true, warId: war.id, ...NOTIFY_SELF })
-  publishEvent(insertEvent({
-    type: 'game', scope: 'role', targetRole: 'admin', createdBy: by,
-    payload: { kind: 'war.pending', message: `⚔️ 전쟁 선포 승인 요청: ${teamName(war.attacker)} → ${teamName(war.defender)} (비용 ${describeCost(war.cost)})`, warId: war.id, muted: true },
-  }))
+  const { war, cancelledTrade } = declareWar(g.day, teamId, body.defenderId, by)
+  announceCancelled(cancelledTrade, '전쟁 선포로', by)
+  emit('game', 'group', war.attacker, 'resources.updated', `전쟁 선포 비용: ${describeCost(war.cost)} (소멸)`, by, { silent: true })
+  emit('game', 'all', null, 'war.declared', `⚔️ 전쟁이 선포되었습니다 (${teamName(war.attacker)} → ${teamName(war.defender)})`, by, {
+    war: true, warId: war.id, attacker: war.attacker, defender: war.defender, ...NOTIFY_SELF,
+  })
   res.json({ ok: true })
 }))
 
-/** 관리자 승인: 비용 차감(소멸) → 진행 중 거래 취소 → 전체 강조 공지(소리 있음). 비용이 부족하면 대기 유지 + 409 */
-gameRouter.post('/admin/war/:id/approve', requireRole('admin'), handle(null, (req, res) => {
-  const g = requireRunning()
-  const id = Number(req.params.id)
-  if (!Number.isInteger(id)) throw new GameError('not_found', '', 404)
-  const by = req.auth!.sub
-  const { war, cancelledTrade } = approveWar(id, g.day, by)
-  announceCancelled(cancelledTrade, '전쟁 승인으로', by)
-  emit('game', 'group', war.attacker, 'resources.updated', `전쟁 선포 비용: ${describeCost(war.cost)} (소멸)`, by, { silent: true })
-  emit('game', 'all', null, 'war.declared', `⚔️ 전쟁이 선포되었습니다 (${teamName(war.attacker)} → ${teamName(war.defender)})`, by, {
-    war: true, warId: war.id, attacker: war.attacker, defender: war.defender,
-  })
-  res.json(adminView())
-}))
-
-/** 관리자 거절: 재화 변동 없음, 공격팀에만 사유와 함께 알림. 거절은 라운드당 1회에 세지 않는다 */
-gameRouter.post('/admin/war/:id/reject', requireRole('admin'), handle(z.object({ reason: z.string().trim().max(200).optional() }), (req, res, body) => {
-  requireRunning()
-  const id = Number(req.params.id)
-  if (!Number.isInteger(id)) throw new GameError('not_found', '', 404)
-  const by = req.auth!.sub
-  const reason = body.reason || null
-  const war = rejectWar(id, by, reason)
-  emit('game', 'group', war.attacker, 'war.rejected', `⚔️ 전쟁 선포가 거절되었습니다 (→ ${teamName(war.defender)})${reason ? ` — ${reason}` : ''}`, by, { war: true, warId: war.id })
-  res.json(adminView())
-}))
-
-// ---- 참가자(리더): 거래 ----
+// ---- 거래 (docs/103 §10): 진행자 제안 → 두 리더 수락 ----
 
 const tradeIdOf = (req: Request) => {
   const id = Number(req.params.id)
   if (!Number.isInteger(id)) throw new GameError('not_found', '', 404)
   return id
 }
+const giveText = (o: Resources) => describeDeltas(o).replaceAll('+', '') || '없음'
+const tradeSummary = (t: TradeView) =>
+  `${teamName(t.from.teamId)} (${giveText(t.from.offer)}) ↔ ${teamName(t.to.teamId)} (${giveText(t.to.offer)}) · 크레딧 ${teamName(t.creditPayer)} 부담`
 
-gameRouter.post('/trade/request', requireRole('member'), handle(z.object({ toTeamId: z.number().int().positive() }), (req, res, body) => {
+const tradeProposalSchema = z.object({
+  fromTeamId: z.number().int().positive(),
+  toTeamId: z.number().int().positive(),
+  creditPayer: z.number().int().positive(),
+  fromOffer: resourcesSchema,
+  toOffer: resourcesSchema,
+})
+
+/** 진행자가 오프라인 협의 내용을 입력해 거래를 올린다. 두 팀 리더 화면에 요약이 뜨고 둘 다 수락해야 체결 */
+gameRouter.post('/admin/game/trade', requireRole('admin'), handle(tradeProposalSchema, (req, res, body) => {
+  const g = requireRunning('trade')
+  const by = req.auth!.sub
+  const t = proposeTrade(g.day, { fromTeam: body.fromTeamId, toTeam: body.toTeamId, creditPayer: body.creditPayer, fromOffer: body.fromOffer, toOffer: body.toOffer }, by, teamName)
+  const msg = `거래 제안: ${tradeSummary(t)} · 리더가 수락하면 체결됩니다`
+  announceTrade(t, 'trade.proposed', { from: msg, to: msg }, by)
+  res.json(adminView())
+}))
+
+/** 리더 수락/거부. 둘 다 수락하면 크레딧 차감 + 교환. 한쪽이라도 거부하면 거래 취소 (관리자가 다시 올린다) */
+gameRouter.post('/trade/:id/decide', requireRole('member'), handle(z.object({ accept: z.boolean() }), (req, res, body) => {
   const g = requireRunning('trade')
   const teamId = requireLeader(req)
   const by = req.auth!.sub
-  const t = requestTrade(g.day, teamId, body.toTeamId, by)
-  announceTrade(t, 'trade.requested', {
-    from: `${teamName(t.to.teamId)}에 거래를 요청했습니다`,
-    to: `${josa(teamName(t.from.teamId), '이/가')} 거래를 요청했습니다`,
-  }, by)
-  res.json({ trade: t })
-}))
-
-gameRouter.post('/trade/:id/respond', requireRole('member'), handle(z.object({ accept: z.boolean() }), (req, res, body) => {
-  requireRunning('trade')
-  const teamId = requireLeader(req)
-  const t = respondTrade(tradeIdOf(req), teamId, body.accept)
-  const msg = body.accept
-    ? `${josa(teamName(t.to.teamId), '이/가')} 거래를 수락했습니다. 크레딧 1개를 먼저 제출한 팀이 거래를 시작합니다`
-    : `${josa(teamName(t.to.teamId), '이/가')} 거래를 거부했습니다`
-  announceTrade(t, body.accept ? 'trade.updated' : 'trade.closed', { from: msg, to: msg }, req.auth!.sub)
-  res.json({ trade: t })
-}))
-
-gameRouter.post('/trade/:id/credit', requireRole('member'), handle(null, (req, res) => {
-  const g = requireRunning('trade')
-  const teamId = requireLeader(req)
-  const t = payCredit(tradeIdOf(req), teamId, g.day, req.auth!.sub)
-  const msg = `${josa(teamName(teamId), '이/가')} 크레딧 1개를 제출했습니다. 거래를 시작합니다`
-  announceTrade(t, 'trade.updated', { from: msg, to: msg }, req.auth!.sub)
-  emit('game', 'group', teamId, 'resources.updated', '거래 크레딧: 크레딧 -1', req.auth!.sub, { silent: true })
-  res.json({ trade: t })
-}))
-
-gameRouter.post('/trade/:id/offer', requireRole('member'), handle(z.object({ offer: resourcesSchema }), (req, res, body) => {
-  requireRunning('trade')
-  const teamId = requireLeader(req)
-  const t = proposeOffer(tradeIdOf(req), teamId, body.offer)
-  const msg = `${josa(teamName(teamId), '이/가')} 제안했습니다: ${describeDeltas(body.offer).replaceAll('+', '') || '없음'}`
-  announceTrade(t, 'trade.updated', { from: msg, to: msg }, req.auth!.sub)
-  res.json({ trade: t })
-}))
-
-gameRouter.post('/trade/:id/accept', requireRole('member'), handle(null, (req, res) => {
-  const g = requireRunning('trade')
-  const teamId = requireLeader(req)
-  const { trade: t, completed } = acceptOffer(tradeIdOf(req), teamId, g.day, req.auth!.sub)
-  if (completed) {
-    const give = (o: Resources | null) => describeDeltas(o ?? {}).replaceAll('+', '') || '없음'
-    const msg = `거래 완료: ${teamName(t.from.teamId)} (${give(t.from.offer)}) ↔ ${teamName(t.to.teamId)} (${give(t.to.offer)})`
-    announceTrade(t, 'trade.completed', { from: msg, to: msg }, req.auth!.sub, NOTIFY_SELF)
+  const { trade: t, completed } = decideTrade(tradeIdOf(req), teamId, body.accept, g.day, by)
+  if (!body.accept) {
+    const msg = `${josa(teamName(teamId), '이/가')} 거래를 거부했습니다 (${tradeSummary(t)})`
+    announceTrade(t, 'trade.closed', { from: msg, to: msg }, by, NOTIFY_SELF)
+  } else if (completed) {
+    const msg = `거래 완료: ${tradeSummary(t)}`
+    announceTrade(t, 'trade.completed', { from: msg, to: msg }, by, NOTIFY_SELF)
+    emit('game', 'group', t.creditPayer, 'resources.updated', '거래 크레딧: 크레딧 -1', by, { silent: true })
   } else {
-    const msg = `${josa(teamName(teamId), '이/가')} 제안을 수락했습니다`
-    announceTrade(t, 'trade.updated', { from: msg, to: msg }, req.auth!.sub)
+    const msg = `${josa(teamName(teamId), '이/가')} 거래를 수락했습니다. 상대 리더의 수락을 기다립니다`
+    announceTrade(t, 'trade.updated', { from: msg, to: msg }, by)
   }
   res.json({ trade: t, completed })
-}))
-
-gameRouter.post('/trade/:id/cancel', requireRole('member'), handle(null, (req, res) => {
-  const teamId = requireLeader(req)
-  const t = cancelTrade(tradeIdOf(req), teamId)
-  announceCancelled(t, `${teamName(teamId)}에 의해`, req.auth!.sub)
-  res.json({ trade: t })
 }))

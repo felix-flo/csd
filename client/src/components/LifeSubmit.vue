@@ -4,7 +4,8 @@
  * - 자진 탈락 안 함: 리더 생존 + 리더 외 팀원 중 무작위 (N−1)명. 자진 탈락: 리더 외 팀원 중 무작위 N명
  * - 범위 1 ~ min(팀 라이프, 살릴 수 있는 인원). 라이프 0개 팀은 숫자 없이 1명만 생존 (라이프 소모 없음)
  * - 제출 → "정말로 제출하겠습니까?" 확인 → 서버가 무작위로 정하고, 살지 못한 팀원은 즉시 탈락(로그인 차단·세션 종료).
- * 팀원은 진행 상황만 본다. 활성 팀원이 1명뿐이면 제출하지 않는다 (자동 생존, 라이프 소모 없음).
+ * 팀원은 진행 상황만 본다. 활성 팀원이 1명이고 라이프가 0개면 제출하지 않는다 (자동 생존). 1명이라도 라이프가 있으면 제출해야 하고
+ * 라이프 1개를 쓰고 생존한다 (자진 탈락 불가. docs/103 §8).
  */
 import { computed, ref, watch } from 'vue'
 import type { PublicUser } from '../../../shared/types'
@@ -26,6 +27,8 @@ const game = useGameStore()
 
 const selfEliminate = ref(false)
 const noLives = computed(() => props.lives === 0)
+/** 팀원 1명: 라이프 1개 소모·자진 탈락 없음 */
+const alone = computed(() => props.members.length === 1)
 const max = computed(() => lifeSubmitMax(props.members.length, props.lives, selfEliminate.value))
 const count = ref(1)
 const text = ref('1')
@@ -81,6 +84,7 @@ const preview = computed(() => {
   }
   const n = count.value
   const lost = props.members.length - n
+  if (alone.value) return '리더(본인) 생존 · 라이프 1개 사용'
   if (selfEliminate.value) return `리더 외 팀원 ${others.value}명 중 무작위 ${n}명 생존 · ${lost}명 탈락 (리더 포함)`
   const alive = n === 1 ? '리더만 생존' : n - 1 === others.value ? '전원 생존' : `리더 + 무작위 ${n - 1}명 생존`
   return lost ? `${alive} · ${lost}명 탈락` : `${alive} · 탈락 없음`
@@ -122,8 +126,8 @@ const nameOf = (id: number) => shown.value?.names[id] ?? props.members.find((m) 
       <p v-if="shown.eliminated.length" class="error">탈락: {{ shown.eliminated.map(nameOf).join(', ') }}</p>
     </template>
 
-    <template v-else-if="isLifeExempt(members.length)">
-      <p>팀원이 1명이라 라이프 제출이 없습니다. 라이프를 쓰지 않고 그대로 생존합니다.</p>
+    <template v-else-if="isLifeExempt(members.length, lives)">
+      <p>팀원이 1명이고 라이프가 없어 라이프 제출이 없습니다. 탈락 없이 그대로 생존합니다.</p>
     </template>
 
     <template v-else-if="!isLeader">
@@ -133,10 +137,12 @@ const nameOf = (id: number) => shown.value?.names[id] ?? props.members.find((m) 
     <template v-else>
       <p class="muted">
         팀 라이프 <strong class="mono">{{ lives }}</strong> · 팀원 <strong class="mono">{{ members.length }}</strong>명 (본인 포함).
-        살릴 인원 수만 정하면 리더는 생존하고, 나머지 자리는 리더 외 팀원 중 무작위로 정해집니다.
+        <template v-if="alone">팀원이 1명이라도 라이프가 있으면 제출해야 합니다. 라이프 1개를 쓰고 생존합니다.</template>
+        <template v-else>살릴 인원 수만 정하면 리더는 생존하고, 나머지 자리는 리더 외 팀원 중 무작위로 정해집니다.</template>
       </p>
 
       <p v-if="noLives" class="warn">라이프가 없어 1명만 생존합니다 (라이프 소모 없음).</p>
+      <p v-else-if="alone" class="warn">💙 살릴 인원 1명 (본인) · 라이프 1개 사용</p>
       <div v-else class="stepper">
         <span>💙 살릴 인원 <span class="muted">/ 최대 {{ max }}</span></span>
         <span class="row" style="gap: 4px">
@@ -160,7 +166,7 @@ const nameOf = (id: number) => shown.value?.names[id] ?? props.members.find((m) 
         <span v-if="note" class="note">{{ note }}</span>
       </div>
 
-      <label class="self">
+      <label v-if="!alone" class="self">
         <input v-model="selfEliminate" type="checkbox" :disabled="busy" />
         리더 자진 탈락 <span class="muted">(리더도 탈락하고, 생존자를 모두 리더 외 팀원 중 무작위로 정합니다)</span>
       </label>
