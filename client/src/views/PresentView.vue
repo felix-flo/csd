@@ -8,7 +8,8 @@
  * 제목: 시작 전에는 "스위칭데이"만. 게임 제목은 서버가 시작 후에만 보내고(state.title), 시작 순간 열려 있던 화면은 리졸브 효과로 공개한다.
  *       시작 후 새로 열거나 새로고침하면 효과 없이 바로 제목.
  * 오프닝 영상: 서버 data/media/intro.mp4 가 있으면 시작 순간 전체 화면으로 먼저 틀고, 끝난 뒤 제목 리졸브로 이어진다 (IntroVideo).
- *       소리는 이 탭에서 한 번 클릭이 있어야 나므로 시작 전에 "영상 준비" 안내를 보여 준다.
+ *       재생 전 대기 카운트다운(기본 10초, URL ?intro=초 · ?intro=wait 는 클릭까지 대기)으로 관리자가 이 창으로 넘어올 시간을 준다.
+ *       소리는 이 탭에서 한 번 클릭이 있어야 나므로 시작 전에 "영상 준비" 안내를 보여 준다 (대기 화면 클릭도 같은 효과).
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import TopBar from '../components/TopBar.vue'
@@ -19,6 +20,7 @@ import ResultsBoard from '../components/ResultsBoard.vue'
 import TeamMark from '../components/TeamMark.vue'
 import ResolveText from '../components/ResolveText.vue'
 import IntroVideo from '../components/IntroVideo.vue'
+import { useRoute } from 'vue-router'
 import { useGameStore } from '../stores/game'
 import { useTeamsStore } from '../stores/teams'
 import { api } from '../lib/api'
@@ -37,6 +39,14 @@ const revealing = ref(false)
 /** 오프닝 영상 (있을 때만). 시작 순간 영상 → 끝나면 제목 리졸브 */
 const intro = ref<string | null>(null)
 const introPlay = ref(0)
+/** 재생 전 대기 시간(초). URL ?intro=20 · ?intro=0 (바로) · ?intro=wait (클릭까지). 기본 10 */
+const route = useRoute()
+const introDelay = computed<number | 'wait'>(() => {
+  const q = route.query.intro
+  if (q === 'wait') return 'wait'
+  const n = Number(q)
+  return q != null && Number.isFinite(n) && n >= 0 ? n : 10
+})
 /** 이 탭에서 사용자 입력이 있었는지 — 없으면 영상 소리가 막히므로 안내를 보여 준다 */
 const armed = ref(false)
 function arm() { armed.value = true }
@@ -94,7 +104,7 @@ const warLine = computed(() => {
 
 <template>
   <div class="page" style="max-width: 1100px">
-    <IntroVideo :src="intro" :play="introPlay" @done="startReveal" />
+    <IntroVideo :src="intro" :play="introPlay" :delay="introDelay" @done="startReveal" />
     <TopBar :title="title" large>
       <template #title><ResolveText :text="title" :play="reveal" @done="revealing = false" /></template>
       <template #subtitle>
@@ -121,7 +131,7 @@ const warLine = computed(() => {
         </div>
         <p class="muted" style="margin: 12px 0 0">QR 로 접속해 PIN 으로 로그인한 뒤 이름을 입력하고 팀을 고르세요.</p>
         <p v-if="intro" class="intro-note" :class="{ ok: armed }">
-          🎬 게임 시작 때 오프닝 영상을 틉니다.
+          🎬 게임 시작 때 오프닝 영상을 틉니다{{ introDelay === 'wait' ? ' (클릭할 때까지 대기)' : introDelay ? ` (${introDelay}초 대기 후)` : '' }}.
           <template v-if="armed">소리 재생 준비됨.</template>
           <template v-else>소리를 내려면 이 화면을 한 번 클릭해 두세요. <button class="secondary" style="padding: 4px 12px; font-size: 0.9rem" @click="arm">영상 준비</button></template>
         </p>
