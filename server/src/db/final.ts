@@ -1,10 +1,10 @@
 /**
  * 최종장 (docs/100.최종룰_차이_결정사항.md N2 + D7, 룰 03 §11).
  *   running(마지막 라운드 협의: 라이프 투표권 안건 통과/부결)
- *     └─게임 종료──▶ final/vote ──마감(+동점이면 가위바위보)──▶ final/result ──▶ final/settle ──▶ final/spy(스파이 공개, N4) ──▶ ended
+ *     └─게임 종료──▶ final/vote ──마감(+동점이면 가위바위보)──▶ final/result ──▶ final/settle ──▶ final/spy(테러리스트 공개, N4) ──▶ ended
  *
  * 규칙:
- * - 투표: 활성 참가자(스파이·테스트 계정 포함, 탈락자 제외) 1인 1회, 보석/골드. 한 번 내면 바꿀 수 없다 (final_votes PRIMARY KEY)
+ * - 투표: 활성 참가자(테러리스트·테스트 계정 포함, 탈락자 제외) 1인 1회, 보석/골드. 한 번 내면 바꿀 수 없다 (final_votes PRIMARY KEY)
  * - 기본 1표는 리더만 (2026-10-30 결정, final_votes.base). 안건 부결이면 리더만 투표한다
  * - 라이프 투표권: 안건 통과 시 팀 라이프 1개로 1표(extra), 즉시 차감 (선착순, 1인 1장). 리더는 기본표에 더하고(2표), 일반 팀원은 이것으로만 투표한다(1표).
  *   투표 기록과 차감은 한 트랜잭션
@@ -201,7 +201,7 @@ export function advanceFinal(expect: FinalStep): FinalAdvance {
       step('spy')
       return { to: 'spy', spies: listSpyStatus() }
     }
-    // 스파이 공개 → 끝
+    // 테러리스트 공개 → 끝
     update(`status = 'ended', ended_at = datetime('now')`)
     return { to: 'ended' }
   })()

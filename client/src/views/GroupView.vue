@@ -69,7 +69,7 @@ const phaseHint: Record<string, string> = {
   production: '오프라인 미니게임(생산게임)을 합니다. 결과에 따라 진행자가 팀 재화를 지급합니다.',
   council: '리더들이 오프라인에서 협의합니다 — 🤝 대가 없는 원조 (게임 전체 라운드당 1회, 리더 4명 중 3명 찬성) · ⚔️ 다음 라운드 전쟁 허용/제재. 결과는 진행자가 입력합니다.',
 }
-// 스파이(docs/100 N4): 게임이 시작되면 본인에게만 무음 안내 1번. 알림 기록·소리 없음 (서버도 이벤트로 보내지 않는다)
+// 테러리스트(docs/100 N4): 게임이 시작되면 본인에게만 무음 안내 1번. 알림 기록·소리 없음 (서버도 이벤트로 보내지 않는다)
 const spyIntro = ref(false)
 const spySeenKey = () => `csd:spy-seen:${auth.user?.id}`
 watch(() => game.team?.spy, (spy) => {

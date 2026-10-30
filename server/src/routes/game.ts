@@ -7,7 +7,7 @@
  * - 관리자  : /admin/game/* 설정·초기셋팅완료·설정으로 되돌리기·시작·다음 단계·종료(=최종장 시작)·리셋, 재화 조정, 원조, 리더 지정(/admin/game/leader),
  *             거래 제안(POST /admin/game/trade, docs/103 §10)·강제 취소
  * - 이주 (docs/100 N3): 참가자 POST /migration/request · /migration/:id/cancel, 받는 팀 리더 POST /migration/:id/decide, 관리자 POST /admin/migration/:id/cancel
- * - 스파이 (docs/100 N4): 참가자 GET·POST /game/fate (준비 상태 운명의 카드), 관리자 PUT /admin/spies (후보 중 지정)
+ * - 테러리스트 (docs/100 N4): 참가자 GET·POST /game/fate (준비 상태 운명의 카드), 관리자 PUT /admin/spies (후보 중 지정)
  * - 최종장 (docs/100 N2): 관리자 POST /admin/game/life-vote (마지막 라운드 안건), /admin/final/close · tiebreak · next · recompute, 참가자 POST /final/vote
  * - 참가자(준비 상태): POST /game/join 팀 선택. 시작 전에는 팀 게임 정보를 주지 않는다
  * - 보석·골드 발행 (docs/97): 화이트·옐로우 리더 POST /issue/request → 즉시 발행 (docs/103 §9)
@@ -183,7 +183,7 @@ gameRouter.get('/game/team', requireRole('member'), (req, res) => {
     issue: getTeamIssue(teamId),
     myFinalVote: g.status === 'final' || g.status === 'ended' ? getMyFinalVote(req.auth!.sub) : null,
     migration: running ? getTeamMigrationView(req.auth!.sub, teamId, !!req.auth!.isLeader) : null,
-    // 스파이 본인에게만 (시작 알림은 기록하지 않고, 화면이 이 값을 보고 무음 팝업을 1번 띄운다)
+    // 테러리스트 본인에게만 (시작 알림은 기록하지 않고, 화면이 이 값을 보고 무음 팝업을 1번 띄운다)
     spy: getMySpy(req.auth!.sub),
   }
   res.json(body)
@@ -317,7 +317,7 @@ gameRouter.post('/admin/game/end', requireRole('admin'), handle(null, (req, res)
   res.json(adminView())
 }))
 
-// ---- 스파이 (docs/100 N4) ----
+// ---- 테러리스트 (docs/100 N4) ----
 
 /** 내 운명의 카드 (준비 상태 대기 화면) */
 gameRouter.get('/game/fate', requireRole('member'), (req, res) => {
@@ -331,18 +331,18 @@ gameRouter.post('/game/fate', requireRole('member'), handle(z.object({ fate: z.e
   res.json({ fate: body.fate })
 }))
 
-/** 관리자: 달을 고른 후보 중에서 스파이 지정 (준비 상태). 참가자에게 알리지 않는다 */
+/** 관리자: 달을 고른 후보 중에서 테러리스트 지정 (준비 상태). 참가자에게 알리지 않는다 */
 gameRouter.put('/admin/spies', requireRole('admin'), handle(z.object({ userIds: z.array(z.number().int().positive()).max(200) }), (_req, res, body) => {
   setSpies(body.userIds)
   res.json(adminView())
 }))
 
 function spyRevealText(spies: SpyStatus[]): string {
-  if (!spies.length) return '🕵️ 스파이는 없었습니다'
+  if (!spies.length) return '🕵️ 테러리스트는 없었습니다'
   const reward = (x: SpyStatus) => (x.alive ? `${x.reward.toLocaleString('ko-KR')}원` : '탈락으로 0원')
-  // 룰 04: "스파이는 [이름]님이었습니다. 스파이 보상: [금액]"
-  if (spies.length === 1) return `🕵️ 스파이는 ${spies[0]!.name}님(${teamName(spies[0]!.teamId)})이었습니다 · 스파이 보상: ${reward(spies[0]!)}`
-  return `🕵️ 스파이는 ${spies.length}명이었습니다 · ${spies.map((x) => `${x.name}님(${teamName(x.teamId)}) ${reward(x)}`).join(' / ')}`
+  // 룰 04: "테러리스트는 [이름]님이었습니다. 테러리스트 보상: [금액]"
+  if (spies.length === 1) return `🕵️ 테러리스트는 ${spies[0]!.name}님(${teamName(spies[0]!.teamId)})이었습니다 · 테러리스트 보상: ${reward(spies[0]!)}`
+  return `🕵️ 테러리스트는 ${spies.length}명이었습니다 · ${spies.map((x) => `${x.name}님(${teamName(x.teamId)}) ${reward(x)}`).join(' / ')}`
 }
 
 // ---- 이주 (docs/100 N3) ----

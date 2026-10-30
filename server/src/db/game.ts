@@ -339,7 +339,7 @@ export function startGame(by: number): number[] {
     const unassigned = (db.prepare(`SELECT id FROM users WHERE role = 'member' AND active = 1 AND group_id IS NULL`).all() as { id: number }[]).map((r) => r.id)
     setUsersActive(unassigned, false)
     deactivated.push(...unassigned)
-    // 스파이 (docs/100 N4): 후보가 있으면 1명 이상 지정해야 시작. 시작 명단을 남긴다 (적립 기준)
+    // 테러리스트 (docs/100 N4): 후보가 있으면 1명 이상 지정해야 시작. 시작 명단을 남긴다 (적립 기준)
     prepareSpiesForStart()
     const { noLeader } = getPrep()
     if (noLeader.length) throw new GameError('no_leader', `리더를 지정하세요: ${noLeader.map(teamLabel).join(', ')}`)

@@ -16,7 +16,7 @@ import { isBeforeStart } from '../../../shared/game'
  * 제목·작은 글씨는 슬롯(title, subtitle)으로 바꿀 수 있다 (프레젠테이션의 제목 공개 효과).
  * 제목 아래 작은 글씨: subtitle 을 주면 그대로(프레젠테이션), 아니면 내 이름 —
  * 참가자는 게임 시작 후 "이름 (리더)" / "이름 (팀원)", 시작 전에는 이름만. 관리자는 "이름 (admin)"
- * 스파이(docs/100 N4): 참가자가 내 이름을 1.2초 안에 3번 누르면 스파이 카드를 연다 (스파이가 아니면 아무 일 없음)
+ * 테러리스트(docs/100 N4): 참가자가 내 이름을 1.2초 안에 3번 누르면 테러리스트 카드를 연다 (테러리스트가 아니면 아무 일 없음)
  */
 const props = defineProps<{ title: string; subtitle?: string; color?: string | null; large?: boolean }>()
 const auth = useAuthStore()
@@ -29,7 +29,7 @@ const who = computed(() => {
   if (!game.state || isBeforeStart(game.state.status)) return u.name
   return `${u.name} (${u.isLeader ? '리더' : '팀원'})`
 })
-// ---- 스파이 카드: 내 이름 3번 연속 탭 ----
+// ---- 테러리스트 카드: 내 이름 3번 연속 탭 ----
 const spyOpen = ref(false)
 let taps: number[] = []
 function onNameTap() {

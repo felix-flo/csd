@@ -1,12 +1,12 @@
 /**
- * 스파이 (docs/100.최종룰_차이_결정사항.md N4, 룰 03 §12 · 05).
- *   준비 상태: 팀을 고른 참가자가 "운명의 카드" 태양/달 중 하나를 고른다 (1회, 되돌릴 수 없음). 달 = 스파이 후보
- *            관리자가 후보 중에서 스파이를 직접 지정한다 (무작위 없음, 인원 자유). 후보가 있으면 1명 이상 지정해야 시작
+ * 테러리스트 (docs/100.최종룰_차이_결정사항.md N4, 룰 03 §12 · 05).
+ *   준비 상태: 팀을 고른 참가자가 "운명의 카드" 태양/달 중 하나를 고른다 (1회, 되돌릴 수 없음). 달 = 테러리스트 후보
+ *            관리자가 후보 중에서 테러리스트를 직접 지정한다 (무작위 없음, 인원 자유). 후보가 있으면 1명 이상 지정해야 시작
  *   게임 시작: 시작 순간 활성 참가자 명단을 game.start_roster 에 남긴다
  *   적립   : 명단 중 지금 비활성(탈락)인 사람 수 − 본인 × 5천 원, 최대 5만 원. 본인이 탈락하면 0.
  *            라이프 제출·자진 탈락·관리자 탈락 처리 모두 같다 (활성 여부로만 본다 → 관리자가 복귀시키면 다시 빠진다)
  *   최종장 ④: 관리자가 공개 (db/final.ts)
- * 대상은 활성 참가자 전원 (리더·테스트 계정 포함). 스파이 여부는 본인·관리자만 안다.
+ * 대상은 활성 참가자 전원 (리더·테스트 계정 포함). 테러리스트 여부는 본인·관리자만 안다.
  */
 import { db } from './index.js'
 import { GameError } from './gameError.js'
@@ -46,7 +46,7 @@ function selectedIds(): number[] {
 /** 관리자 지정 (준비 상태). 후보 중에서만, 목록 전체를 바꾼다 */
 export function setSpies(userIds: number[]) {
   db.transaction(() => {
-    if (status() !== 'ready') throw new GameError('not_ready', '스파이는 게임 준비 중에만 지정할 수 있습니다')
+    if (status() !== 'ready') throw new GameError('not_ready', '테러리스트는 게임 준비 중에만 지정할 수 있습니다')
     const ok = new Set(candidates().map((c) => c.userId))
     const bad = userIds.filter((id) => !ok.has(id))
     if (bad.length) throw new GameError('not_candidate', '달을 고른 후보 중에서만 지정할 수 있습니다', 400)
@@ -58,12 +58,12 @@ export function setSpies(userIds: number[]) {
 
 /**
  * 게임 시작 점검 (startGame 트랜잭션 안에서, 미배정 참가자를 비활성으로 바꾼 뒤).
- * 시작 때 비활성이 된 스파이는 지정에서 빼고, 후보가 있는데 지정된 스파이가 없으면 거부. 시작 명단을 남긴다
+ * 시작 때 비활성이 된 테러리스트는 지정에서 빼고, 후보가 있는데 지정된 테러리스트가 없으면 거부. 시작 명단을 남긴다
  */
 export function prepareSpiesForStart(): void {
   db.prepare(`DELETE FROM spies WHERE user_id NOT IN (SELECT id FROM users WHERE role = 'member' AND active = 1 AND group_id IS NOT NULL)`).run()
   if (candidates().length > 0 && selectedIds().length === 0) {
-    throw new GameError('no_spy', '달을 고른 후보가 있습니다. 스파이를 1명 이상 지정하세요')
+    throw new GameError('no_spy', '달을 고른 후보가 있습니다. 테러리스트를 1명 이상 지정하세요')
   }
   const roster = (db.prepare(`SELECT id FROM users WHERE role = 'member' AND active = 1 AND group_id IS NOT NULL`).all() as { id: number }[]).map((r) => r.id)
   db.prepare('UPDATE game SET start_roster = ? WHERE id = 1').run(JSON.stringify(roster))
@@ -74,7 +74,7 @@ function startRoster(): number[] {
   return raw ? (JSON.parse(raw) as number[]) : []
 }
 
-/** 스파이 현황 (시작 후). 탈락자 = 시작 명단 중 지금 비활성인 사람 (본인 제외) */
+/** 테러리스트 현황 (시작 후). 탈락자 = 시작 명단 중 지금 비활성인 사람 (본인 제외) */
 export function listSpyStatus(): SpyStatus[] {
   const roster = startRoster()
   if (!roster.length) return []
@@ -92,7 +92,7 @@ export function listSpyStatus(): SpyStatus[] {
   })
 }
 
-/** 본인이 스파이면 현황 (게임 시작 후에만) */
+/** 본인이 테러리스트면 현황 (게임 시작 후에만) */
 export function getMySpy(userId: number): SpyStatus | null {
   return listSpyStatus().find((s) => s.userId === userId) ?? null
 }

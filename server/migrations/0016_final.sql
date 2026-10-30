@@ -19,7 +19,7 @@ CREATE TABLE game_new (
   gold_issue_limit     INTEGER NOT NULL DEFAULT 200 CHECK (gold_issue_limit >= 0),
   last_issue_phases    TEXT NOT NULL DEFAULT '["life"]',
   tab_login            INTEGER NOT NULL DEFAULT 0,
-  -- 최종장 단계 (final 상태에서만. spy 는 N4 스파이 구현 때 사용)
+  -- 최종장 단계 (final 상태에서만. spy 는 N4 테러리스트 구현 때 사용)
   final_step           TEXT CHECK (final_step IN ('vote', 'result', 'settle', 'spy')),
   -- 마지막 라운드 필수 안건 "남은 라이프를 최종 투표권으로" : NULL 미입력 / 0 부결 / 1 통과
   life_vote_passed     INTEGER CHECK (life_vote_passed IN (0, 1)),

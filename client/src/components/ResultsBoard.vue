@@ -4,7 +4,7 @@
  * - 투표 마감 뒤: 득표 "보석 N표 · 골드 N표" (동점이면 가위바위보 결과)
  * - 결과 발표부터: 상금 화폐 + 마지막 라운드 발행량 (화이트 보석 · 옐로우 골드)
  * - 정산부터: 팀 · 살아남은 인원 · 채택 화폐 · 보상 %. 상대 발행팀은 "보상 없음"
- * - 스파이 공개부터: 스파이 이름 · 팀 · 보상 (docs/100 N4)
+ * - 테러리스트 공개부터: 테러리스트 이름 · 팀 · 보상 (docs/100 N4)
  */
 import { computed } from 'vue'
 import { ISSUE_TEAM_CODE, RESOURCE_LABELS, shareText, type FinalState, type GameResults } from '../../../shared/game'
@@ -48,10 +48,10 @@ const tiebreakText = computed(() => (props.final.tiebreak ? `동점 · 가위바
       </tbody>
     </table>
     <div v-if="final.spies" class="spies">
-      <p v-if="!final.spies.length" class="spy-line">🕵️ 스파이는 없었습니다</p>
+      <p v-if="!final.spies.length" class="spy-line">🕵️ 테러리스트는 없었습니다</p>
       <p v-for="x in final.spies" :key="x.userId" class="spy-line">
-        🕵️ 스파이는 <strong>{{ x.name }}</strong>님<span v-if="teamOf(x.teamId)" class="muted"> (<TeamMark :color="teamOf(x.teamId)!.color" />{{ teamOf(x.teamId)!.name }})</span>이었습니다
-        · 스파이 보상 <strong class="mono">{{ x.alive ? won(x.reward) : '0원 (탈락)' }}</strong>
+        🕵️ 테러리스트는 <strong>{{ x.name }}</strong>님<span v-if="teamOf(x.teamId)" class="muted"> (<TeamMark :color="teamOf(x.teamId)!.color" />{{ teamOf(x.teamId)!.name }})</span>이었습니다
+        · 테러리스트 보상 <strong class="mono">{{ x.alive ? won(x.reward) : '0원 (탈락)' }}</strong>
       </p>
     </div>
   </div>

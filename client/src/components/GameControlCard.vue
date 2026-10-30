@@ -3,8 +3,8 @@
  * 게임 진행 (관리자): 준비 상태 점검·리더 지정·게임 시작 / 단계 넘기기 / 다음 날 / 게임 종료(= 최종장 시작) / 리셋, 그리고 현재 단계의 팀별 현황.
  * - 마지막 라운드 리더 협의: 필수 안건(라이프 투표권) 통과/부결 입력. 넣어야 라이프 제출로 넘어간다 (docs/100 N2)
  * - 이주 (docs/100 N3): 대기 신청 목록·강제 취소. 대기 신청이 있으면 리더 협의 → 라이프 제출로 넘어가지 못한다
- * - 스파이 (docs/100 N4): 준비 상태에 운명의 카드 현황(태양·달·미선택)과 후보(달) 목록 → 체크해서 지정. 후보가 있으면 1명 이상 지정해야 시작.
- *   진행 중에는 스파이와 현재 적립금 (관리자만)
+ * - 테러리스트 (docs/100 N4): 준비 상태에 운명의 카드 현황(태양·달·미선택)과 후보(달) 목록 → 체크해서 지정. 후보가 있으면 1명 이상 지정해야 시작.
+ *   진행 중에는 테러리스트와 현재 적립금 (관리자만)
  * - 최종장(final): FinalControl (투표 마감·가위바위보·결과·정산)
  * - 준비 상태: 팀별 입장 현황(A 3/5)과 리더. 리더가 없는 팀이 있으면 시작할 수 없다. 팀을 고르지 않은 참가자는 시작할 때 비활성.
  * - 리셋은 어느 상태에서나: 참가자·진행자 계정과 모든 기록·알림을 지우고 설정 단계로 (리셋한 사람이 진행자면 본인도 로그아웃).
@@ -95,18 +95,18 @@ function askWar(result: WarResult) {
   warResult.value = result
   modal.value = 'war'
 }
-// ---- 스파이 (docs/100 N4) ----
+// ---- 테러리스트 (docs/100 N4) ----
 const spyPick = ref<number[]>([])
 watch(() => view.value?.spy.selected, (ids) => (spyPick.value = [...(ids ?? [])]), { immediate: true })
 const spyDirty = computed(() => [...spyPick.value].sort().join() !== [...(view.value?.spy.selected ?? [])].sort().join())
 const spyBlocker = computed(() => {
   const sp = view.value?.spy
   if (!sp || !sp.candidates.length) return ''
-  if (!sp.selected.length) return '달을 고른 후보 중 스파이를 1명 이상 지정해 저장해야 시작할 수 있습니다'
+  if (!sp.selected.length) return '달을 고른 후보 중 테러리스트를 1명 이상 지정해 저장해야 시작할 수 있습니다'
   return ''
 })
 function saveSpies() {
-  return run('스파이 지정 저장', () => api.put('/api/admin/spies', { userIds: spyPick.value }))
+  return run('테러리스트 지정 저장', () => api.put('/api/admin/spies', { userIds: spyPick.value }))
 }
 const won = (n: number) => `${n.toLocaleString('ko-KR')}원`
 
@@ -213,8 +213,8 @@ const modalText = computed(() => {
       // 테스트 모드(탭 로그인)를 끄는 걸 잊지 않게 (docs/101)
       const sp = view.value?.spy
       const spyWarn = !sp ? '' : sp.selected.length
-        ? `\n스파이 ${sp.selected.length}명: ${sp.selected.map(nameOf).join(', ')} (시작하면 본인에게만 무음으로 알립니다)`
-        : '\n\n⚠️ 달을 고른 후보가 없어 스파이 없이 시작합니다.'
+        ? `\n테러리스트 ${sp.selected.length}명: ${sp.selected.map(nameOf).join(', ')} (시작하면 본인에게만 무음으로 알립니다)`
+        : '\n\n⚠️ 달을 고른 후보가 없어 테러리스트 없이 시작합니다.'
       const fateWarn = sp?.counts.none ? `\n운명의 카드를 고르지 않은 ${sp.counts.none}명은 태양으로 처리됩니다.` : ''
       const tab = view.value?.settings.tabLogin ? '\n\n⚠️ 테스트 모드(탭 로그인)가 켜져 있습니다. 참가자가 새 탭을 열 때마다 다시 로그인해야 합니다. 실제 진행이면 "게임 설정"에서 끄세요.' : ''
       return { title: '게임을 시작할까요?', message: `총 ${st.totalDays}라운드. 시작하면 참가자 화면이 게임 화면으로 바뀌고 1라운드 리더 선출이 열립니다.${warn}${fateWarn}${spyWarn}${tab}` }
@@ -415,13 +415,13 @@ const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(t
         팀 이동은 아래 "계정 관리"에서 할 수 있습니다.
       </p>
 
-      <!-- 운명의 카드 · 스파이 지정 (docs/100 N4) -->
-      <h3>🌙 운명의 카드 · 스파이 지정</h3>
+      <!-- 운명의 카드 · 테러리스트 지정 (docs/100 N4) -->
+      <h3>🌙 운명의 카드 · 테러리스트 지정</h3>
       <p class="muted" style="margin: 0 0 6px">
-        팀을 고른 참가자는 태양/달 중 하나를 고릅니다 (달 = 스파이 후보).
+        팀을 고른 참가자는 태양/달 중 하나를 고릅니다 (달 = 테러리스트 후보).
         ☀️ 태양 <strong>{{ view.spy.counts.sun }}</strong> · 🌙 달 <strong>{{ view.spy.counts.moon }}</strong> · 미선택 <strong>{{ view.spy.counts.none }}</strong>
       </p>
-      <p v-if="!view.spy.candidates.length" class="muted" style="margin: 0">아직 달을 고른 후보가 없습니다. 후보가 없으면 스파이 없이 시작합니다.</p>
+      <p v-if="!view.spy.candidates.length" class="muted" style="margin: 0">아직 달을 고른 후보가 없습니다. 후보가 없으면 테러리스트 없이 시작합니다.</p>
       <template v-else>
         <table class="tbl">
           <thead><tr><th>지정</th><th>팀</th><th>후보</th></tr></thead>
@@ -434,16 +434,16 @@ const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(t
           </tbody>
         </table>
         <div class="row" style="margin-top: 8px">
-          <button class="small" :disabled="busy || !spyDirty" @click="saveSpies">스파이 지정 저장 ({{ spyPick.length }}명)</button>
+          <button class="small" :disabled="busy || !spyDirty" @click="saveSpies">테러리스트 지정 저장 ({{ spyPick.length }}명)</button>
           <span v-if="view.spy.selected.length" class="muted">저장됨: {{ view.spy.selected.map(nameOf).join(', ') }}</span>
           <span v-else class="blocker">아직 지정하지 않음</span>
         </div>
       </template>
     </template>
 
-    <!-- 스파이 현황 (관리자만) -->
+    <!-- 테러리스트 현황 (관리자만) -->
     <template v-if="(s.status === 'running' || s.status === 'final') && view.spy.spies.length">
-      <h3>🕵️ 스파이 <span class="muted">관리자만 보입니다 · 시작 이후 탈락자 1명당 5천 원 (최대 5만 원)</span></h3>
+      <h3>🕵️ 테러리스트 <span class="muted">관리자만 보입니다 · 시작 이후 탈락자 1명당 5천 원 (최대 5만 원)</span></h3>
       <table class="tbl">
         <tbody>
           <tr v-for="x in view.spy.spies" :key="x.userId">

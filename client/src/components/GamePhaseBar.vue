@@ -2,7 +2,7 @@
 /**
  * 게임 진행 표시줄. 모든 역할의 상단바 아래에 붙는다 (TopBar).
  * "2라운드 / 총 6라운드 · 거래 중" + 라운드 흐름 5단계 중 현재 위치. 준비 상태에서는 "게임 준비 중".
- * 최종장(docs/100 N2)은 "최종장 · 최종 투표" + 최종 투표 → 결과 발표 → 정산. "스파이 공개" 칩은 그 단계가 되기 전까지 숨긴다 (docs/103 §13: 스파이 존재를 미리 알리지 않게).
+ * 최종장(docs/100 N2)은 "최종장 · 최종 투표" + 최종 투표 → 결과 발표 → 정산. "테러리스트 공개" 칩은 그 단계가 되기 전까지 숨긴다 (docs/103 §13: 테러리스트 존재를 미리 알리지 않게).
  * 전쟁 중(선포~결과)에는 아래에 "⚔️ 전쟁 중: 공격팀 → 방어팀 · 모든 거래 중지" 띠를 붙인다.
  */
 import { computed } from 'vue'
@@ -18,7 +18,7 @@ const war = computed(() => (s.value?.status === 'running' ? s.value.war?.active 
 const nameOf = (id: number) => teams.byId(id)?.name ?? `#${id}`
 const FINAL_FLOW = ['vote', 'result', 'settle', 'spy'] as const
 const finalIdx = computed(() => FINAL_FLOW.indexOf((s.value?.final?.step ?? 'vote') as never))
-/** 스파이 공개 단계 전에는 그 칩을 보여 주지 않는다 */
+/** 테러리스트 공개 단계 전에는 그 칩을 보여 주지 않는다 */
 const finalFlow = computed(() => (s.value?.final?.step === 'spy' ? FINAL_FLOW : FINAL_FLOW.filter((st) => st !== 'spy')))
 </script>
 

@@ -4,7 +4,7 @@
  *   ① 최종 투표: 팀별 투표 현황(득표는 마감 전 비공개) → 마감(미투표 = 기권) → 동점이면 가위바위보 결과 입력
  *   ② 결과 발표: 상금 화폐 + 마지막 라운드 발행량 전체 공개
  *   ③ 정산: 보상 % 발표 (재화를 정정했으면 다시 계산)
- *   ④ 스파이 공개 (docs/100 N4): 이름·팀·보상 전체 공개 → 게임 끝내기
+ *   ④ 테러리스트 공개 (docs/100 N4): 이름·팀·보상 전체 공개 → 게임 끝내기
  * 다음 단계 요청에 보고 있던 단계를 함께 보내 중복 클릭·관리자 2명 동시 조작을 막는다 (서버 stale 거부).
  */
 import { computed, ref } from 'vue'
@@ -61,7 +61,7 @@ const modalText = computed(() => {
       return { title: '정산을 발표할까요?', message: '지금 팀 재화로 보상 %를 계산해 전체에 공개합니다. 발표 뒤 재화를 정정하면 "다시 계산" 을 누르세요.' }
     case 'spy': {
       const n = view.value.spy.spies.length
-      return { title: '스파이를 공개할까요?', message: n ? `스파이 ${n}명의 이름·팀·보상을 전체에 공개합니다.` : '스파이가 없었다고 전체에 알립니다.' }
+      return { title: '테러리스트를 공개할까요?', message: n ? `테러리스트 ${n}명의 이름·팀·보상을 전체에 공개합니다.` : '테러리스트가 없었다고 전체에 알립니다.' }
     }
     case 'end':
       return { title: '게임을 끝낼까요?', message: '결과는 그대로 남고, 더 이상 진행할 수 없습니다.' }
@@ -79,7 +79,7 @@ function onConfirm() {
     case 'settle':
       return run('정산 발표', () => api.post('/api/admin/final/next', { step: 'result' }))
     case 'spy':
-      return run('스파이 공개', () => api.post('/api/admin/final/next', { step: 'settle' }))
+      return run('테러리스트 공개', () => api.post('/api/admin/final/next', { step: 'settle' }))
     case 'end':
       return run('게임 끝', () => api.post('/api/admin/final/next', { step: 'spy' }))
   }
@@ -144,7 +144,7 @@ function recompute() {
         <button v-if="f.step === 'result'" :disabled="busy" @click="modal = 'settle'">정산 발표 →</button>
         <template v-else-if="f.step === 'settle'">
           <button class="secondary" :disabled="busy" @click="recompute">다시 계산</button>
-          <button :disabled="busy" @click="modal = 'spy'">스파이 공개 →</button>
+          <button :disabled="busy" @click="modal = 'spy'">테러리스트 공개 →</button>
         </template>
         <button v-else-if="f.step === 'spy'" class="danger" :disabled="busy" @click="modal = 'end'">게임 끝내기</button>
       </div>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 스파이 카드 (docs/100 N4, 룰 05 "스파이 카드"). 본인에게만, 평소에는 숨김.
+ * 테러리스트 카드 (docs/100 N4, 룰 05 "테러리스트 카드"). 본인에게만, 평소에는 숨김.
  * - 룰 화면(RulesView)과 같은 틀: 흰 바탕 전체 화면 · 제목 "룰"(아래 작은 글씨 "당신에게만 보이는 화면") + 돌아가기 · 헤어라인 카드 한 장 · 본문은 MarkdownView (2026-10-30).
  *   옆에서 봐도 룰 보는 화면처럼 보이게 제목·구성을 룰 화면과 맞춘다
  * - 상단바 내 이름을 3번 연속 누르면 뜬다 (TopBar). 화면 아무 곳이나 누르거나 "돌아가기" 로 닫히고, 10초 뒤 저절로 닫힌다
@@ -29,7 +29,7 @@ const markdown = computed(() => {
     ? `지금까지 탈락자 **${s.eliminated}**명 · 적립 **${won(s.reward)}**`
     : '탈락하여 적립금이 사라졌습니다'
   const lines = [
-    '## 당신은 스파이입니다',
+    '## 당신은 테러리스트입니다',
     '',
     '- 겉으로는 소속 팀원으로 행동합니다.',
     '- 목표: **탈락자를 많이 만들기**',
@@ -47,7 +47,7 @@ const markdown = computed(() => {
 </script>
 
 <template>
-  <div class="spy-page" role="dialog" aria-modal="true" aria-label="스파이 카드" @click="emit('close')">
+  <div class="spy-page" role="dialog" aria-modal="true" aria-label="테러리스트 카드" @click="emit('close')">
     <div class="page">
       <div class="topbar">
         <div>
