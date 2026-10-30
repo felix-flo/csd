@@ -50,6 +50,9 @@ app.get('/api/health', (_req, res) =>
 app.use('/api/auth', authRouter)
 app.use('/api', apiRouter)
 
+// 운영진 미디어 (오프닝 영상 등). data/media 에 파일만 두면 /media/<파일> 로 열린다. 폴더가 없어도 서버는 뜬다
+app.use('/media', express.static(config.mediaDir, { index: false, maxAge: '1h', dotfiles: 'ignore' }))
+
 // ---- 단일 컨테이너: 빌드된 Vue 앱 서빙 (SPA fallback) ----
 const indexHtml = path.join(config.clientDist, 'index.html')
 if (fs.existsSync(indexHtml)) {

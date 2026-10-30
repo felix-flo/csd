@@ -2,6 +2,7 @@
  * 게임 진행 API (docs/95.게임진행_설계.md). apiRouter 아래에 붙으므로 requireAuth 는 이미 적용돼 있다.
  * - 모든 역할: GET /game (일차·단계·초기 재화 합계·발표된 등수)
  * - 프레젠테이션·관리자: GET /game/roster 팀 현황 (팀원 명단·탈락, 시작 후에만)
+ * - 프레젠테이션·관리자: GET /game/intro 오프닝 영상 유무 (data/media/intro.mp4 → /media/intro.mp4)
  * - 참가자  : GET /game/team, 투표, 라이프 제출(리더), 거래(리더)
  * - 관리자  : /admin/game/* 설정·초기셋팅완료·설정으로 되돌리기·시작·다음 단계·종료(=최종장 시작)·리셋, 재화 조정, 원조, 동표 지정, 거래 강제 취소
  * - 이주 (docs/100 N3): 참가자 POST /migration/request · /migration/:id/cancel, 받는 팀 리더 POST /migration/:id/decide, 관리자 POST /admin/migration/:id/cancel
@@ -12,11 +13,14 @@
  * - 전쟁 (docs/99): 리더 POST /war/declare, 관리자 POST /admin/war/cost (다음 날 비용) · /admin/war/:id/resolve
  * 상태 변화는 events 에 기록 후 Socket.IO 로 알린다. 클라이언트는 game/trade 이벤트를 받으면 상태를 다시 조회한다.
  */
+import fs from 'node:fs'
+import path from 'node:path'
 import { Router, type Request, type Response } from 'express'
 import { z } from 'zod'
+import { config } from '../config.js'
 import { requireRole } from '../auth/middleware.js'
 import { findGroupById, findUserById, listGroups } from '../db/users.js'
-import { isBeforeStart } from '../../../shared/game.js'
+import { INTRO_FILE, isBeforeStart, type IntroResponse } from '../../../shared/game.js'
 import { GameError } from '../db/gameError.js'
 import {
   activeMemberCount, advance, endGame, getGameRow, getGameState, getPrep, getPublicRoster, getSettings, joinTeam, prepareGame, setLastIssuePhases, setTabLogin,
@@ -151,6 +155,14 @@ gameRouter.get('/game/roster', requireRole('presenter', 'admin'), (_req, res) =>
 })
 
 /** 내 팀 게임 정보 (재화·리더 투표·라이프 제출·거래). 팀은 토큰이 아니라 DB 기준 */
+/** 오프닝 영상: data/media/intro.mp4 가 있으면 그 URL. 게임 시작 순간 프레젠테이션이 전체 화면으로 튼다 */
+gameRouter.get('/game/intro', requireRole('presenter', 'admin'), (_req, res) => {
+  const file = path.join(config.mediaDir, INTRO_FILE)
+  let size = 0
+  try { size = fs.statSync(file).size } catch { /* 없음 */ }
+  res.json({ url: size > 0 ? `/media/${INTRO_FILE}` : null, size } satisfies IntroResponse)
+})
+
 gameRouter.get('/game/team', requireRole('member'), (req, res) => {
   const g = getGameRow()
   // 시작 전에는 게임 화면을 보지 못한다 ("게임 준비중 입니다.")

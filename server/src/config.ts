@@ -31,4 +31,6 @@ export const config = {
   seedOnStart: (env.SEED_ON_START ?? 'true') === 'true',
   /** 빌드된 Vue 정적 파일 위치 (단일 컨테이너 구성) */
   clientDist: env.CLIENT_DIST ?? path.resolve(process.cwd(), '../client/dist'),
+  /** 운영진이 올려 두는 미디어 폴더 (오프닝 영상 등). 기본은 DB 옆 data/media → 컨테이너의 data 볼륨에 포함 */
+  mediaDir: env.MEDIA_DIR ?? path.resolve(path.dirname(env.DB_PATH ?? path.resolve(process.cwd(), '../data/csd.sqlite')), 'media'),
 }

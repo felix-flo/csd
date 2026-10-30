@@ -86,6 +86,14 @@ export interface LobbyTeam {
 }
 
 /** 프레젠테이션 팀 현황 (게임 시작 후). PIN·계정 id 는 담지 않는다 */
+/** 오프닝 영상 파일명 (data/media 아래). 있으면 게임 시작 순간 프레젠테이션이 전체 화면으로 튼다 */
+export const INTRO_FILE = 'intro.mp4'
+export interface IntroResponse {
+  /** /media/intro.mp4, 파일이 없으면 null */
+  url: string | null
+  size: number
+}
+
 export interface RosterTeam {
   teamId: number
   name: string

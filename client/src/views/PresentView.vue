@@ -7,8 +7,10 @@
  * 명단은 게임 상태가 갱신될 때마다(단계 전환, 팀 구성 변경 신호 lobby) 다시 받는다.
  * 제목: 시작 전에는 "스위칭데이"만. 게임 제목은 서버가 시작 후에만 보내고(state.title), 시작 순간 열려 있던 화면은 리졸브 효과로 공개한다.
  *       시작 후 새로 열거나 새로고침하면 효과 없이 바로 제목.
+ * 오프닝 영상: 서버 data/media/intro.mp4 가 있으면 시작 순간 전체 화면으로 먼저 틀고, 끝난 뒤 제목 리졸브로 이어진다 (IntroVideo).
+ *       소리는 이 탭에서 한 번 클릭이 있어야 나므로 시작 전에 "영상 준비" 안내를 보여 준다.
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import TopBar from '../components/TopBar.vue'
 import EventFeed from '../components/EventFeed.vue'
 import AccessQr from '../components/AccessQr.vue'
@@ -16,10 +18,11 @@ import ResourceRow from '../components/ResourceRow.vue'
 import ResultsBoard from '../components/ResultsBoard.vue'
 import TeamMark from '../components/TeamMark.vue'
 import ResolveText from '../components/ResolveText.vue'
+import IntroVideo from '../components/IntroVideo.vue'
 import { useGameStore } from '../stores/game'
 import { useTeamsStore } from '../stores/teams'
 import { api } from '../lib/api'
-import { isBeforeStart, RESOURCE_LABELS, WAR_COST_KINDS, WAR_STATUS_LABELS, type RosterTeam, type WarCost } from '../../../shared/game'
+import { isBeforeStart, RESOURCE_LABELS, WAR_COST_KINDS, WAR_STATUS_LABELS, type IntroResponse, type RosterTeam, type WarCost } from '../../../shared/game'
 
 const game = useGameStore()
 onMounted(() => void game.load())
@@ -31,10 +34,29 @@ const title = computed(() => (s.value ? s.value.title ?? PRE_TITLE : ''))
 /** 시작 순간(시작 전 → 진행) 실시간으로 받았을 때만 올린다 → ResolveText 재생 */
 const reveal = ref(0)
 const revealing = ref(false)
+/** 오프닝 영상 (있을 때만). 시작 순간 영상 → 끝나면 제목 리졸브 */
+const intro = ref<string | null>(null)
+const introPlay = ref(0)
+/** 이 탭에서 사용자 입력이 있었는지 — 없으면 영상 소리가 막히므로 안내를 보여 준다 */
+const armed = ref(false)
+function arm() { armed.value = true }
+onMounted(async () => {
+  window.addEventListener('pointerdown', arm, { once: true })
+  window.addEventListener('keydown', arm, { once: true })
+  try { intro.value = (await api.get<IntroResponse>('/api/game/intro')).url } catch { /* 없음으로 둔다 */ }
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('pointerdown', arm)
+  window.removeEventListener('keydown', arm)
+})
+function startReveal() {
+  revealing.value = true
+  reveal.value++
+}
 watch(() => s.value?.status, (now, before) => {
   if (before && isBeforeStart(before) && now && !isBeforeStart(now)) {
-    revealing.value = true
-    reveal.value++
+    if (intro.value) introPlay.value++
+    else startReveal()
   }
 })
 
@@ -72,6 +94,7 @@ const warLine = computed(() => {
 
 <template>
   <div class="page" style="max-width: 1100px">
+    <IntroVideo :src="intro" :play="introPlay" @done="startReveal" />
     <TopBar :title="title" large>
       <template #title><ResolveText :text="title" :play="reveal" @done="revealing = false" /></template>
       <template #subtitle>
@@ -97,6 +120,11 @@ const warLine = computed(() => {
           </div>
         </div>
         <p class="muted" style="margin: 12px 0 0">QR 로 접속해 PIN 으로 로그인한 뒤 이름을 입력하고 팀을 고르세요.</p>
+        <p v-if="intro" class="intro-note" :class="{ ok: armed }">
+          🎬 게임 시작 때 오프닝 영상을 틉니다.
+          <template v-if="armed">소리 재생 준비됨.</template>
+          <template v-else>소리를 내려면 이 화면을 한 번 클릭해 두세요. <button class="secondary" style="padding: 4px 12px; font-size: 0.9rem" @click="arm">영상 준비</button></template>
+        </p>
       </div>
       <div v-else class="card" :class="{ span2: !s || isBeforeStart(s.status) }">
         <h2>초기 재화 <span class="muted">모든 팀 합계</span></h2>
@@ -144,6 +172,9 @@ const warLine = computed(() => {
 .lobby-team { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); font-size: 1.4rem; }
 .lobby-team.full { opacity: 0.4; }
 .lobby-team .letter { font-family: var(--font-display); font-size: 3.4rem; line-height: 1; }
+/* 오프닝 영상 안내: 클릭 전에는 눈에 띄게, 준비되면 흐리게 */
+.intro-note { margin: 12px 0 0; font-size: 1.05rem; color: var(--blue); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.intro-note.ok { color: var(--muted); }
 /* 제목 공개 중에는 즉시 숨기고(transition 없음), 공개가 끝나면 천천히 나타난다 */
 .subtitle { transition: opacity 0.8s ease; }
 .subtitle.hidden { opacity: 0; transition: none; }
