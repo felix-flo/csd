@@ -4,9 +4,11 @@
  * - 전체 룰: 모든 역할이 본다. 저장하면 전체에 갱신 알림
  * - 팀 룰  : 그 팀 팀원만 (게임 시작 후). 팀원 화면에서는 전체 룰 아래 가로줄(---) 다음에 붙는다. 제목은 팀 이름으로 자동.
  *            저장하면 그 팀(+진행자)에게만 갱신 알림
+ * - 기본 룰 불러오기: 서버의 server/rules/*.md(공통 + 팀 코드별)를 전체·팀 룰에 한 번에 넣는다 (docs/98 §6).
+ *            현재 내용은 직전 버전으로 보관되므로 "직전 버전으로" 로 되돌릴 수 있다. 파일 없는 팀은 그대로
  */
 import { computed, onMounted, ref, watch } from 'vue'
-import type { DocumentInfo } from '../../../shared/types'
+import type { DocumentInfo, LoadDefaultRulesResponse } from '../../../shared/types'
 import { teamLetter } from '../../../shared/game'
 import { api } from '../lib/api'
 import { GLOBAL_RULES_SLUG, useDocumentsStore } from '../stores/documents'
@@ -96,6 +98,25 @@ async function restore() {
   }
 }
 
+async function loadDefaults() {
+  const note = dirty.value ? '저장하지 않은 변경은 사라집니다. ' : ''
+  if (!confirm(`전체 룰과 모든 팀 룰을 기본 룰 파일 내용으로 바꿉니다. ${note}현재 내용은 각 문서의 "직전 버전" 으로 보관됩니다. 계속할까요?`)) return
+  busy.value = true
+  status.value = ''
+  try {
+    const res = await api.post<LoadDefaultRulesResponse>('/api/admin/rules/load-defaults')
+    docs.rules = { global: res.global, team: null, teams: res.teams }
+    docs.dismissRules()
+    loadInto(saved.value)
+    const skipped = res.skipped.length ? ` 파일이 없어 그대로 둔 팀: ${res.skipped.join(', ')}.` : ''
+    status.value = `기본 룰을 불러왔습니다 (${res.loaded.join(', ')}).${skipped}`
+  } catch (e) {
+    status.value = `실패: ${(e as Error).message}`
+  } finally {
+    busy.value = false
+  }
+}
+
 const placeholder = computed(() => (isTeam.value ? '## 우리 팀만의 규칙\n- ...' : '# 게임 룰\n\n## 1. 재화\n- ...'))
 const hasContent = (teamId: number) => !!docs.rules?.teams?.find((t) => t.teamId === teamId)?.markdown.trim()
 </script>
@@ -107,6 +128,7 @@ const hasContent = (teamId: number) => !!docs.rules?.teams?.find((t) => t.teamId
       <strong>전체 룰</strong>은 모든 참가자·진행자·프레젠테이션 화면에, <strong>팀 룰</strong>은 그 팀 팀원에게만(게임 시작 후) 보입니다.
       팀원 화면에서는 전체 룰 아래 가로줄 다음에 팀 룰이 붙습니다. 상단 "룰" 버튼으로 볼 수 있습니다.
       제목은 # , 소제목은 ## , 목록은 - , 표는 | 로 작성합니다.
+      "기본 룰 불러오기" 는 시스템에 들어 있는 기본 룰 파일을 전체·팀 룰에 한 번에 넣습니다 (현재 내용은 직전 버전으로 보관).
     </p>
     <div class="tabs row">
       <button type="button" class="tab" :class="{ on: tab === null }" @click="selectTab(null)">전체 룰</button>
@@ -121,6 +143,7 @@ const hasContent = (teamId: number) => !!docs.rules?.teams?.find((t) => t.teamId
       <button :disabled="busy || !dirty" @click="save">저장</button>
       <button class="secondary" :disabled="busy || !saved?.hasPrevious" @click="restore">직전 버전으로</button>
       <button class="secondary" @click="preview = !preview">{{ preview ? '미리보기 숨김' : '미리보기' }}</button>
+      <button class="secondary" :disabled="busy" title="server/rules 의 공통·팀별 마크다운 파일을 전체·팀 룰에 한 번에 넣습니다" @click="loadDefaults">기본 룰 불러오기</button>
       <span class="muted">{{ dirty ? '저장되지 않은 변경 있음' : status }}</span>
     </div>
     <p v-if="isTeam" class="muted" style="margin-top: 0">제목은 팀 이름으로 자동으로 붙습니다. 비워 두면 팀원 화면에 전체 룰만 보입니다.</p>

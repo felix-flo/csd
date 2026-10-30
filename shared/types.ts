@@ -77,6 +77,13 @@ export interface RulesResponse {
   teams?: DocumentInfo[]
 }
 
+/** POST /api/admin/rules/load-defaults — 기본 룰 파일을 넣은 뒤의 관리자용 룰북 + 불러온 문서 제목·파일 없는 팀 이름 */
+export interface LoadDefaultRulesResponse extends RulesResponse {
+  teams: DocumentInfo[]
+  loaded: string[]
+  skipped: string[]
+}
+
 /** 이벤트 대상 범위: 전체 / 역할 / 그룹 / 개인 */
 export type EventScope = 'all' | 'role' | 'group' | 'user'
 

@@ -10,6 +10,7 @@ import { seed } from './db/seed.js'
 import { listGroups, rehashPins } from './db/users.js'
 import { isTabLogin } from './db/game.js'
 import { ensureLeader, ensureTeams } from './db/teams.js'
+import { seedDefaultRulesIfPristine } from './db/rulesDefaults.js'
 import { pruneRefreshTokens } from './auth/tokens.js'
 import { authRouter } from './routes/auth.js'
 import { apiRouter } from './routes/api.js'
@@ -18,6 +19,7 @@ import { initRealtime } from './realtime/index.js'
 runMigrations()
 rehashPins() // PIN 규약(대문자) 정규화 + PIN_SECRET 변경 시 해시 복구
 ensureTeams() // 기본 4팀 생성 + 옛 그룹(e, f, …) 정리
+seedDefaultRulesIfPristine() // 룰이 초기 상태면 server/rules/*.md 를 넣는다 (docs/98 §6)
 if (config.seedOnStart) seed()
 for (const t of listGroups()) ensureLeader(t.id) // 팀당 리더 1명 (시드·옛 데이터 정리)
 pruneRefreshTokens()

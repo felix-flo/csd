@@ -4,6 +4,7 @@
  * - 팀 룰  : slug 'team-<groupId>' (group_id = 팀). 그 팀 팀원(게임 시작 후)과 관리자만 본다. 제목은 팀 이름으로 자동("○○ 팀 룰")
  *   팀을 추가하면 ensureTeamRules() 가 빈 문서를 만들고, 팀을 지우면 FK CASCADE 로 함께 지워진다. 게임 리셋 때는 유지
  * - previous_markdown: 직전 버전 1개 보관 (실수 복구용)
+ * - 기본 룰 파일(server/rules/*.md)에서 불러오기·자동 적재는 rulesDefaults.ts
  */
 import { db } from './index.js'
 import type { DocumentInfo } from '../../../shared/types.js'
@@ -66,7 +67,7 @@ export function listTeamRules(): DocumentInfo[] {
 }
 
 /** 저장 시 직전 내용을 previous_markdown 에 보관 (내용이 같으면 보관하지 않음). 팀 룰의 title 은 무시된다(자동 제목) */
-export function updateDocument(slug: string, input: { title: string; markdown: string }, userId: number): DocumentInfo | null {
+export function updateDocument(slug: string, input: { title: string; markdown: string }, userId: number | null): DocumentInfo | null {
   const info = db
     .prepare(
       `UPDATE documents

@@ -20,13 +20,14 @@ import { allLivesDone } from '../db/life.js'
 import {
   GLOBAL_RULES_SLUG, getDocument, getTeamRule, listTeamRules, restoreDocument, teamRuleSlug, updateDocument,
 } from '../db/documents.js'
+import { loadDefaultRules } from '../db/rulesDefaults.js'
 import { deleteEvents, insertEvent, listEventsForUser, listRecentEventsForUser } from '../db/events.js'
 import { disconnectUsers, moveUserRooms, publishEvent, signalLobby } from '../realtime/index.js'
 import { revokeUserRefreshTokens } from '../auth/tokens.js'
 import { announceMigrationSweep, gameRouter } from './game.js'
 import { HEX_COLOR, isPaletteColor } from '../../../shared/teams.js'
 import { isBeforeStart, teamLetter } from '../../../shared/game.js'
-import type { DocumentInfo, EventType, GroupInfo, MeResponse, RulesResponse } from '../../../shared/types.js'
+import type { DocumentInfo, EventType, GroupInfo, LoadDefaultRulesResponse, MeResponse, RulesResponse } from '../../../shared/types.js'
 
 export const apiRouter = Router()
 
@@ -484,6 +485,30 @@ apiRouter.get('/rules', (req, res) => {
 })
 
 const teamIdParam = z.coerce.number().int().positive()
+
+/**
+ * 기본 룰 불러오기 (docs/98 §6): server/rules/common.md → 전체 룰 본문, team-<code>.md → 팀 룰. 현재 내용은 직전 버전으로 보관.
+ * 내용이 실제로 바뀐 문서만 갱신 알림 (저장과 같은 범위). 파일이 없는 팀은 그대로 두고 skipped 로 알린다
+ */
+apiRouter.post('/admin/rules/load-defaults', requireRole('admin'), (req, res) => {
+  let result
+  try {
+    result = loadDefaultRules(req.auth!.sub)
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ error: 'defaults_missing' })
+    return
+  }
+  for (const doc of result.changed) announceDocument(doc, req.auth!.sub)
+  const body: LoadDefaultRulesResponse = {
+    global: getDocument(GLOBAL_RULES_SLUG)!,
+    team: null,
+    teams: listTeamRules(),
+    loaded: result.loaded.map((d) => d.title),
+    skipped: result.skipped,
+  }
+  res.json(body)
+})
 
 apiRouter.put('/admin/rules/team/:teamId', requireRole('admin'), (req, res) => {
   const teamId = teamIdParam.safeParse(req.params.teamId)
