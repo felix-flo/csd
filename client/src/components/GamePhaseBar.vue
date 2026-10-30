@@ -66,16 +66,17 @@ const finalFlow = computed(() => (s.value?.final?.step === 'spy' ? FINAL_FLOW : 
 }
 .war-bar { margin: -6px 0 14px; padding: 10px 12px; border: 2px solid var(--red); border-left-width: 6px; border-radius: var(--radius); background: var(--red-bg); color: var(--red); }
 .war-bar strong { font-size: 1.1rem; }
-.war-bar.large strong { font-size: 1.8rem; }
+.war-bar.large { font-size: 1.3rem; }
+.war-bar.large strong { font-size: 2.2rem; }
 .phase-bar.ended { border-left-color: var(--ink); }
 .phase-bar.ready { border-left-color: var(--line-strong); }
 .now { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
 .now strong { font-size: 1.1rem; }
-.day { font-size: 0.85rem; }
+.day { font-size: 0.9rem; }
 .steps { display: flex; gap: 4px; list-style: none; margin: 0; padding: 0; flex-wrap: wrap; }
 .steps li {
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.78rem;
   padding: 2px 8px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -83,7 +84,9 @@ const finalFlow = computed(() => (s.value?.final?.step === 'spy' ? FINAL_FLOW : 
 }
 .steps li.past { color: var(--line-strong); border-color: var(--line-soft); }
 .steps li.cur { color: #fff; background: var(--blue); border-color: var(--blue); }
-.large .now strong { font-size: 2rem; }
-.large .day { font-size: 1.2rem; }
-.large .steps li { font-size: 0.95rem; padding: 4px 12px; }
+/* 프레젠테이션: 루트 20px 기준이라 rem 값은 1.25배로 보인다 */
+.large .now strong { font-size: 2.2rem; }
+.large .day { font-size: 1.3rem; }
+.large .steps li { font-size: 1rem; padding: 4px 14px; }
+.large .steps li.past { color: var(--muted); }
 </style>

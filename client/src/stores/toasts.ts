@@ -1,7 +1,7 @@
 /**
  * 플로팅 알림(토스트). 공지(notice) 이벤트가 도착하면 화면 상단에 잠시 띄운다.
- * - 최대 3개 쌓인다. 가장 최근 알림은 사용자가 닫기(✕)를 누를 때까지 남고, 그 앞의 알림들은 기본 5초(프레젠테이션 10초) 뒤 자동으로 닫힌다
- *   (docs/103 §6). 새 알림이 오면 직전 알림부터 타이머가 돈다. 마우스를 올리면 멈춘다.
+ * - 최대 3개 쌓인다. 기본 5초(프레젠테이션 10초) 뒤 자동으로 닫히고, 마우스를 올리면 멈춘다.
+ *   참가자(member)만 가장 최근 알림이 닫기(✕)를 누를 때까지 남는다 (sticky, docs/103 §6). 프레젠테이션·관리자는 전부 자동으로 닫힌다.
  * - 어떤 이벤트를 띄울지는 realtime 스토어가 결정한다 (공지와 팀 이동/탈락 알림만. 본인이 만든 이벤트·룰 갱신은 제외).
  * - 알림음(lib/chime.ts): 프레젠테이션·참가자(리더/팀원)만 듣고 관리자는 듣지 않는다.
  *   울리는 경우는 shouldChime() 이 정한다 — 전체 범위 공지·시스템 알림만. 팀(이동·탈락·거래 등)·개인 알림은 팝업만 뜨고 소리는 없다.
@@ -51,6 +51,8 @@ export const useToastStore = defineStore('toasts', {
     timer: null as ReturnType<typeof setInterval> | null,
     /** 역할상 알림음 대상인지 (presenter, member) */
     sound: false,
+    /** 가장 최근 알림을 닫기 전까지 유지할지 (참가자만) */
+    sticky: false,
     /** 기기별 소리 끄기 (localStorage) */
     muted: isMuted(),
     lastChimeAt: 0,
@@ -60,6 +62,7 @@ export const useToastStore = defineStore('toasts', {
     configure(role: string | undefined) {
       this.duration = role === 'presenter' ? 10000 : 5000
       this.sound = role === 'presenter' || role === 'member'
+      this.sticky = role === 'member'
     },
     show(ev: GameEvent) {
       if (this.items.some((t) => t.id === ev.id)) return
@@ -103,12 +106,12 @@ export const useToastStore = defineStore('toasts', {
       if (this.timer) return
       this.timer = setInterval(() => {
         if (this.paused || this.held) return
-        // 가장 최근 알림은 닫기 전까지 유지 (docs/103 §6)
-        const last = this.items[this.items.length - 1]
+        // 참가자는 가장 최근 알림을 닫기 전까지 유지 (docs/103 §6)
+        const last = this.sticky ? this.items[this.items.length - 1] : null
         for (const t of this.items) if (t !== last) t.remaining -= TICK
         this.items = this.items.filter((t) => t.remaining > 0)
-        // 남은 것이 sticky 하나뿐이면 더 셀 것이 없다 (다음 show 에서 다시 돈다)
-        if (this.items.length <= 1 && this.timer) {
+        // 더 셀 것이 없으면 멈춘다 (다음 show 에서 다시 돈다)
+        if (this.items.length <= (this.sticky ? 1 : 0) && this.timer) {
           clearInterval(this.timer)
           this.timer = null
         }

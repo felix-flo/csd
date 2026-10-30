@@ -6,6 +6,9 @@
  * - 포인트 색은 파랑(--blue) 하나. 빨강은 오류·끊김·위험 행동에만, 호박색은 주의 뱃지에만.
  * - 주요 버튼은 검정, 보조 버튼은 흰 바탕 + 헤어라인. 그림자는 토스트에만.
  * 밝은 테마 고정 (다크 모드 미사용).
+ * 가시성 기준 (docs/104): 본문 대비 4.5:1 (WCAG 1.4.3), 선·아이콘 3:1 근접 (1.4.11), 보조 글자 최소 12.5px (iOS 11pt 이상).
+ * 프레젠테이션(html[data-screen='present'])은 빔 투사용이라 루트 글자 크기를 20px 로 올려 rem 단위 전체를 1.25배 키우고
+ * 회색·선을 더 진하게 쓴다 (빔은 연한 회색을 날린다).
  */
 @font-face {
   font-family: 'Cafe24ProSlim';
@@ -23,11 +26,11 @@
   --bg-soft: #f2f2f2;     /* 표 머리글·코드 */
   /* 글자 */
   --ink: #171717;
-  --muted: #666666;
-  /* 선: 구분선/카드(옅음) < 입력·보조 버튼(기본) < 호버(진함) */
-  --line-soft: #ebebeb;
-  --line: #e0e0e0;
-  --line-strong: #b5b5b5;
+  --muted: #595959;       /* #fafafa 위 6.6:1 */
+  /* 선: 구분선/카드(옅음) < 입력·보조 버튼(기본) < 호버(진함). 헤어라인이지만 빔·햇빛에서도 보이도록 너무 옅게는 쓰지 않는다 */
+  --line-soft: #e2e2e2;
+  --line: #c9c9c9;
+  --line-strong: #8f8f8f;
   /* 포인트 */
   --blue: #006bff;
   --blue-bg: #f0f7ff;
@@ -57,6 +60,14 @@
   font-family: var(--font-body);
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
+}
+/* 프레젠테이션 (PresentView 가 켠다): 멀리서 보는 화면. 1rem = 20px, 회색은 더 진하게, 선은 뚜렷하게 */
+html[data-screen='present'] {
+  font-size: 20px;
+  --muted: #444444;
+  --line-soft: #d2d2d2;
+  --line: #b4b4b4;
+  --line-strong: #7a7a7a;
 }
 
 * { box-sizing: border-box; }
@@ -92,12 +103,12 @@ h2 {
   letter-spacing: -0.02em;
   margin: 0 0 10px;
 }
-h2 .muted { font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.08em; vertical-align: middle; }
+h2 .muted { font-family: var(--font-mono); font-size: 0.78rem; letter-spacing: 0.08em; vertical-align: middle; }
 .muted { color: var(--muted); font-size: 0.9em; }
 .mono { font-family: var(--font-mono); }
 .label {
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--muted);
@@ -157,7 +168,7 @@ a { color: var(--blue); }
   border-bottom: 1px solid var(--line-soft);
 }
 .topbar h1 { margin: 0; word-break: keep-all; }
-.topbar .muted { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.06em; }
+.topbar .muted { font-family: var(--font-mono); font-size: 0.82rem; letter-spacing: 0.06em; }
 
 /* 뱃지: 흰 바탕 + 헤어라인, 상태는 작은 색 점으로 */
 .badge {
@@ -170,7 +181,7 @@ a { color: var(--blue); }
   background: var(--surface);
   color: var(--ink);
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.78rem;
   letter-spacing: 0.06em;
   line-height: 1.5;
   vertical-align: middle;
@@ -212,7 +223,7 @@ a { color: var(--blue); }
 .feed { list-style: none; padding: 0; margin: 0; }
 .feed li { padding: 10px 0; border-bottom: 1px solid var(--line-soft); }
 .feed li:last-child { border-bottom: none; }
-.feed .muted { font-family: var(--font-mono); font-size: 0.72rem; }
+.feed .muted { font-family: var(--font-mono); font-size: 0.78rem; }
 
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 

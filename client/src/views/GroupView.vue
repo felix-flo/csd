@@ -123,7 +123,8 @@ const final = computed(() => (s.value?.status === 'final' || s.value?.status ===
       :submission="game.team.lifeSubmission"
     />
     <div v-else-if="phase && phaseHint[phase]" class="card">
-      <p class="muted" style="margin: 0">{{ phaseHint[phase] }}</p>
+      <!-- 지금 할 일 안내는 본문 색으로 (회색 보조 글자는 가시성 기준에서 제외, docs/104) -->
+      <p style="margin: 0">{{ phaseHint[phase] }}</p>
       <!-- 마지막 라운드 필수 안건 (docs/100 N2) -->
       <p v-if="phase === 'council' && isLastRound" style="margin: 8px 0 0">
         📜 <strong>필수 안건: 남은 라이프를 최종 투표권으로 인정할까요?</strong>
@@ -154,11 +155,10 @@ const final = computed(() => (s.value?.status === 'final' || s.value?.status ===
       <ul class="feed">
         <li v-for="m in members" :key="m.id">
           {{ m.name }} <span v-if="m.isLeader" class="badge">리더</span>
-          <span class="muted">(id {{ m.id }})</span>
         </li>
       </ul>
     </div>
-    <EventFeed collapsible />
+    <EventFeed collapsible plain />
     </template>
   </div>
 </template>
