@@ -12,6 +12,10 @@
 # ---- 데이터 (참가자 PIN 해시, 토큰, 게임 상태) ----
 data/*
 !data/.gitkeep
+# 오프닝 영상(docs/102)은 git 으로 배포. mp4 만 추적
+!data/media/
+data/media/*
+!data/media/*.mp4
 data-local/
 *.sqlite
 *.sqlite-wal
