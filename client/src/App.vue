@@ -2,6 +2,7 @@
 import { onMounted } from 'vue'
 import { useAuthStore } from './stores/auth'
 import { audioReady, unlockAudio } from './lib/chime'
+import NoticeHost from './components/NoticeHost.vue'
 import ToastHost from './components/ToastHost.vue'
 import VersionBanner from './components/VersionBanner.vue'
 
@@ -26,7 +27,8 @@ onMounted(() => {
   <template v-else>
     <VersionBanner />
     <RouterView />
-    <ToastHost />
+    <NoticeHost v-if="auth.user?.role === 'member'" />
+    <ToastHost v-else />
   </template>
   <!-- 탈락 통보: 5초 보여준 뒤 로그아웃 (auth.eliminate) -->
   <div v-if="auth.eliminated" class="eliminated" role="alertdialog" aria-live="assertive">

@@ -12,7 +12,7 @@ import { ISSUE_TEAM_CODE, RESOURCE_LABELS, shareText, type FinalState, type Game
 import { useTeamsStore } from '../stores/teams'
 import TeamMark from './TeamMark.vue'
 
-const props = defineProps<{ final: FinalState; results: GameResults | null; large?: boolean }>()
+const props = defineProps<{ final: FinalState; results: GameResults | null; large?: boolean; bare?: boolean }>()
 const teams = useTeamsStore()
 const issuer = (kind: 'gem' | 'gold') => teams.teams.find((t) => t.code === ISSUE_TEAM_CODE[kind])?.name ?? (kind === 'gem' ? '화이트' : '옐로우')
 const revealed = computed(() => !!props.final.lastIssue)
@@ -23,8 +23,8 @@ const tiebreakText = computed(() => (props.final.tiebreak ? `동점 · 가위바
 </script>
 
 <template>
-  <div v-if="final.closed" class="card results" :class="{ large }">
-    <h2>최종 결과</h2>
+  <div v-if="final.closed" class="results" :class="{ large, bare, card: !bare }">
+    <h2 v-if="!bare">최종 결과</h2>
     <p class="votes mono">
       <Icon name="gem" /> 보석 <strong>{{ final.tally?.gem }}</strong>표 · <Icon name="gold" /> 골드 <strong>{{ final.tally?.gold }}</strong>표
       <span v-if="tiebreakText" class="muted">· {{ tiebreakText }}</span>
@@ -71,7 +71,22 @@ const tiebreakText = computed(() => (props.final.tiebreak ? `동점 · 가위바
 .shares .share { font-weight: 700; }
 .shares tr.excluded td { color: var(--muted); }
 .team { font-weight: 600; }
+.team, .share { white-space: nowrap; }
 .spies { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+/* 참가자 게임 화면 (docs/107): 영역 안에 그대로 넣는다. 제목은 영역 제목 줄이 맡는다 */
+.bare { padding: 0 12px; color: #f4f6fa; }
+.bare .votes { font-family: inherit; font-size: 17px; font-weight: 700; line-height: 1.5; }
+.bare .votes strong { font-size: 21px; }
+.bare .muted { color: #c3c9d4; font-weight: 600; }
+.bare .adopted { font-size: 20px; font-weight: 800; }
+.bare .adopted strong { color: inherit; }
+.bare .issued { font-size: 14.5px; }
+.bare .shares { margin-top: 10px; font-size: 15.5px; }
+.bare .shares th, .bare .shares td { padding: 6px 8px 6px 0; border-bottom-width: 2px; border-color: #343946; }
+.bare .shares th { color: #c3c9d4; font-size: 13.5px; word-break: keep-all; }
+.bare .shares tr.excluded td { color: #a3abb8; }
+.bare .spies { margin-top: 10px; padding-top: 10px; border-top: 2px solid #343946; }
+.bare .spy-line { font-size: 16px; font-weight: 700; line-height: 1.4; word-break: keep-all; }
 .spy-line { margin: 4px 0; font-size: 1.15rem; }
 .large .spy-line { font-size: 1.9rem; }
 .large h2 { font-size: 2.4rem; }

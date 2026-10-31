@@ -1,15 +1,20 @@
 <script setup lang="ts">
+import { computed, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
+import { useRouter } from 'vue-router'
 import Icon from '../components/Icon.vue'
-import { computed, onMounted, ref, watch } from 'vue'
 import TopBar from '../components/TopBar.vue'
-import EventFeed from '../components/EventFeed.vue'
 import NameSetup from '../components/NameSetup.vue'
-import ResourceRow from '../components/ResourceRow.vue'
-import LeaderSelect from '../components/LeaderSelect.vue'
+import ReadyLobby from '../components/ReadyLobby.vue'
+import PlayHeader from '../components/PlayHeader.vue'
+import PlayProgress from '../components/PlayProgress.vue'
+import PlayResources from '../components/PlayResources.vue'
+import PlayMembers from '../components/PlayMembers.vue'
+import PlayDock, { type DockAction } from '../components/PlayDock.vue'
+import BottomSheet from '../components/BottomSheet.vue'
+import InboxPanel from '../components/InboxPanel.vue'
 import TradePanel from '../components/TradePanel.vue'
 import LifeSubmit from '../components/LifeSubmit.vue'
 import ResultsBoard from '../components/ResultsBoard.vue'
-import ReadyLobby from '../components/ReadyLobby.vue'
 import IssuePanel from '../components/IssuePanel.vue'
 import WarPanel from '../components/WarPanel.vue'
 import FinalVotePanel from '../components/FinalVotePanel.vue'
@@ -20,13 +25,17 @@ import introUrl from '../assets/intro_image.webp'
 import { useAuthStore } from '../stores/auth'
 import { useRealtimeStore } from '../stores/realtime'
 import { useGameStore } from '../stores/game'
+import { useToastStore } from '../stores/toasts'
 import { api } from '../lib/api'
+import { teamThemeStyle } from '../lib/teamTheme'
 import type { GroupInfo, PublicUser } from '../../../shared/types'
 import { isBeforeStart } from '../../../shared/game'
 
 const auth = useAuthStore()
 const rt = useRealtimeStore()
 const game = useGameStore()
+const toasts = useToastStore()
+const router = useRouter()
 const group = ref<GroupInfo | null>(null)
 const members = ref<PublicUser[]>([])
 const s = computed(() => game.state)
@@ -64,12 +73,7 @@ watch(() => s.value?.status, (now, before) => {
 watch(beforeStart, (v) => {
   if (v) new Image().src = introUrl
 }, { immediate: true })
-const phase = computed(() => (s.value?.status === 'running' ? s.value.phase : null))
 const isLeader = computed(() => !!auth.user?.isLeader)
-const phaseHint: Record<string, string> = {
-  production: '오프라인 미니게임(생산게임)을 합니다. 결과에 따라 진행자가 팀 재화를 지급합니다.',
-  council: '리더들이 오프라인에서 협의합니다 — 대가 없는 원조 (게임 전체 라운드당 1회, 리더 4명 중 3명 찬성) · 다음 라운드 전쟁 허용/제재. 결과는 진행자가 입력합니다.',
-}
 // 테러리스트(docs/100 N4): 게임이 시작되면 본인에게만 무음 안내 1번. 알림 기록·소리 없음 (서버도 이벤트로 보내지 않는다)
 const spyIntro = ref(false)
 const spySeenKey = () => `csd:spy-seen:${auth.user?.id}`
@@ -81,85 +85,103 @@ watch(() => game.team?.spy, (spy) => {
   } catch { /* 저장 못 하면 매번 보일 수 있음 */ }
   spyIntro.value = true
 }, { immediate: true })
-const isLastRound = computed(() => s.value?.status === 'running' && s.value.day >= (s.value.totalDays ?? Infinity))
 const final = computed(() => (s.value?.status === 'final' || s.value?.status === 'ended' ? s.value.final : null))
+const running = computed(() => s.value?.status === 'running')
+const theme = computed(() => teamThemeStyle(group.value))
+// 확인 팝업은 body 로 빠져나가므로 버튼 색만 body 에 얹는다
+watchEffect(() => {
+  document.body.style.setProperty('--accent', theme.value['--accent'] ?? '')
+  document.body.style.setProperty('--accent-fg', theme.value['--accent-fg'] ?? '')
+})
+onBeforeUnmount(() => {
+  document.body.style.removeProperty('--accent')
+  document.body.style.removeProperty('--accent-fg')
+})
+
+// ---- 시트·알림함 ----
+const sheet = ref<DockAction | 'issue' | 'settings' | null>(null)
+const inboxOpen = ref(false)
+// 단계가 넘어가거나 전쟁이 시작되면 열려 있던 시트는 더 쓸 수 없다
+watch([() => s.value?.status, () => s.value?.day, () => s.value?.phase, () => s.value?.war?.active?.id, () => s.value?.final?.closed], () => { sheet.value = null })
+// 거래가 끝나면(체결·거부·취소) 거래 시트도 더 볼 것이 없다
+watch(() => game.team?.trade?.id, (id) => { if (!id && sheet.value === 'trade') sheet.value = null })
+
+async function logout() {
+  await auth.logout()
+  router.push('/login')
+}
 </script>
 
 <template>
-  <div class="page">
-    <IntroOverlay v-if="intro" @done="intro = false" />
-    <SpyCard v-if="spyIntro && !intro && game.team?.spy" :spy="game.team.spy" intro @close="spyIntro = false" />
-    <TopBar :title="beforeStart ? 'CSD' : group?.name ?? '팀'" :color="beforeStart ? null : group?.color" />
+  <IntroOverlay v-if="intro" @done="intro = false" />
+  <SpyCard v-if="spyIntro && !intro && game.team?.spy" :spy="game.team.spy" intro @close="spyIntro = false" />
+
+  <div v-if="beforeStart || (auth.user && !auth.user.nameSet)" class="page">
+    <TopBar title="CSD" />
     <NameSetup v-if="auth.user && !auth.user.nameSet" />
-    <ReadyLobby v-else-if="beforeStart" />
-    <template v-else>
-    <ResultsBoard v-if="final" :final="final" :results="s?.results ?? null" />
-    <FinalVotePanel
-      v-if="final && final.step === 'vote' && s?.status === 'final' && game.team"
-      :final="final"
-      :life-vote="!!s.lifeVote"
-      :team-lives="game.team.resources.life"
-      :my-vote="game.team.myFinalVote"
-      :is-leader="isLeader"
-    />
-    <div class="card">
-      <h2>팀 재화</h2>
-      <ResourceRow show-label :amounts="game.team?.resources" />
-      <p class="muted" style="margin: 10px 0 0">우리 팀만 볼 수 있습니다.</p>
-    </div>
+    <ReadyLobby v-else />
+  </div>
 
-    <LeaderSelect v-if="phase === 'leader'" :members="members" :election="game.team?.election ?? null" />
-    <TradePanel
-      v-else-if="phase === 'trade' && group && game.team"
-      :my-team-id="group.id"
+  <div v-else class="play" :style="theme">
+    <PlayHeader @inbox="inboxOpen = true" @settings="sheet = 'settings'" />
+    <PlayProgress :members="members" :my-team-id="group?.id ?? null" />
+    <section v-if="final?.closed" class="area">
+      <h2 class="ttl">최종 결과</h2>
+      <ResultsBoard :final="final" :results="s?.results ?? null" bare />
+    </section>
+    <PlayResources
+      :resources="game.team?.resources ?? null"
+      :issue="game.team?.issue ?? null"
       :is-leader="isLeader"
-      :trade="game.team.trade"
+      :running="running"
+      @issue="sheet = 'issue'"
     />
-    <LifeSubmit
-      v-else-if="phase === 'life' && group && game.team"
-      :members="members"
-      :lives="game.team.resources.life"
-      :is-leader="isLeader"
-      :team-color="group.color"
-      :submission="game.team.lifeSubmission"
-    />
-    <div v-else-if="phase && phaseHint[phase]" class="card">
-      <!-- 지금 할 일 안내는 본문 색으로 (회색 보조 글자는 가시성 기준에서 제외, docs/104) -->
-      <p style="margin: 0">{{ phaseHint[phase] }}</p>
-      <!-- 마지막 라운드 필수 안건 (docs/100 N2) -->
-      <p v-if="phase === 'council' && isLastRound" style="margin: 8px 0 0">
-        <Icon name="scroll" /> <strong>필수 안건: 남은 라이프를 최종 투표권으로 인정할까요?</strong>
-        <span class="muted">— 부결이면 최종 투표는 리더만 1표. 통과 시 팀 라이프 1개로 1표 (1인 1장): 리더는 1표 더, 팀원은 이것으로 투표.
-          {{ s?.lifeVote == null ? '' : s.lifeVote ? '결과: 통과' : '결과: 부결' }}</span>
-      </p>
-    </div>
-    <!-- 전쟁: 거래 활동 단계에서 선포. 진행 중이면 다른 단계에서도 상황 표시 -->
-    <WarPanel
-      v-if="group && game.team && (phase === 'trade' || s?.war?.active)"
-      :my-team-id="group.id"
-      :is-leader="isLeader"
-      :resources="game.team.resources"
-    />
-    <!-- 이주 (docs/100 N3): 이주 시작 라운드부터 -->
-    <MigrationPanel
-      v-if="s?.status === 'running' && group && game.team?.migration"
-      :migration="game.team.migration"
-      :my-team-id="group.id"
-      :is-leader="isLeader"
-      :day="s.day"
-    />
-    <!-- 화이트팀 보석 / 옐로우팀 골드 발행 (그 팀만) -->
-    <IssuePanel v-if="s?.status === 'running' && game.team?.issue" :issue="game.team.issue" :is-leader="isLeader" />
+    <PlayMembers :members="members" />
+    <PlayDock :members="members" :my-team-id="group?.id ?? null" @open="sheet = $event" />
 
-    <div class="card">
-      <h2>팀원</h2>
-      <ul class="feed">
-        <li v-for="m in members" :key="m.id">
-          {{ m.name }} <span v-if="m.isLeader" class="badge">리더</span>
-        </li>
+    <BottomSheet v-if="sheet" :title="sheet === 'settings' ? '설정' : undefined" @close="sheet = null">
+      <template v-if="group && game.team">
+        <TradePanel v-if="sheet === 'trade'" :my-team-id="group.id" :is-leader="isLeader" :trade="game.team.trade" />
+        <WarPanel v-else-if="sheet === 'war'" :my-team-id="group.id" :is-leader="isLeader" :resources="game.team.resources" />
+        <LifeSubmit
+          v-else-if="sheet === 'life'"
+          :members="members"
+          :lives="game.team.resources.life"
+          :is-leader="isLeader"
+          :submission="game.team.lifeSubmission"
+        />
+        <FinalVotePanel
+          v-else-if="sheet === 'vote' && final"
+          :final="final"
+          :life-vote="!!s?.lifeVote"
+          :team-lives="game.team.resources.life"
+          :my-vote="game.team.myFinalVote"
+          :is-leader="isLeader"
+        />
+        <MigrationPanel
+          v-else-if="sheet === 'migration' && game.team.migration"
+          :migration="game.team.migration"
+          :my-team-id="group.id"
+          :is-leader="isLeader"
+          :day="s?.day ?? 0"
+        />
+        <IssuePanel v-else-if="sheet === 'issue' && game.team.issue" :issue="game.team.issue" :is-leader="isLeader" />
+      </template>
+      <ul v-if="sheet === 'settings'" class="menu">
+        <li v-if="toasts.sound"><button type="button" @click="router.push('/sound')"><Icon :name="toasts.muted ? 'bell-off' : 'bell'" />알림음<span class="val">{{ toasts.muted ? '꺼짐' : '켜짐' }}</span></button></li>
+        <li><button type="button" @click="logout"><Icon name="logout" />로그아웃</button></li>
       </ul>
-    </div>
-    <EventFeed collapsible plain />
-    </template>
+    </BottomSheet>
+
+    <InboxPanel v-if="inboxOpen" @close="inboxOpen = false" />
   </div>
 </template>
+
+<style scoped>
+.menu { margin: 6px 0 0; padding: 0; list-style: none; }
+.menu button { width: 100%; min-height: 56px; display: flex; align-items: center; gap: 12px; padding: 0; background: none; border: 0; color: #f4f6fa; font-size: 18px; font-weight: 700; letter-spacing: 0; text-align: left; text-transform: none; }
+.menu button:hover { background: none; color: #f4f6fa; }
+.menu li + li button { border-top: 2px solid #343946; }
+.menu :deep(.icon) { font-size: 24px; }
+.val { margin-left: auto; font-size: 15.5px; font-weight: 700; }
+</style>

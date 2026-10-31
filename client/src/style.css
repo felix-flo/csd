@@ -48,6 +48,8 @@
   --res-credit-fg: #ff6b6b;
 
   --font-display: 'Archivo', 'Black Han Sans', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  --font-play: 'Black Han Sans', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  --font-gungseo: 'GungSeo', 'Gungsuh', '궁서', '궁서체', 'Song Myung', serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-body: 'Manrope', -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', system-ui, sans-serif;
 
@@ -287,3 +289,20 @@ table th { font-family: var(--font-mono); font-weight: 500; letter-spacing: 0.08
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: var(--surface); }
 ::-webkit-scrollbar-thumb { background: var(--line-strong); border: 2px solid var(--surface); }
+
+/* 참가자 게임 화면 (docs/107): 위에서 아래로 어두워지는 팀 색 배경. 상자 바깥선은 같은 좌우 선에, 안쪽 글자는 그 선에서 12px 안쪽에 맞춘다 */
+.play {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 0 14px 12px;
+  color: #f4f6fa;
+  line-height: 1.35;
+  background: linear-gradient(180deg, var(--team) 0, var(--team) 56px, color-mix(in srgb, var(--team) 60%, #101216) 32%, color-mix(in srgb, var(--team) 32%, #101216) 60%, color-mix(in srgb, var(--team) 12%, #101216) 84%, #101216 100%);
+}
+.play .area { position: relative; flex: none; margin: 28px 0 0; padding: 26px 12px 10px; border: 2px solid var(--team-line); background: rgba(14, 16, 20, 0.88); }
+.play .top + .area, .play .offbar + .area { margin-top: 24px; }
+.play .ttl { position: absolute; left: 12px; right: 12px; top: -20px; height: 38px; display: flex; align-items: center; gap: 6px; margin: 0; padding: 4px 10px 0; background: color-mix(in srgb, var(--team) 16%, #0e1014); border: 2px solid var(--team-line); color: #fff; font: 400 23px/1 var(--font-play); letter-spacing: 0; text-transform: none; }

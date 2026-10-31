@@ -31,7 +31,7 @@ const hint = computed(() => {
   return props.isLeader ? '' : '리더가 발행할 수 있습니다.'
 })
 const lastPhases = computed(() => (props.issue.lastRoundPhases ?? []).map((p) => PHASE_LABELS[p]).join(', '))
-const carryNote = computed(() => (props.issue.kind === 'gold' ? '안 쓴 만큼 다음 라운드로 이월됩니다.' : '라운드마다 새로 정해지며 이월되지 않습니다.'))
+const carryNote = computed(() => (props.issue.kind === 'gold' ? '안 쓴 한도는 다음 라운드로 쌓입니다.' : '안 쓴 한도는 사라집니다.'))
 
 async function submit() {
   if (!valid.value) return
@@ -53,23 +53,19 @@ async function submit() {
 
 <template>
   <div class="card">
-    <h2><Icon :name="issue.kind" /> {{ label }} 발행</h2>
-    <p class="remain">
-      이번 라운드 남은 발행 가능량 <strong>{{ issue.remaining }}</strong>개
-      <span class="muted">· {{ carryNote }}</span>
-    </p>
+    <h2>{{ label }} 발행</h2>
+    <p class="remain">이번 라운드 최대<b>{{ issue.remaining }}</b>개</p>
 
-    <p v-if="issue.lastRoundPhases" class="warn-note">
+    <p v-if="issue.lastRoundPhases" class="hint warn-note">
       <Icon name="lock" /> 마지막 라운드: <strong>{{ lastPhases }}</strong> 단계에서만 발행할 수 있습니다. 이번 발행량은 공개되지 않습니다.
     </p>
 
-    <p v-if="canRequest" class="muted once">발행은 라운드당 1회이며 누르는 즉시 팀 재화에 더해집니다.</p>
-    <form v-if="canRequest" class="row" @submit.prevent="valid && (confirmOpen = true)">
-      <input v-model.number="amount" type="number" min="1" :max="issue.remaining" :placeholder="`1 ~ ${issue.remaining}`" style="width: 8em" />
-      <span>개</span>
+    <p v-if="canRequest" class="hint">라운드당 1회이며 누르는 즉시 팀 재화에 더해집니다. {{ carryNote }}</p>
+    <form v-if="canRequest" class="acts issue-form" @submit.prevent="valid && (confirmOpen = true)">
+      <input v-model.number="amount" class="field" type="number" min="1" :max="issue.remaining" :placeholder="`1 ~ ${issue.remaining}`" aria-label="발행 수량" />
       <button type="submit" :disabled="busy || !valid">발행</button>
     </form>
-    <p v-else-if="hint" class="muted">{{ hint }}</p>
+    <p v-else-if="hint" class="hint">{{ hint }}</p>
     <p v-if="error" class="error">{{ error }}</p>
 
     <ul v-if="issue.recent.length" class="history">
@@ -96,11 +92,10 @@ async function submit() {
 </template>
 
 <style scoped>
-.remain { margin: 0 0 10px; }
-.remain strong { font-size: 1.2rem; }
-.history { list-style: none; padding: 0; margin: 12px 0 0; font-size: 0.9rem; }
-.history li { padding: 3px 0; border-top: 1px solid var(--line-soft); display: flex; gap: 8px; align-items: center; }
-.error { margin: 8px 0 0; }
-.once { margin: 0 0 8px; font-size: 0.85rem; }
-.warn-note { margin: 0 0 10px; color: var(--amber, #b7791f); }
+.remain { display: flex; align-items: baseline; gap: 4px; margin: 10px 0 0; font-size: 16px; font-weight: 600; }
+.remain b { font: 900 30px/1 'Archivo', sans-serif; font-variant-numeric: tabular-nums; }
+.issue-form > button { flex: 1 1 0; }
+.history { list-style: none; padding: 0; margin: 14px 0 0; font-size: 15px; font-weight: 600; }
+.history li { padding: 6px 0; border-top: 2px solid #343946; display: flex; gap: 8px; align-items: center; }
+.warn-note { color: var(--amber, #b7791f); }
 </style>

@@ -136,7 +136,12 @@ function announceTrade(t: TradeView, kind: string, messages: { from: string; to:
 function announceCancelled(t: TradeView | null, reason: string, by: number) {
   if (!t) return
   const msg = `${teamName(t.from.teamId)} ↔ ${teamName(t.to.teamId)} 거래가 ${reason} 취소되었습니다`
-  announceTrade(t, 'trade.closed', { from: msg, to: msg }, by)
+  announceTrade(t, 'trade.closed', { from: msg, to: msg }, by, tradeNotice(t, '거래 취소', `${reason} 취소되었습니다`))
+}
+
+/** 참가자 알림 카드의 제목·방향·설명 (docs/107). 수량은 오프라인에서 조정하므로 넣지 않는다 */
+function tradeNotice(t: TradeView, headline: string, detail: string) {
+  return { headline, route: [t.from.teamId, t.to.teamId], detail }
 }
 
 // ---- 조회 ----
@@ -297,7 +302,8 @@ function advanceAndAnnounce(expect: { day: number; phase: Phase }, by: number, p
   const message = r.day !== expect.day
     ? `${r.day}라운드가 시작되었습니다 · ${PHASE_LABELS[r.phase]} 중 · ${todayCostText(r.day)}${migrationOpensText(r.day)}`
     : `${prefix}${r.day}라운드 · ${PHASE_LABELS[r.phase]} 중입니다`
-  emit('game', 'all', null, 'game.updated', message, by, { day: r.day, phase: r.phase })
+  // 전쟁 뒤 자동 전환은 전쟁 결과 알림이 이미 말해 주므로 알림함에만 남긴다
+  emit('game', 'all', null, 'game.updated', message, by, { day: r.day, phase: r.phase, silent: !!prefix })
   // 모든 팀이 제출 불필요(팀원 없음 · 1명+라이프 0)면 라이프 제출 단계에 들어가자마자 완료
   if (r.phase === 'life' && allLivesDone(r.day)) emit('game', 'all', null, 'life.all_done', '모든 팀의 라이프가 제출되었습니다.', by, { day: r.day })
   return r
@@ -755,9 +761,7 @@ const tradeIdOf = (req: Request) => {
   if (!Number.isInteger(id)) throw new GameError('not_found', '', 404)
   return id
 }
-const giveText = (o: Resources) => describeDeltas(o).replaceAll('+', '') || '없음'
-const tradeSummary = (t: TradeView) =>
-  `${teamName(t.from.teamId)} (${giveText(t.from.offer)}) ↔ ${teamName(t.to.teamId)} (${giveText(t.to.offer)}) · 크레딧 ${teamName(t.creditPayer)} 부담`
+const tradeRoute = (t: TradeView) => `${teamName(t.from.teamId)} → ${teamName(t.to.teamId)}`
 
 const tradeProposalSchema = z.object({
   fromTeamId: z.number().int().positive(),
@@ -772,8 +776,8 @@ gameRouter.post('/admin/game/trade', requireRole('admin'), handle(tradeProposalS
   const g = requireRunning('trade')
   const by = req.auth!.sub
   const t = proposeTrade(g.day, { fromTeam: body.fromTeamId, toTeam: body.toTeamId, creditPayer: body.creditPayer, fromOffer: body.fromOffer, toOffer: body.toOffer }, by, teamName)
-  const msg = `거래 제안: ${tradeSummary(t)} · 리더가 수락하면 체결됩니다`
-  announceTrade(t, 'trade.proposed', { from: msg, to: msg }, by)
+  const msg = `거래 제안: ${tradeRoute(t)} · 두 팀 리더가 모두 수락하면 체결됩니다`
+  announceTrade(t, 'trade.proposed', { from: msg, to: msg }, by, tradeNotice(t, '거래 제안', '두 팀 리더가 모두 수락하면 체결됩니다'))
   res.json(adminView())
 }))
 
@@ -784,15 +788,18 @@ gameRouter.post('/trade/:id/decide', requireRole('member'), handle(z.object({ ac
   const by = req.auth!.sub
   const { trade: t, completed } = decideTrade(tradeIdOf(req), teamId, body.accept, g.day, by)
   if (!body.accept) {
-    const msg = `${josa(teamName(teamId), '이/가')} 거래를 거부했습니다 (${tradeSummary(t)})`
-    announceTrade(t, 'trade.closed', { from: msg, to: msg }, by, NOTIFY_SELF)
+    const who = josa(teamName(teamId), '이/가')
+    const msg = `${who} 거래를 거부했습니다 (${tradeRoute(t)})`
+    announceTrade(t, 'trade.closed', { from: msg, to: msg }, by, { ...NOTIFY_SELF, ...tradeNotice(t, '거래 거부', `${who} 거부했습니다`) })
   } else if (completed) {
-    const msg = `거래 완료: ${tradeSummary(t)}`
-    announceTrade(t, 'trade.completed', { from: msg, to: msg }, by, NOTIFY_SELF)
+    const msg = `거래 완료: ${tradeRoute(t)}`
+    announceTrade(t, 'trade.completed', { from: msg, to: msg }, by, { ...NOTIFY_SELF, ...tradeNotice(t, '거래 완료', '재화가 교환되었습니다') })
     emit('game', 'group', t.creditPayer, 'resources.updated', '거래 크레딧: 크레딧 -1', by, { silent: true })
   } else {
-    const msg = `${josa(teamName(teamId), '이/가')} 거래를 수락했습니다. 상대 리더의 수락을 기다립니다`
-    announceTrade(t, 'trade.updated', { from: msg, to: msg }, by)
+    const who = josa(teamName(teamId), '이/가')
+    const waiting = `${teamName(teamId === t.from.teamId ? t.to.teamId : t.from.teamId)} 리더의 수락을 기다립니다`
+    const msg = `${who} 거래를 수락했습니다. ${waiting}`
+    announceTrade(t, 'trade.updated', { from: msg, to: msg }, by, tradeNotice(t, '거래 수락', `${who} 수락했습니다. ${waiting}`))
   }
   res.json({ trade: t, completed })
 }))

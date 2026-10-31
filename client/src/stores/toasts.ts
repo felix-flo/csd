@@ -1,7 +1,7 @@
 /**
  * 플로팅 알림(토스트). 공지(notice) 이벤트가 도착하면 화면 상단에 잠시 띄운다.
  * - 최대 3개 쌓인다. 기본 5초(프레젠테이션 10초) 뒤 자동으로 닫히고, 마우스를 올리면 멈춘다.
- *   참가자(member)만 가장 최근 알림이 닫기()를 누를 때까지 남는다 (sticky, docs/103 §6). 프레젠테이션·관리자는 전부 자동으로 닫힌다.
+ *   참가자(member)는 NoticeHost 가 하나씩 보여 주고 확인을 누를 때까지 남는다 (sticky, docs/107). 프레젠테이션·관리자는 전부 자동으로 닫힌다.
  * - 어떤 이벤트를 띄울지는 realtime 스토어가 결정한다 (공지와 팀 이동/탈락 알림만. 본인이 만든 이벤트·룰 갱신은 제외).
  * - 알림음(lib/chime.ts): 프레젠테이션·참가자(리더/팀원)만 듣고 관리자는 듣지 않는다.
  *   울리는 경우는 shouldChime() 이 정한다 — 전체 범위 공지·시스템 알림만. 팀(이동·탈락·거래 등)·개인 알림은 팝업만 뜨고 소리는 없다.
@@ -22,10 +22,25 @@ export interface Toast {
   remaining: number
   /** 전쟁 알림: 빨간 강조 팝업 (payload.war) */
   war: boolean
+  /** 이벤트 종류 (payload.kind). 참가자 화면은 war.declared 를 전체 화면으로 보여 준다 */
+  kind: string
+  /** 큰 제목·방향·설명으로 나눠 보여 줄 때 (payload.headline·route·detail). route 는 [보내는 팀 id, 받는 팀 id] */
+  headline: string | null
+  route: [number, number] | null
+  detail: string | null
+}
+
+function routeOf(ev: GameEvent): [number, number] | null {
+  const r = ev.payload.route
+  if (Array.isArray(r) && r.length === 2) return [Number(r[0]), Number(r[1])]
+  if (ev.payload.kind === 'war.declared') return [Number(ev.payload.attacker), Number(ev.payload.defender)]
+  return null
 }
 
 const MAX = 3
 const TICK = 100
+/** 진행 안내. 다음 단계가 시작되면 지난 안내를 확인할 필요가 없어 팝업에서 빼고 알림함에만 남긴다 (docs/107) */
+const PROGRESS_KINDS = new Set(['game.updated', 'election.all_done', 'life.all_done', 'phase.timeout'])
 
 /**
  * 소리를 낼 이벤트인지.
@@ -66,6 +81,7 @@ export const useToastStore = defineStore('toasts', {
     },
     show(ev: GameEvent) {
       if (this.items.some((t) => t.id === ev.id)) return
+      if (this.sticky && ev.payload.kind === 'game.updated') this.items = this.items.filter((t) => !PROGRESS_KINDS.has(t.kind))
       this.items.push({
         id: ev.id,
         label: scopeLabel(ev),
@@ -73,9 +89,14 @@ export const useToastStore = defineStore('toasts', {
         createdAt: ev.createdAt,
         remaining: this.duration,
         war: !!ev.payload.war,
+        kind: typeof ev.payload.kind === 'string' ? ev.payload.kind : '',
+        headline: typeof ev.payload.headline === 'string' ? ev.payload.headline : null,
+        route: routeOf(ev),
+        detail: typeof ev.payload.detail === 'string' ? ev.payload.detail : null,
       })
       if (this.items.length > MAX) this.items.splice(0, this.items.length - MAX)
-      this.ensureTimer()
+      // 참가자는 확인을 누를 때까지 남는다 (docs/107)
+      if (!this.sticky) this.ensureTimer()
       if (shouldChime(ev)) this.chime()
     },
     /** 알림음. 대상 역할이고, 꺼 두지 않았고, 직전 소리에서 충분히 지났을 때만 */
@@ -106,12 +127,10 @@ export const useToastStore = defineStore('toasts', {
       if (this.timer) return
       this.timer = setInterval(() => {
         if (this.paused || this.held) return
-        // 참가자는 가장 최근 알림을 닫기 전까지 유지 (docs/103 §6)
-        const last = this.sticky ? this.items[this.items.length - 1] : null
-        for (const t of this.items) if (t !== last) t.remaining -= TICK
+        for (const t of this.items) t.remaining -= TICK
         this.items = this.items.filter((t) => t.remaining > 0)
         // 더 셀 것이 없으면 멈춘다 (다음 show 에서 다시 돈다)
-        if (this.items.length <= (this.sticky ? 1 : 0) && this.timer) {
+        if (this.items.length === 0 && this.timer) {
           clearInterval(this.timer)
           this.timer = null
         }

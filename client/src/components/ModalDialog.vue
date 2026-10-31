@@ -53,4 +53,6 @@ const emit = defineEmits<{ confirm: []; cancel: []; alt: [] }>()
 }
 .msg { margin: 0 0 12px; white-space: pre-line; }
 .actions { justify-content: flex-end; margin-top: 12px; }
+/* 참가자 게임 화면은 body 에 팀 색을 얹는다 (docs/107). 다른 화면은 기본 버튼 색 */
+.actions button:not(.secondary):not(.danger):not(:hover) { background: var(--accent, var(--blue)); border-color: var(--accent, var(--blue)); color: var(--accent-fg, #fff); }
 </style>

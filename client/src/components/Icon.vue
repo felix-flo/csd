@@ -8,6 +8,7 @@ export type IconName =
   | 'gem' | 'gold' | 'life' | 'credit'
   | 'timer' | 'council' | 'aid' | 'war' | 'scroll' | 'vote' | 'migration' | 'lock'
   | 'bell' | 'bell-off' | 'mute' | 'spy' | 'sun' | 'moon' | 'flask' | 'warning' | 'refresh' | 'megaphone' | 'film' | 'trophy'
+  | 'book' | 'gear' | 'wifi' | 'wifi-off' | 'chevron' | 'close' | 'arrow' | 'logout'
 
 const PATHS: Record<IconName, string> = {
   gem: 'M7 3h10l4 6-9 12L3 9zM3 9h18M10 3 8 9l4 12M14 3l2 6-4 12',
@@ -34,6 +35,14 @@ const PATHS: Record<IconName, string> = {
   megaphone: 'M3 10v4h3l8 5V5l-8 5zM18 9a4 4 0 0 1 0 6',
   film: 'M3 9h18v12H3zM3 9l2-5h16l-2 5M8 4l2 5M13 4l2 5',
   trophy: 'M8 4h8v5a4 4 0 0 1-8 0zM8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8 21h8M9 17h6v4',
+  book: 'M2 5h7a3 3 0 0 1 3 3v12a2.5 2.5 0 0 0-2.5-2.5H2zM22 5h-7a3 3 0 0 0-3 3v12a2.5 2.5 0 0 1 2.5-2.5H22z',
+  gear: 'M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
+  wifi: 'M2.5 9a14 14 0 0 1 19 0M6 13a9 9 0 0 1 12 0M9.5 16.8a4 4 0 0 1 5 0M12 20.5h.01',
+  'wifi-off': 'M3 3l18 18M2.5 9a14 14 0 0 1 4.6-3M14.5 5.3A14 14 0 0 1 21.5 9M6 13a9 9 0 0 1 4-2.3M17 11.7a9 9 0 0 1 1 1.3M9.5 16.8a4 4 0 0 1 5 0M12 20.5h.01',
+  chevron: 'M6 9l6 6 6-6',
+  close: 'M6 6l12 12M18 6 6 18',
+  arrow: 'M4 12h16M14 6l6 6-6 6',
+  logout: 'M10 4H4v16h6M15 8l4 4-4 4M19 12H9',
 }
 
 const props = defineProps<{ name: IconName; label?: string }>()

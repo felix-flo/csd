@@ -8,16 +8,21 @@
  */
 import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { SPY_REWARD_MAX, SPY_REWARD_PER, type SpyStatus } from '../../../shared/game'
+import { useToastStore } from '../stores/toasts'
 import MarkdownView from './MarkdownView.vue'
 
 const props = defineProps<{ spy: SpyStatus; intro?: boolean }>()
 const emit = defineEmits<{ close: [] }>()
+const toasts = useToastStore()
 const AUTO_CLOSE_MS = 10_000
 let timer: ReturnType<typeof setTimeout> | null = null
 onMounted(() => {
+  // 알림이 카드를 가린 채 시간이 지나 저절로 닫히지 않게, 카드가 닫힌 뒤에 보여 준다 (docs/107)
+  toasts.setHeld(true)
   timer = setTimeout(() => emit('close'), AUTO_CLOSE_MS)
 })
 onBeforeUnmount(() => {
+  toasts.setHeld(false)
   if (timer) clearTimeout(timer)
 })
 const won = (n: number) => `${n.toLocaleString('ko-KR')}원`

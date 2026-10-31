@@ -25,11 +25,47 @@ function saveLastId(userId: number, id: number) {
   try { localStorage.setItem(`${LAST_ID_KEY}:${userId}`, String(id)) } catch { /* ignore */ }
 }
 
+const INBOX_SEEN_KEY = 'csd:inboxSeen'
+function loadInboxSeen(userId: number): number | null {
+  try {
+    const v = localStorage.getItem(`${INBOX_SEEN_KEY}:${userId}`)
+    return v == null ? null : Number(v) || 0
+  } catch { return null }
+}
+function saveInboxSeen(userId: number, id: number) {
+  try { localStorage.setItem(`${INBOX_SEEN_KEY}:${userId}`, String(id)) } catch { /* ignore */ }
+}
+
+/**
+ * 플로팅 팝업을 띄울지. 서버가 본인 수신분만 보내므로 범위는 따로 거르지 않는다.
+ * - 공지(notice), 팀 이동·탈락/복귀·리더 지정 시스템 알림, 게임 진행·거래 알림. 그 외 시스템 메시지는 피드로 충분
+ * - 본인이 만든 이벤트(진행자가 직접 보낸 공지·처리)는 제외. 단 payload.notifySelf(참가자 행동의 결과 알림)는 본인에게도
+ */
+function isPopupEvent(ev: GameEvent): boolean {
+  const popup =
+    ev.type === 'notice' ||
+    // (이주 수락의 팀 이동 신호는 silent — 전체 이주 공지가 따로 뜬다)
+    (ev.type === 'system' && !ev.payload.silent && (ev.payload.kind === 'member.moved' || ev.payload.kind === 'members.active' || ev.payload.kind === 'leader.set')) ||
+    // 게임 진행·거래 알림. silent(투표 진행 상황, 설정 변경 등)는 피드에만
+    ((ev.type === 'game' || ev.type === 'trade') && !ev.payload.silent) ||
+    // 참가자 게임 화면에는 갱신 배너가 없다 (docs/107)
+    (ev.type === 'document.updated' && useAuthStore().user?.role === 'member')
+  if (!popup) return false
+  // 발행 요청은 관리자 화면이 요청 창(IssueAdminCard)으로 띄우므로 토스트는 겹치지 않게 뺀다
+  if (ev.payload.kind === 'issue.requested' && useAuthStore().user?.role === 'admin') return false
+  // 결과 알림(모든 팀 완료·리더 선출 결과·거래 완료)은 마지막으로 행동한 본인에게도 띄운다 (서버가 notifySelf 로 표시)
+  if (ev.payload.notifySelf) return true
+  const me = useAuthStore().user?.id
+  return ev.createdBy == null || ev.createdBy !== me
+}
+
 export const useRealtimeStore = defineStore('realtime', {
   state: () => ({
     connected: false,
     events: [] as GameEvent[],
     lastEventId: 0,
+    /** 알림함에서 읽은 위치. 알림을 확인하거나 알림함을 열면 올라간다 (docs/107) */
+    inboxSeenId: 0,
     /** 재접속 replay 진행 중이면 토스트를 모아 두었다가 replay:done 에 최근 것만 띄운다 */
     replaying: false,
     pendingToasts: [] as GameEvent[],
@@ -40,11 +76,18 @@ export const useRealtimeStore = defineStore('realtime', {
     serverVersion: '' as string,
     reloading: false,
   }),
+  getters: {
+    /** 아직 확인하지 않은 알림 수 (알림함 테두리 깜빡임). 팝업 대상만 센다 */
+    unreadCount(): number {
+      return this.events.filter((e) => e.id > this.inboxSeenId && isPopupEvent(e)).length
+    },
+  },
   actions: {
     connect() {
       const auth = useAuthStore()
       if (socket || !auth.accessToken || !auth.user) return
       this.lastEventId = loadLastId(auth.user.id)
+      this.inboxSeenId = loadInboxSeen(auth.user.id) ?? this.lastEventId
       this.events = []
       useToastStore().configure(auth.user.role)
 
@@ -130,6 +173,14 @@ export const useRealtimeStore = defineStore('realtime', {
       await auth.refresh()
       this.connect()
     },
+    /** 알림을 읽은 것으로 표시. id 를 주면 거기까지, 없으면 지금까지 받은 알림 전부 */
+    markInboxSeen(id?: number) {
+      const to = id ?? this.events[this.events.length - 1]?.id ?? this.inboxSeenId
+      if (to <= this.inboxSeenId) return
+      this.inboxSeenId = to
+      const uid = useAuthStore().user?.id
+      if (uid) saveInboxSeen(uid, to)
+    },
     /** 서버의 클라이언트 빌드 식별자와 내 번들을 비교. 다르면 배너 표시 (개발 서버는 둘 다 'dev') */
     async checkVersion() {
       if (__BUILD_ID__ === 'dev') return // vite 개발 서버: 서버에 dist 가 있어도 비교 대상이 아님
@@ -196,25 +247,8 @@ export const useRealtimeStore = defineStore('realtime', {
         void useAuthStore().refreshMe()
       }
     },
-    /**
-     * 플로팅 팝업을 띄울지. 서버가 본인 수신분만 보내므로 범위는 따로 거르지 않는다.
-     * - 공지(notice), 팀 이동·탈락/복귀·리더 지정 시스템 알림, 게임 진행·거래 알림. 룰 갱신은 배너가 있고, 그 외 시스템 메시지는 피드로 충분
-     * - 본인이 만든 이벤트(진행자가 직접 보낸 공지·처리)는 제외. 단 payload.notifySelf(참가자 행동의 결과 알림)는 본인에게도
-     */
     shouldToast(ev: GameEvent): boolean {
-      const popup =
-        ev.type === 'notice' ||
-        // (이주 수락의 팀 이동 신호는 silent — 전체 이주 공지가 따로 뜬다)
-        (ev.type === 'system' && !ev.payload.silent && (ev.payload.kind === 'member.moved' || ev.payload.kind === 'members.active' || ev.payload.kind === 'leader.set')) ||
-        // 게임 진행·거래 알림. silent(투표 진행 상황, 설정 변경 등)는 피드에만
-        ((ev.type === 'game' || ev.type === 'trade') && !ev.payload.silent)
-      if (!popup) return false
-      // 발행 요청은 관리자 화면이 요청 창(IssueAdminCard)으로 띄우므로 토스트는 겹치지 않게 뺀다
-      if (ev.payload.kind === 'issue.requested' && useAuthStore().user?.role === 'admin') return false
-      // 결과 알림(모든 팀 완료·리더 선출 결과·거래 완료)은 마지막으로 행동한 본인에게도 띄운다 (서버가 notifySelf 로 표시)
-      if (ev.payload.notifySelf) return true
-      const me = useAuthStore().user?.id
-      return ev.createdBy == null || ev.createdBy !== me
+      return isPopupEvent(ev)
     },
     disconnect() {
       socket?.disconnect()
