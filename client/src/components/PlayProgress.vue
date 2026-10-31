@@ -61,11 +61,14 @@ const guide = computed<{ main: string; sub?: string }>(() => {
   switch (st.phase) {
     case 'leader': {
       const leader = props.members.find((m) => m.isLeader)
-      if (team?.election?.status === 'done') return { main: `이번 라운드 리더: ${leader?.name ?? '-'}` }
+      if (team?.election?.status === 'done') {
+        if (isLeader.value) return { main: '이번 라운드 리더입니다', sub: '거래 수락 · 전쟁 선포 · 라이프 제출은 리더가 합니다' }
+        return { main: `이번 라운드 리더: ${leader?.name ?? '-'}` }
+      }
       return { main: '팀에서 리더를 정해 진행자에게 알려 주세요', sub: leader ? `현재 리더: ${leader.name}` : undefined }
     }
     case 'production':
-      return { main: '미니게임 결과로 재화를 지급받습니다' }
+      return { main: '라이프와 크레딧 중 하나를 골라 미니게임에 참가합니다', sub: '참가비 크레딧 1개 · 출전자는 팀이 정합니다' }
     case 'trade': {
       const t = team?.trade
       if (t && props.myTeamId != null) {
@@ -81,7 +84,7 @@ const guide = computed<{ main: string; sub?: string }>(() => {
         const r = st.lifeVote == null ? '' : st.lifeVote ? ' · 통과' : ' · 부결'
         return { main: '리더들이 오프라인에서 협의합니다', sub: `필수 안건: 남은 라이프를 최종 투표권으로 인정할까요?${r}` }
       }
-      return { main: '리더들이 오프라인에서 협의합니다' }
+      return { main: '리더들이 오프라인에서 협의합니다', sub: isLeader.value ? '리더 4명 중 3명이 찬성하면 통과 · 결과는 진행자에게' : undefined }
     case 'life': {
       const sub = team?.lifeSubmission
       if (sub) {
@@ -117,7 +120,7 @@ const timer = computed(() => {
     <h2 class="ttl">
       <template v-if="s?.status === 'running'">진행 <b>{{ s.day }} / {{ s.totalDays }} R</b></template>
       <template v-else>최종장</template>
-      <DigitalClock v-if="timer" class="time" :class="{ warn: timer.warn }" :text="timer.text" />
+      <DigitalClock v-if="timer && !war" class="time" :class="{ warn: timer.warn }" :text="timer.text" />
     </h2>
     <ol v-if="steps.length" class="bar">
       <li v-for="st in steps" :key="st.key" :class="st.state" :aria-current="st.state === 'now' ? 'step' : undefined">{{ st.label }}</li>

@@ -322,9 +322,9 @@ gameRouter.post('/admin/game/end', requireRole('admin'), handle(null, (req, res)
     emit('game', 'group', r.teamId, 'issue.cancelled', `게임 종료로 ${issueText(r)} 발행 요청이 취소되었습니다`, req.auth!.sub, { issueId: r.id, muted: true })
   }
   const extra = getGameRow().life_vote_passed === 1
-    ? '리더 1표 + 라이프 투표권: 팀 라이프 1개로 1표 (1인 1장, 선착순. 팀원은 라이프 투표권으로만 투표)'
-    : '리더만 1표 (라이프 투표권 안건 부결)'
-  emit('game', 'all', null, 'final.started', `최종장이 시작되었습니다 · 최종 투표: 보석과 골드 중 하나에 투표하세요 (${extra})`, req.auth!.sub)
+    ? '리더는 1표, 팀 라이프가 남아 있으면 라이프 1개로 1표 더 (1인 1장, 선착순. 팀원은 라이프로만 투표)'
+    : '투표는 리더만 1표 (라이프 투표권 안건 부결)'
+  emit('game', 'all', null, 'final.started', `최종장이 시작되었습니다. 보석과 골드 중 하나에 투표하세요. ${extra}`, req.auth!.sub)
   res.json(adminView())
 }))
 

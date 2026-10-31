@@ -2,8 +2,9 @@
 /** 알림함 (docs/107): 지금까지 받은 알림 전체. 연 시점에 안 읽은 알림은 레인보우 테두리로 표시하고 읽음 처리한다 */
 import { computed, ref } from 'vue'
 import Icon from './Icon.vue'
-import { eventMessage, scopeLabel } from '../lib/eventLabel'
+import { eventMessage, inboxLabel } from '../lib/eventLabel'
 import { useRealtimeStore } from '../stores/realtime'
+import type { GameEvent } from '../../../shared/types'
 
 const emit = defineEmits<{ close: [] }>()
 const rt = useRealtimeStore()
@@ -12,7 +13,12 @@ const rt = useRealtimeStore()
 const seenAtOpen = ref(rt.inboxSeenId)
 rt.markInboxSeen()
 
-const items = computed(() => [...rt.events].reverse())
+/** 시작 전 준비 기록(초기화·설정 변경·준비)과 내부 신호는 참가자가 볼 필요가 없다 */
+const isNoise = (ev: GameEvent) =>
+  (ev.type === 'system' && !rt.shouldToast(ev)) ||
+  ev.payload.kind === 'game.reset' ||
+  (ev.payload.kind === 'game.updated' && !!ev.payload.silent && ev.payload.day == null)
+const items = computed(() => rt.events.filter((ev) => !isNoise(ev)).reverse())
 const busy = ref(false)
 const timeOf = (s: string) => {
   const d = new Date(s.replace(' ', 'T') + 'Z')
@@ -35,7 +41,7 @@ async function reload() {
     <p v-if="!items.length" class="empty">받은 알림이 없습니다.</p>
     <ul v-else class="list">
       <li v-for="ev in items" :key="ev.id" :class="{ new: ev.id > seenAtOpen && rt.shouldToast(ev) }">
-        <div class="meta"><b v-if="ev.id > seenAtOpen && rt.shouldToast(ev)">새 알림</b>{{ scopeLabel(ev) }} · {{ timeOf(ev.createdAt) }}</div>
+        <div class="meta"><b v-if="ev.id > seenAtOpen && rt.shouldToast(ev)">새 알림</b>{{ inboxLabel(ev) }} · {{ timeOf(ev.createdAt) }}</div>
         <p class="msg">{{ eventMessage(ev) }}</p>
       </li>
     </ul>

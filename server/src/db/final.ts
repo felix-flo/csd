@@ -71,15 +71,21 @@ export function getLifeVote(): boolean | null {
 
 // ---- 투표 ----
 
-/** 팀별 투표 진행. eligible = 안건 통과면 활성 팀원 수, 부결이면 리더 수(0~1) (최종장에는 탈락·이주가 없다) */
+/**
+ * 팀별 투표 진행. eligible = 리더 + (안건 통과면) 이미 투표한 팀원 + 남은 팀 라이프로 더 투표할 수 있는 팀원.
+ * 팀원은 라이프 투표권으로만 투표하므로 라이프가 모자라면 전원을 세면 끝까지 채워지지 않는다 (최종장에는 탈락·이주가 없다)
+ */
 export function finalVoteProgress(): { teamId: number; done: number; eligible: number }[] {
   const passed = getRow().life_vote_passed === 1
-  const done = new Map(
-    (db.prepare('SELECT group_id, COUNT(*) AS n FROM final_votes GROUP BY group_id').all() as { group_id: number; n: number }[]).map((r) => [r.group_id, r.n]),
-  )
+  const votes = db.prepare('SELECT user_id, group_id FROM final_votes').all() as { user_id: number; group_id: number }[]
+  const { amount } = getAllResources()
   return listGroups().map((t) => {
     const members = listGroupMembers(t.id)
-    return { teamId: t.id, done: done.get(t.id) ?? 0, eligible: passed ? members.length : members.filter((m) => m.isLeader).length }
+    const others = members.filter((m) => !m.isLeader)
+    const voted = new Set(votes.filter((v) => v.group_id === t.id).map((v) => v.user_id))
+    const votedOthers = others.filter((m) => voted.has(m.id)).length
+    const canVoteOthers = passed ? votedOthers + Math.min(amount.get(t.id)?.life ?? 0, others.length - votedOthers) : 0
+    return { teamId: t.id, done: voted.size, eligible: members.length - others.length + canVoteOthers }
   })
 }
 

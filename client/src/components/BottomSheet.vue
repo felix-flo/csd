@@ -21,7 +21,7 @@ const emit = defineEmits<{ close: [] }>()
 
 <style scoped>
 .scrim { position: fixed; inset: 0; z-index: 800; background: rgba(0, 0, 0, 0.42); }
-.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 801; max-width: 480px; max-height: 86dvh; margin: 0 auto; overflow-y: auto; padding: 10px 16px calc(18px + env(safe-area-inset-bottom)); background: #15171c; color: #f4f6fa; border-top: 3px solid var(--team-line, #f4f6fa); }
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 801; max-width: 480px; max-height: 86vh; max-height: 86dvh; margin: 0 auto; overflow-y: auto; padding: 10px 16px calc(18px + env(safe-area-inset-bottom)); background: #15171c; color: #f4f6fa; border-top: 3px solid var(--team-line, #f4f6fa); }
 .grip { width: 44px; height: 4px; margin: 0 auto 12px; background: #6a7283; }
 .close { position: absolute; top: 8px; right: 8px; width: 40px; height: 40px; display: grid; place-items: center; padding: 0; background: none; border: 0; color: #f4f6fa; font-size: 22px; }
 .close:hover { background: none; color: #f4f6fa; }

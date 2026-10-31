@@ -4,6 +4,7 @@
  * - 알림은 game.phase_timer_fired 로 1회를 보장한다 (서버가 재시작돼도 중복되지 않고, 이미 지난 타이머는 기동 때 바로 보낸다).
  */
 import { getGameRow, getPhaseTimer, markPhaseTimerFired } from './db/game.js'
+import { getActiveWar } from './db/war.js'
 import { insertEvent } from './db/events.js'
 import { publishEvent } from './realtime/index.js'
 import { PHASE_TIMEOUT_MESSAGES } from '../../shared/game.js'
@@ -20,6 +21,7 @@ export function schedulePhaseTimer() {
   handle = setTimeout(() => {
     handle = null
     if (!markPhaseTimerFired(day, t.phase)) return // 그사이 단계가 바뀌었거나 이미 보냄
+    if (getActiveWar()) return // 전쟁 중에는 진행이 멈춰 있고, 전쟁이 끝나면 거래 단계도 끝난다
     const message = PHASE_TIMEOUT_MESSAGES[t.phase] ?? '시간이 종료되었습니다.'
     publishEvent(insertEvent({ type: 'game', scope: 'all', targetId: null, payload: { kind: 'phase.timeout', message, day, phase: t.phase }, createdBy: null }))
   }, ms)

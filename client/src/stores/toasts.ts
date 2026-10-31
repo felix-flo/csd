@@ -10,7 +10,7 @@
  */
 import { defineStore } from 'pinia'
 import type { GameEvent } from '../../../shared/types'
-import { eventMessage, scopeLabel } from '../lib/eventLabel'
+import { eventMessage, noticeLabel, scopeLabel } from '../lib/eventLabel'
 import { isMuted, playChime, setMuted } from '../lib/chime'
 
 export interface Toast {
@@ -84,7 +84,7 @@ export const useToastStore = defineStore('toasts', {
       if (this.sticky && ev.payload.kind === 'game.updated') this.items = this.items.filter((t) => !PROGRESS_KINDS.has(t.kind))
       this.items.push({
         id: ev.id,
-        label: scopeLabel(ev),
+        label: this.sticky ? noticeLabel(ev) : scopeLabel(ev),
         message: eventMessage(ev),
         createdAt: ev.createdAt,
         remaining: this.duration,
