@@ -3,7 +3,7 @@ import Icon from './Icon.vue'
 /**
  * 라이프 제출 (리더). 살릴 인원 수(= 쓸 라이프 수)와 자진 탈락 여부만 정한다 (docs/100.최종룰_차이_결정사항.md D1).
  * - 자진 탈락 안 함: 리더 생존 + 리더 외 팀원 중 무작위 (N−1)명. 자진 탈락: 리더 외 팀원 중 무작위 N명
- * - 범위 1 ~ min(팀 라이프, 살릴 수 있는 인원). 라이프 0개 팀은 숫자 없이 1명만 생존 (라이프 소모 없음)
+ * - 범위 1 ~ min(팀 라이프, 살릴 수 있는 인원). 기본값은 최대이고, 리더가 직접 고치기 전까지 최대를 따라간다. 라이프 0개 팀은 숫자 없이 1명만 생존 (라이프 소모 없음)
  * - 제출 → "정말로 제출하겠습니까?" 확인 → 서버가 무작위로 정하고, 살지 못한 팀원은 즉시 탈락(로그인 차단·세션 종료).
  * 팀원은 진행 상황만 본다. 활성 팀원이 1명이고 라이프가 0개면 제출하지 않는다 (자동 생존). 1명이라도 라이프가 있으면 제출해야 하고
  * 라이프 1개를 쓰고 생존한다 (자진 탈락 불가. docs/103 §8).
@@ -30,8 +30,9 @@ const noLives = computed(() => props.lives === 0)
 /** 팀원 1명: 라이프 1개 소모·자진 탈락 없음 */
 const alone = computed(() => props.members.length === 1)
 const max = computed(() => lifeSubmitMax(props.members.length, props.lives, selfEliminate.value))
-const count = ref(1)
-const text = ref('1')
+const count = ref(max.value)
+const text = ref(String(max.value))
+const touched = ref(false)
 const note = ref('')
 const busy = ref(false)
 const error = ref('')
@@ -43,9 +44,15 @@ function setCount(n: number) {
   count.value = Math.min(max.value, Math.max(1, n))
   text.value = String(count.value)
 }
+function step(n: number) {
+  touched.value = true
+  note.value = ''
+  setCount(count.value + n)
+}
 // 자진 탈락을 켜거나 라이프·인원이 줄면 최대에 맞춘다
 watch(max, (m) => {
-  if (count.value > m) {
+  if (!touched.value) setCount(m)
+  else if (count.value > m) {
     setCount(m)
     note.value = `최대 ${m}명까지 살릴 수 있어 ${m}(으)로 맞췄습니다`
   }
@@ -53,6 +60,7 @@ watch(max, (m) => {
 
 /** 숫자 입력: 숫자만 남기고(앞자리 0 정리), 최대를 넘으면 최대로. 비우면 입력 중에는 빈칸, 칸을 벗어나면 1 */
 function onInput(e: Event) {
+  touched.value = true
   const el = e.target as HTMLInputElement
   let digits = el.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '')
   let n = digits === '' ? 0 : Number(digits)
@@ -150,7 +158,7 @@ const nameOf = (id: number) => shown.value?.names[id] ?? props.members.find((m) 
       <p v-else-if="alone" class="hint warn"><Icon name="life" /> 살릴 인원 1명 (본인) · 라이프 1개 사용</p>
       <div v-else class="stepper">
         <span class="what"><Icon name="life" />살릴 인원<small>최대 {{ max }}명</small></span>
-        <button class="secondary sq" type="button" aria-label="한 명 줄이기" :disabled="busy || count <= 1" @click="setCount(count - 1); note = ''">−</button>
+        <button class="secondary sq" type="button" aria-label="한 명 줄이기" :disabled="busy || count <= 1" @click="step(-1)">−</button>
         <input
           class="num"
           type="text"
@@ -165,7 +173,7 @@ const nameOf = (id: number) => shown.value?.names[id] ?? props.members.find((m) 
           @blur="onBlur"
           @focus="($event.target as HTMLInputElement).select()"
         />
-        <button class="secondary sq" type="button" aria-label="한 명 늘리기" :disabled="busy || count >= max" @click="setCount(count + 1); note = ''">+</button>
+        <button class="secondary sq" type="button" aria-label="한 명 늘리기" :disabled="busy || count >= max" @click="step(1)">+</button>
         <span v-if="note" class="note">{{ note }}</span>
       </div>
 

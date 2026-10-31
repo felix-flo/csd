@@ -1,19 +1,23 @@
 <script setup lang="ts">
 /**
- * 참가자 알림 (docs/107). 한 번에 하나씩, 확인을 누를 때까지 화면을 덮는다.
+ * 참가자 알림 (docs/107). 한 번에 하나씩 화면을 덮는다. 확인이 필요한 알림은 확인을 누를 때까지 남고,
+ * 나머지는 잠시 뒤 저절로 닫힌다 (확인 버튼의 줄이 남은 시간. 바깥을 눌러도 닫힌다). 닫힌 알림은 읽음이 되고 알림함에 남는다.
  * 화면 테두리와 카드 테두리는 레인보우로 반짝이고, 확인 버튼은 팀 색이다.
  * 전쟁 선포는 전체 화면. 거래 알림은 "제목 → 방향 → 설명" 순서로 보여 준다 (수량은 오프라인에서 조정하므로 넣지 않는다).
  */
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Icon from './Icon.vue'
 import WarCrest from './WarCrest.vue'
+import { isBeforeStart } from '../../../shared/game'
 import { useAuthStore } from '../stores/auth'
+import { useGameStore } from '../stores/game'
 import { useRealtimeStore } from '../stores/realtime'
 import { useTeamsStore } from '../stores/teams'
 import { useToastStore } from '../stores/toasts'
 import { shortTeamName, teamThemeStyle } from '../lib/teamTheme'
 
 const auth = useAuthStore()
+const game = useGameStore()
 const rt = useRealtimeStore()
 const teams = useTeamsStore()
 const toasts = useToastStore()
@@ -23,7 +27,8 @@ const current = computed(() => {
   return toasts.items.find((t) => t.kind === 'war.declared') ?? toasts.items[0] ?? null
 })
 const isWar = computed(() => current.value?.kind === 'war.declared')
-const theme = computed(() => teamThemeStyle(teams.byId(auth.user?.groupId)))
+// 시작 전에는 팀 색을 드러내지 않는다
+const theme = computed(() => teamThemeStyle(!game.state || isBeforeStart(game.state.status) ? null : teams.byId(auth.user?.groupId)))
 const route = computed(() => {
   const r = current.value?.route
   if (!r) return null
@@ -41,6 +46,28 @@ function confirm() {
   rt.markInboxSeen(t.id)
   toasts.dismiss(t.id)
 }
+
+/** 저절로 닫히는 알림의 표시 시간. 긴 문구는 더 오래 보여 준다 */
+const holdMs = computed(() => Math.min(8000, 4000 + (current.value?.message.length ?? 0) * 50))
+const run = ref(0)
+let timer: ReturnType<typeof setTimeout> | null = null
+// 화면이 보이지 않는 동안은 세지 않고, 다시 보이면 처음부터 센다
+function arm() {
+  if (timer) clearTimeout(timer)
+  timer = null
+  if (!current.value || current.value.mustConfirm || document.hidden) return
+  run.value++
+  timer = setTimeout(confirm, holdMs.value)
+}
+watch(() => current.value?.id, arm)
+onMounted(() => {
+  arm()
+  document.addEventListener('visibilitychange', arm)
+})
+onBeforeUnmount(() => {
+  if (timer) clearTimeout(timer)
+  document.removeEventListener('visibilitychange', arm)
+})
 </script>
 
 <template>
@@ -56,16 +83,16 @@ function confirm() {
       <button class="ok" type="button" @click="confirm">확인</button>
     </div>
     <template v-else>
-      <div class="scrim"></div>
+      <div class="scrim" @click="current.mustConfirm || confirm()"></div>
       <div class="notice">
         <div class="h"><Icon name="megaphone" />{{ current.label }}<span v-if="toasts.items.length > 1" class="count">1 / {{ toasts.items.length }}</span></div>
         <template v-if="current.headline">
-          <p class="kind">{{ current.headline }}</p>
+          <p class="kind" :class="{ mine: current.kind === 'team.assigned' }">{{ current.headline }}</p>
           <p v-if="route" class="route"><span :class="`c-${route.fromCode}`">{{ route.from }}</span><Icon name="arrow" /><span :class="`c-${route.toCode}`">{{ route.to }}</span></p>
           <p v-if="current.detail" class="sub">{{ current.detail }}</p>
         </template>
         <p v-else class="msg">{{ current.message }}</p>
-        <button class="ok" type="button" @click="confirm">확인</button>
+        <button class="ok" type="button" @click="confirm">확인<i v-if="!current.mustConfirm" :key="run" class="left" :style="{ animationDuration: `${holdMs}ms` }"></i></button>
       </div>
     </template>
     <div class="edge"></div>
@@ -83,16 +110,18 @@ function confirm() {
 .h :deep(.icon) { font-size: 24px; }
 .count { margin-left: auto; font: 800 15px 'Archivo', sans-serif; }
 .kind { margin: 14px 0 0; font: 400 28px/1.1 var(--font-play); text-align: center; }
+.kind.mine { font-size: clamp(32px, 11vw, 44px); color: var(--team-line); word-break: keep-all; }
 .route { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 12px 0 0; font: 400 clamp(32px, 11vw, 44px)/1 var(--font-play); }
 .route :deep(.icon) { font-size: 34px; color: #c3c9d4; stroke-width: 2.8; }
 .c-white { color: #fff; }
 .c-yellow { color: #f5c518; }
 .c-blue { color: #5b9cff; }
 .c-red { color: #ff6b6b; }
-.sub { margin: 14px 0 0; font-size: 17px; font-weight: 600; line-height: 1.35; text-align: center; word-break: keep-all; }
+.sub { margin: 14px 0 0; font-size: 17px; font-weight: 600; line-height: 1.35; text-align: center; word-break: keep-all; white-space: pre-line; }
 .msg { margin: 12px 0 0; font-size: 23px; font-weight: 800; line-height: 1.32; word-break: keep-all; overflow-wrap: anywhere; }
 .ok { position: relative; width: 100%; height: 54px; margin-top: 16px; background: var(--accent); border: 0; color: var(--accent-fg); font-size: 18px; font-weight: 800; letter-spacing: 0; text-transform: none; }
 .ok:hover { background: var(--accent); color: var(--accent-fg); }
+.left { display: none; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--accent-fg); transform-origin: left; }
 .take { position: absolute; inset: 0; display: flex; flex-direction: column; padding: 22px 24px 28px; background: #c0101a; text-align: center; }
 .take .h { justify-content: center; font-size: 16px; }
 .take-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
@@ -103,6 +132,8 @@ function confirm() {
 .take .ok { flex: none; height: 64px; margin-top: 12px; border: 2px solid #fff; font-size: 20px; }
 @media (prefers-reduced-motion: no-preference) {
   .edge, .notice::before { animation: hue-run 2.4s linear infinite; }
+  .left { display: block; animation: time-left linear forwards; }
 }
 @keyframes hue-run { to { filter: hue-rotate(360deg); } }
+@keyframes time-left { to { transform: scaleX(0); } }
 </style>

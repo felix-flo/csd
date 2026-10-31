@@ -20,9 +20,9 @@ function baseScopeLabel(ev: GameEvent): string {
   }
 }
 
-/** 참가자 알림 머리글 (docs/107): 전체 알림 · 화이트 팀 알림 · 개인 알림 */
-export function noticeLabel(ev: GameEvent): string {
-  if (ev.scope === 'group') return `${ev.targetName ?? '팀'} 알림`
+/** 참가자 알림 머리글 (docs/107): 전체 알림 · 화이트 팀 알림 · 개인 알림. 시작 전에는 실제 팀 이름을 보여 주지 않는다 */
+export function noticeLabel(ev: GameEvent, beforeStart: boolean): string {
+  if (ev.scope === 'group') return beforeStart ? '팀 알림' : `${ev.targetName ?? '팀'} 알림`
   if (ev.scope === 'user') return '개인 알림'
   return '전체 알림'
 }

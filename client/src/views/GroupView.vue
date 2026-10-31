@@ -27,7 +27,7 @@ import { useRealtimeStore } from '../stores/realtime'
 import { useGameStore } from '../stores/game'
 import { useToastStore } from '../stores/toasts'
 import { api } from '../lib/api'
-import { teamThemeStyle } from '../lib/teamTheme'
+import { shortTeamName, teamThemeStyle } from '../lib/teamTheme'
 import type { GroupInfo, PublicUser } from '../../../shared/types'
 import { isBeforeStart } from '../../../shared/game'
 
@@ -84,6 +84,18 @@ watch(() => game.team?.spy, (spy) => {
     localStorage.setItem(spySeenKey(), '1')
   } catch { /* 저장 못 하면 매번 보일 수 있음 */ }
   spyIntro.value = true
+}, { immediate: true })
+// 화면에 팀 이름이 없어 팀이 정해지면(시작·이주) 한 번 알려 준다. 시작 인트로·테러리스트 카드가 닫힌 뒤 맨 먼저 보인다 (docs/107)
+const teamSeenKey = () => `csd:team-seen:${auth.user?.id}`
+let announcedTeam: number | null = null
+watch([() => s.value?.status, () => group.value?.id, () => auth.user?.nameSet], ([status, teamId, named]) => {
+  if (!toasts.sticky || !teamId || !named || status === 'ended' || teamId === announcedTeam) return
+  announcedTeam = teamId
+  try {
+    if (localStorage.getItem(teamSeenKey()) === String(teamId)) return
+    localStorage.setItem(teamSeenKey(), String(teamId))
+  } catch { /* 저장 못 하면 새로고침마다 보일 수 있음 */ }
+  toasts.showLocal('team.assigned', `${shortTeamName(group.value?.name)} 팀입니다`, '화면 색이 우리 팀 색입니다\n팀 룰은 오른쪽 위 책 아이콘에 있습니다')
 }, { immediate: true })
 const final = computed(() => (s.value?.status === 'final' || s.value?.status === 'ended' ? s.value.final : null))
 const running = computed(() => s.value?.status === 'running')

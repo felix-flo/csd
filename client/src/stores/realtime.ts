@@ -110,8 +110,7 @@ export const useRealtimeStore = defineStore('realtime', {
       })
       socket.on('replay:done', () => {
         this.replaying = false
-        // 밀린 공지는 최근 3건만 팝업, 나머지는 피드에서 확인
-        for (const ev of this.pendingToasts.slice(-3)) useToastStore().show(ev)
+        useToastStore().showMissed(this.pendingToasts)
         this.pendingToasts = []
       })
       socket.on('disconnect', async (reason) => {
