@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from './Icon.vue'
 /**
  * 거래 (거래 단계, docs/103 §10). 거래는 오프라인에서 협의하고 진행자 앞에서 진행한다.
  * 진행자가 내용을 입력해 올리면 두 팀 리더 화면에 요약이 강조 박스로 뜨고, 리더가 "예" 를 누르면 수락, 둘 다 수락하면
@@ -51,9 +52,9 @@ async function decide(accept: boolean) {
 
 <template>
   <div class="card" :class="{ attention: awaitingMe && isLeader, pending: trade }">
-    <h2>🤝 거래 <span v-if="awaitingMe && isLeader" class="badge warn">수락 대기</span></h2>
+    <h2><Icon name="aid" /> 거래 <span v-if="awaitingMe && isLeader" class="badge warn">수락 대기</span></h2>
 
-    <p v-if="!trade && warActive" class="war-block">⚔️ 전쟁 중에는 거래할 수 없습니다. 진행자가 결과를 정하면 다시 거래할 수 있습니다.</p>
+    <p v-if="!trade && warActive" class="war-block"><Icon name="war" /> 전쟁 중에는 거래할 수 없습니다. 진행자가 결과를 정하면 다시 거래할 수 있습니다.</p>
     <p v-else-if="!trade" class="muted">거래는 오프라인에서 협의한 뒤 <strong>진행자에게 가서</strong> 진행합니다. 진행자가 거래를 올리면 여기에 내용이 뜹니다.</p>
 
     <template v-else>
@@ -64,7 +65,7 @@ async function decide(accept: boolean) {
       <div class="summary">
         <div class="line"><span class="label">우리가 줌</span><strong>{{ offerText(mySide?.offer) }}</strong></div>
         <div class="line"><span class="label">우리가 받음</span><strong>{{ offerText(theirSide?.offer) }}</strong></div>
-        <div class="line"><span class="label">🎟️ 수수료</span><span>크레딧 1개 · <strong>{{ payerName }}</strong> 부담{{ iPay ? ' (우리 팀)' : '' }}</span></div>
+        <div class="line"><span class="label"><Icon name="credit" /> 수수료</span><span>크레딧 1개 · <strong>{{ payerName }}</strong> 부담{{ iPay ? ' (우리 팀)' : '' }}</span></div>
       </div>
       <p class="muted status">
         우리 팀 <span class="badge" :class="mySide?.accepted ? 'on' : 'warn'">{{ mySide?.accepted ? '수락함' : '대기' }}</span>

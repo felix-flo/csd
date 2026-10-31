@@ -92,7 +92,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', onKey); clearTimer
       <p v-if="countdown > 0" class="count mono">{{ countdown }}</p>
       <p class="sub">클릭 또는 Space 로 바로 시작 · ESC 로 영상 건너뛰기</p>
     </div>
-    <p v-else class="hint">{{ muted ? '🔇 소리 없이 재생 중 · 클릭하면 소리 켜기' : '클릭 또는 ESC 로 건너뛰기' }}</p>
+    <p v-else class="hint">{{ muted ? '소리 없이 재생 중 · 클릭하면 소리 켜기' : '클릭 또는 ESC 로 건너뛰기' }}</p>
   </div>
 </template>
 

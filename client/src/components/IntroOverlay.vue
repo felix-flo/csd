@@ -50,7 +50,7 @@ function onAnimationEnd(e: AnimationEvent) {
   position: fixed;
   inset: 0;
   z-index: 1100;
-  background: #ececec;
+  background: #15171c; /* 캔버스(--bg)와 같은 색. 인트로 이미지 레터박스 */
   opacity: 0;
   animation: intro-in 2s ease-in-out forwards;
   -webkit-tap-highlight-color: transparent;

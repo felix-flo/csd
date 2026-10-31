@@ -167,9 +167,9 @@ function recompute() {
 <style scoped>
 h3 { font-size: 0.95rem; margin: 16px 0 6px; font-weight: 600; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 .steps { display: flex; gap: 4px; list-style: none; margin: 8px 0 0; padding: 0; flex-wrap: wrap; }
-.steps li { font-family: var(--font-mono); font-size: 0.75rem; padding: 2px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); }
-.steps li.past { color: var(--line-strong); border-color: var(--line-soft); }
-.steps li.cur { color: #fff; background: var(--blue); border-color: var(--blue); }
+.steps li { font-family: var(--font-mono); font-size: 0.75rem; padding: 2px 10px; border-bottom: 2px solid transparent; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.steps li.past { color: var(--line-strong); }
+.steps li.cur { color: var(--gold); font-weight: 700; border-bottom-color: var(--gold); }
 .tbl { border-collapse: collapse; font-size: 0.92rem; }
 .tbl td { text-align: left; padding: 5px 12px 5px 0; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
 .blocker { color: var(--red); font-size: 0.88rem; }

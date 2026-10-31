@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from '../components/Icon.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import TopBar from '../components/TopBar.vue'
 import EventFeed from '../components/EventFeed.vue'
@@ -79,7 +80,7 @@ async function send() {
   <div class="page" style="max-width: 960px">
     <TopBar title="게임 진행자">
       <template v-if="game.admin?.settings.tabLogin" #subtitle>
-        관리자 (admin) · <span class="badge warn">🧪 테스트 모드 (탭 로그인)</span>
+        관리자 (admin) · <span class="badge warn"><Icon name="flask" /> 테스트 모드 (탭 로그인)</span>
       </template>
     </TopBar>
     <GameControlCard :users="users" :groups="groups" @updated="onUpdated" />

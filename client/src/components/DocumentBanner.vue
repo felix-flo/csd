@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from './Icon.vue'
 /** 문서 갱신 알림 배너. 모든 화면 상단에 표시. 팀 룰 갱신은 그 팀(+관리자)에게만 온다 */
 import { useRouter } from 'vue-router'
 import { useDocumentsStore } from '../stores/documents'
@@ -15,7 +16,7 @@ function open(slug: string) {
 
 <template>
   <div v-for="slug in docs.updated" :key="slug" class="banner row">
-    <span>📢 <strong>{{ docs.docs[slug]?.title ?? slug }}</strong> 이(가) 갱신되었습니다.</span>
+    <span><Icon name="megaphone" /> <strong>{{ docs.docs[slug]?.title ?? slug }}</strong> 이(가) 갱신되었습니다.</span>
     <button class="small" @click="open(slug)">보기</button>
     <button class="small secondary" @click="docs.dismiss(slug)">닫기</button>
   </div>

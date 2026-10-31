@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from '../components/Icon.vue'
 import { onMounted, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
@@ -70,7 +71,7 @@ async function submit() {
         <button type="submit" :disabled="busy">입장</button>
       </form>
       <p v-if="error" class="error">{{ error }}</p>
-      <p v-if="tabLogin" class="muted" style="margin-top: 12px">🧪 테스트 모드: 이 탭에서만 로그인됩니다. 새 탭은 다시 로그인하세요.</p>
+      <p v-if="tabLogin" class="muted" style="margin-top: 12px"><Icon name="flask" /> 테스트 모드: 이 탭에서만 로그인됩니다. 새 탭은 다시 로그인하세요.</p>
     </div>
   </div>
 </template>

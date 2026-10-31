@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from './Icon.vue'
 /**
  * 팀 재화 (관리자, 게임 시작 후): 현재 보유량, 생산·정정 입력, 대가 없는 원조, 변동 이력.
  * - 생산·원조의 팀 선택은 고른 팀의 색으로 칠해 다른 팀에 잘못 넣는 실수를 막는다 (docs/103 §2)
@@ -88,7 +89,7 @@ async function applyAid() {
       <thead>
         <tr>
           <th>팀</th>
-          <th v-for="r in RESOURCES" :key="r.key">{{ r.emoji }} {{ r.label }}</th>
+          <th v-for="r in RESOURCES" :key="r.key"><Icon :name="r.key" /> {{ r.label }}</th>
           <th>팀원</th>
         </tr>
       </thead>
@@ -112,7 +113,7 @@ async function applyAid() {
         <option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}</option>
       </select>
       <label v-for="r in RESOURCES" :key="r.key" class="row" style="gap: 4px">
-        {{ r.emoji }} <input v-model.number="adj[r.key]" type="number" style="width: 5em" :title="`${r.label} 증감 (음수 = 차감)`" />
+        <Icon :name="r.key" /> <input v-model.number="adj[r.key]" type="number" style="width: 5em" :title="`${r.label} 증감 (음수 = 차감)`" />
       </label>
       <label class="row" style="gap: 4px"><input v-model="reason" type="radio" value="production" /> 생산</label>
       <label class="row" style="gap: 4px"><input v-model="reason" type="radio" value="correction" /> 정정</label>
@@ -142,7 +143,7 @@ async function applyAid() {
         <option v-for="g in groups" :key="g.id" :value="g.id" :disabled="g.id === aidFrom">{{ g.name }}</option>
       </select>
       <label v-for="r in RESOURCES" :key="r.key" class="row" style="gap: 4px">
-        {{ r.emoji }} <input v-model.number="aid[r.key]" type="number" min="0" style="width: 5em" />
+        <Icon :name="r.key" /> <input v-model.number="aid[r.key]" type="number" min="0" style="width: 5em" />
       </label>
       <button type="submit" :disabled="busy || !aidFrom || !aidTo || !aidText">원조 처리</button>
     </form>
@@ -189,6 +190,6 @@ h3 .muted { font-weight: 400; font-size: 0.8rem; }
 summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
 /* 팀 선택 강조 (docs/103 §2): 고른 팀 색으로 테두리·글자, 옆에 팀 칩 */
 .team-select.picked { border: 2px solid var(--team); color: var(--team); font-weight: 700; background: color-mix(in srgb, var(--team) 12%, var(--surface)); }
-.team-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 2px solid var(--team); border-radius: 999px; font-weight: 700; color: var(--team); background: color-mix(in srgb, var(--team) 12%, var(--surface)); }
+.team-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 2px solid var(--team); border-radius: var(--radius); font-weight: 700; color: var(--team); background: color-mix(in srgb, var(--team) 12%, var(--surface)); }
 .team-apply { border: 2px solid var(--team, var(--ink)); }
 </style>

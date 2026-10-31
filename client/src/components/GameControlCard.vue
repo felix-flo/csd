@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from './Icon.vue'
 /**
  * 게임 진행 (관리자): 준비 상태 점검·리더 지정·게임 시작 / 단계 넘기기 / 다음 날 / 게임 종료(= 최종장 시작) / 리셋, 그리고 현재 단계의 팀별 현황.
  * - 마지막 라운드 리더 협의: 필수 안건(라이프 투표권) 통과/부결 입력. 넣어야 라이프 제출로 넘어간다 (docs/100 N2)
@@ -66,7 +67,7 @@ const endBlocker = computed(() => {
 const warToday = computed(() => view.value?.war.today ?? null)
 /** 진행 중 전쟁이 있으면 단계 넘기기·게임 종료 불가 (서버도 409 war_active) */
 const warActive = computed(() => warToday.value?.status === 'declared')
-const warBlocker = computed(() => (warActive.value ? '⚔️ 전쟁 결과를 먼저 정하세요' : ''))
+const warBlocker = computed(() => (warActive.value ? '전쟁 결과를 먼저 정하세요' : ''))
 /** 다음 라운드 전쟁 허용/제재 (리더 협의 단계, docs/103 §12) */
 function setWarAllowed(allowed: boolean) {
   return run(`${(s.value?.day ?? 0) + 1}라운드 전쟁 ${allowed ? '허용' : '제재'}`, () => api.post('/api/admin/war/allow', { allowed }))
@@ -214,9 +215,9 @@ const modalText = computed(() => {
       const sp = view.value?.spy
       const spyWarn = !sp ? '' : sp.selected.length
         ? `\n테러리스트 ${sp.selected.length}명: ${sp.selected.map(nameOf).join(', ')} (시작하면 본인에게만 무음으로 알립니다)`
-        : '\n\n⚠️ 달을 고른 후보가 없어 테러리스트 없이 시작합니다.'
+        : '\n\n달을 고른 후보가 없어 테러리스트 없이 시작합니다.'
       const fateWarn = sp?.counts.none ? `\n운명의 카드를 고르지 않은 ${sp.counts.none}명은 태양으로 처리됩니다.` : ''
-      const tab = view.value?.settings.tabLogin ? '\n\n⚠️ 테스트 모드(탭 로그인)가 켜져 있습니다. 참가자가 새 탭을 열 때마다 다시 로그인해야 합니다. 실제 진행이면 "게임 설정"에서 끄세요.' : ''
+      const tab = view.value?.settings.tabLogin ? '\n\n테스트 모드(탭 로그인)가 켜져 있습니다. 참가자가 새 탭을 열 때마다 다시 로그인해야 합니다. 실제 진행이면 "게임 설정"에서 끄세요.' : ''
       return { title: '게임을 시작할까요?', message: `총 ${st.totalDays}라운드. 시작하면 참가자 화면이 게임 화면으로 바뀌고 1라운드 리더 선출이 열립니다.${warn}${fateWarn}${spyWarn}${tab}` }
     }
     case 'revert':
@@ -239,11 +240,11 @@ const modalText = computed(() => {
         const lose = r === 'attacker' ? d : a
         return {
           title: `${win} 승리로 정할까요?`,
-          message: `⚔️ ${a} → ${d}\n${lose}의 모든 재화(보석·골드·라이프·크레딧) 절반(내림)을 ${josa(win, '이/가')} 가져갑니다.\n결과는 전체에 알리고, 가져간 수량은 ${win}에게만 보입니다. 되돌릴 수 없습니다.`,
+          message: `${a} → ${d}\n${lose}의 모든 재화(보석·골드·라이프·크레딧) 절반(내림)을 ${josa(win, '이/가')} 가져갑니다.\n결과는 전체에 알리고, 가져간 수량은 ${win}에게만 보입니다. 되돌릴 수 없습니다.`,
         }
       }
-      if (r === 'draw') return { title: '무승부로 정할까요?', message: `⚔️ ${a} → ${d}\n재화 이동은 없고, 낸 선포 비용은 돌려주지 않습니다. 되돌릴 수 없습니다.` }
-      return { title: '전쟁을 취소할까요?', message: `⚔️ ${a} → ${d}\n재화 이동은 없고, 낸 선포 비용은 돌려주지 않습니다. 이번 라운드에는 다시 선포할 수 없습니다.` }
+      if (r === 'draw') return { title: '무승부로 정할까요?', message: `${a} → ${d}\n재화 이동은 없고, 낸 선포 비용은 돌려주지 않습니다. 되돌릴 수 없습니다.` }
+      return { title: '전쟁을 취소할까요?', message: `${a} → ${d}\n재화 이동은 없고, 낸 선포 비용은 돌려주지 않습니다. 이번 라운드에는 다시 선포할 수 없습니다.` }
     }
     default:
       return { title: '', message: '' }
@@ -416,10 +417,10 @@ const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(t
       </p>
 
       <!-- 운명의 카드 · 테러리스트 지정 (docs/100 N4) -->
-      <h3>🌙 운명의 카드 · 테러리스트 지정</h3>
+      <h3><Icon name="moon" /> 운명의 카드 · 테러리스트 지정</h3>
       <p class="muted" style="margin: 0 0 6px">
         팀을 고른 참가자는 태양/달 중 하나를 고릅니다 (달 = 테러리스트 후보).
-        ☀️ 태양 <strong>{{ view.spy.counts.sun }}</strong> · 🌙 달 <strong>{{ view.spy.counts.moon }}</strong> · 미선택 <strong>{{ view.spy.counts.none }}</strong>
+        <Icon name="sun" /> 태양 <strong>{{ view.spy.counts.sun }}</strong> · <Icon name="moon" /> 달 <strong>{{ view.spy.counts.moon }}</strong> · 미선택 <strong>{{ view.spy.counts.none }}</strong>
       </p>
       <p v-if="!view.spy.candidates.length" class="muted" style="margin: 0">아직 달을 고른 후보가 없습니다. 후보가 없으면 테러리스트 없이 시작합니다.</p>
       <template v-else>
@@ -443,7 +444,7 @@ const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(t
 
     <!-- 테러리스트 현황 (관리자만) -->
     <template v-if="(s.status === 'running' || s.status === 'final') && view.spy.spies.length">
-      <h3>🕵️ 테러리스트 <span class="muted">관리자만 보입니다 · 시작 이후 탈락자 1명당 5천 원 (최대 5만 원)</span></h3>
+      <h3><Icon name="spy" /> 테러리스트 <span class="muted">관리자만 보입니다 · 시작 이후 탈락자 1명당 5천 원 (최대 5만 원)</span></h3>
       <table class="tbl">
         <tbody>
           <tr v-for="x in view.spy.spies" :key="x.userId">
@@ -488,7 +489,7 @@ const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(t
 
     <!-- 거래 -->
     <template v-if="s.status === 'running' && s.phase === 'trade'">
-      <h3>🤝 거래 <span class="muted">오프라인 협의 → 여기서 입력 → 두 리더 수락</span></h3>
+      <h3><Icon name="aid" /> 거래 <span class="muted">오프라인 협의 → 여기서 입력 → 두 리더 수락</span></h3>
       <div v-if="view.trade" class="trade">
         <div><strong>{{ tradeLine(view.trade) }}</strong> <span class="badge warn">리더 수락 대기</span></div>
         <div class="muted">
@@ -498,7 +499,7 @@ const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(t
         </div>
         <button class="secondary small" :disabled="busy" @click="modal = 'cancelTrade'">강제 취소</button>
       </div>
-      <div v-else-if="warActive" class="muted">⚔️ 전쟁 중에는 거래할 수 없습니다.</div>
+      <div v-else-if="warActive" class="muted"><Icon name="war" /> 전쟁 중에는 거래할 수 없습니다.</div>
       <form v-else class="trade-form" @submit.prevent="!tradeProblem && (modal = 'trade')">
         <div class="row">
           <select v-model="tradeForm.from" class="team-select" :class="{ picked: !!tradeForm.from }" :style="teamStyle(tradeForm.from)">
@@ -510,7 +511,7 @@ const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(t
             <option :value="null" disabled>팀 B</option>
             <option v-for="g in groups" :key="g.id" :value="g.id" :disabled="g.id === tradeForm.from">{{ g.name }}</option>
           </select>
-          <span class="muted">🎟️ 크레딧 1개 부담:</span>
+          <span class="muted"><Icon name="credit" /> 크레딧 1개 부담:</span>
           <label v-for="id in [tradeForm.from, tradeForm.to]" :key="id ?? 0" class="row" style="gap: 4px">
             <input v-model="tradeForm.creditPayer" type="radio" :value="id" :disabled="!id" /> {{ id ? team(id)?.name : '-' }}
           </label>
@@ -532,14 +533,14 @@ const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(t
 
     <!-- 전쟁: 오늘 비용·진행 중 전쟁 결과 지정·다음 날 비용 -->
     <template v-if="s.status === 'running'">
-      <h3>⚔️ 전쟁</h3>
+      <h3><Icon name="war" /> 전쟁</h3>
       <p class="muted" style="margin-top: 0">
         이번 라운드({{ s.day }}라운드)
         <template v-if="!view.war.todayAllowed"><strong class="error">전쟁 금지</strong> (리더 협의 결과 · 선포 불가)</template>
         <template v-else>선포 비용: <strong>{{ costText(view.war.todayCost) }}</strong> · 거래 단계에서 리더가 선포하면 즉시 시작 (라운드당 1회, 먼저 선포한 팀만). 낸 비용은 소멸합니다.</template>
       </p>
       <div v-if="warToday && warActive" class="war-active">
-        <div><strong>⚔️ 전쟁 중: {{ team(warToday.attacker)?.name }} → {{ team(warToday.defender)?.name }}</strong> <span class="muted">(비용 {{ costText(warToday.cost) }})</span></div>
+        <div><strong><Icon name="war" /> 전쟁 중: {{ team(warToday.attacker)?.name }} → {{ team(warToday.defender)?.name }}</strong> <span class="muted">(비용 {{ costText(warToday.cost) }})</span></div>
         <div class="muted">오프라인 게임 결과를 지정하세요. 결과가 나올 때까지 모든 거래와 단계 넘기기가 멈춥니다. 승·패·무승부를 넣으면 거래 단계가 끝나고 리더 협의로 넘어갑니다.</div>
         <div class="row" style="margin-top: 6px">
           <button class="danger" :disabled="busy" @click="askWar('attacker')">{{ team(warToday.attacker)?.name }} 승리</button>
@@ -575,7 +576,7 @@ const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(t
 
     <!-- 이주 (docs/100 N3) -->
     <template v-if="s.status === 'running' && s.day >= migrationOpenFrom">
-      <h3>🧳 이주 <span class="muted">{{ migrationOpenFrom }}라운드부터 · 라이프 제출 단계 제외</span></h3>
+      <h3><Icon name="migration" /> 이주 <span class="muted">{{ migrationOpenFrom }}라운드부터 · 라이프 제출 단계 제외</span></h3>
       <p v-if="!view.migrations.pending.length" class="muted" style="margin: 0">대기 중인 이주 신청 없음</p>
       <table v-else class="tbl">
         <tbody>
@@ -600,12 +601,12 @@ const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(t
 
     <!-- 리더간 협의 -->
     <template v-if="s.status === 'running' && s.phase === 'council'">
-      <h3>🗣️ 리더 협의</h3>
+      <h3><Icon name="council" /> 리더 협의</h3>
       <p class="muted" style="margin: 0">
-        🤝 대가 없는 원조는 아래 "팀 재화" 카드의 원조 입력으로 처리합니다 (게임 전체 라운드당 1회{{ view.aidsToday.length ? ' · 이번 라운드 처리됨' : '' }}. 리더 4명 중 3명 찬성).
+        <Icon name="aid" /> 대가 없는 원조는 아래 "팀 재화" 카드의 원조 입력으로 처리합니다 (게임 전체 라운드당 1회{{ view.aidsToday.length ? ' · 이번 라운드 처리됨' : '' }}. 리더 4명 중 3명 찬성).
       </p>
       <div v-if="!isLastDay" class="life-vote" :class="{ missing: view.war.nextAllowed == null }" style="margin-top: 8px">
-        <div><strong>⚔️ {{ s.day + 1 }}라운드 전쟁 허용 / 제재</strong></div>
+        <div><strong><Icon name="war" /> {{ s.day + 1 }}라운드 전쟁 허용 / 제재</strong></div>
         <div class="muted">제재면 다음 라운드에는 어느 팀도 전쟁을 선포할 수 없습니다. 입력하지 않으면 허용입니다.</div>
         <div class="row" style="margin-top: 6px">
           <button :class="{ secondary: view.war.nextAllowed !== true }" :disabled="busy" @click="setWarAllowed(true)">허용</button>
@@ -616,7 +617,7 @@ const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(t
       </div>
     </template>
     <div v-if="lifeVoteOpen" class="life-vote" :class="{ missing: s.lifeVote == null }">
-      <div><strong>📜 필수 안건: 남은 라이프를 최종 투표권으로 인정할까요?</strong></div>
+      <div><strong><Icon name="scroll" /> 필수 안건: 남은 라이프를 최종 투표권으로 인정할까요?</strong></div>
       <div class="muted">리더 4명 중 3명 찬성이면 통과. 부결이면 최종 투표는 리더만 1표. 통과 시 팀 라이프 1개로 1표 (1인 1장): 리더는 1표 더, 팀원은 이것으로만 투표. 라이프 제출로 넘어가면 바꿀 수 없습니다.</div>
       <div class="row" style="margin-top: 6px">
         <button :class="{ secondary: s.lifeVote !== true }" :disabled="busy" @click="setLifeVote(true)">통과</button>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from './Icon.vue'
 /**
  * 최종장 결과 (docs/100 N2 + D7, 룰 04 결과·보상). 프레젠테이션에서는 큰 글씨.
  * - 투표 마감 뒤: 득표 "보석 N표 · 골드 N표" (동점이면 가위바위보 결과)
@@ -25,12 +26,12 @@ const tiebreakText = computed(() => (props.final.tiebreak ? `동점 · 가위바
   <div v-if="final.closed" class="card results" :class="{ large }">
     <h2>최종 결과</h2>
     <p class="votes mono">
-      💎 보석 <strong>{{ final.tally?.gem }}</strong>표 · 🥇 골드 <strong>{{ final.tally?.gold }}</strong>표
+      <Icon name="gem" /> 보석 <strong>{{ final.tally?.gem }}</strong>표 · <Icon name="gold" /> 골드 <strong>{{ final.tally?.gold }}</strong>표
       <span v-if="tiebreakText" class="muted">· {{ tiebreakText }}</span>
       <span v-else-if="final.tieUnresolved" class="muted">· 동점 — 화이트·옐로우 리더 가위바위보</span>
     </p>
     <template v-if="revealed && adopted">
-      <p class="adopted">상금 화폐는 <strong>{{ adopted === 'gem' ? '💎' : '🥇' }} {{ RESOURCE_LABELS[adopted] }}</strong></p>
+      <p class="adopted">상금 화폐는 <strong><Icon :name="adopted" /> {{ RESOURCE_LABELS[adopted] }}</strong></p>
       <p class="issued muted">
         마지막 라운드 발행: {{ issuer('gem') }} 보석 <strong class="mono">{{ final.lastIssue?.gem }}</strong>개 ·
         {{ issuer('gold') }} 골드 <strong class="mono">{{ final.lastIssue?.gold }}</strong>개
@@ -48,9 +49,9 @@ const tiebreakText = computed(() => (props.final.tiebreak ? `동점 · 가위바
       </tbody>
     </table>
     <div v-if="final.spies" class="spies">
-      <p v-if="!final.spies.length" class="spy-line">🕵️ 테러리스트는 없었습니다</p>
+      <p v-if="!final.spies.length" class="spy-line"><Icon name="spy" /> 테러리스트는 없었습니다</p>
       <p v-for="x in final.spies" :key="x.userId" class="spy-line">
-        🕵️ 테러리스트는 <strong>{{ x.name }}</strong>님<span v-if="teamOf(x.teamId)" class="muted"> (<TeamMark :color="teamOf(x.teamId)!.color" />{{ teamOf(x.teamId)!.name }})</span>이었습니다
+        <Icon name="spy" /> 테러리스트는 <strong>{{ x.name }}</strong>님<span v-if="teamOf(x.teamId)" class="muted"> (<TeamMark :color="teamOf(x.teamId)!.color" />{{ teamOf(x.teamId)!.name }})</span>이었습니다
         · 테러리스트 보상 <strong class="mono">{{ x.alive ? won(x.reward) : '0원 (탈락)' }}</strong>
       </p>
     </div>

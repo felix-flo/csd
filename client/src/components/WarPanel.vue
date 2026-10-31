@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from './Icon.vue'
 /**
  * 전쟁 선포 (거래 단계, 리더만). 라운드당 게임 전체 1회, 진행 중 전쟁이 있으면 선포할 수 없다.
  * 상대 팀을 고르고 "전쟁 선포" → 확인 팝업 → 즉시 비용(보석·골드·크레딧)이 빠지고 전쟁이 시작된다 (docs/103 §4, 승인 단계 없음).
@@ -63,7 +64,7 @@ async function declare() {
 
 <template>
   <div class="card war-card" :class="{ banned }">
-    <h2>⚔️ 전쟁 <span v-if="banned" class="badge off">이번 라운드 금지</span></h2>
+    <h2><Icon name="war" /> 전쟁 <span v-if="banned" class="badge off">이번 라운드 금지</span></h2>
     <p v-if="war?.active" class="active">
       <strong>전쟁 중: {{ nameOf(war.active.attacker) }} → {{ nameOf(war.active.defender) }}</strong><br />
       진행자가 오프라인 게임으로 승패를 정합니다. 결과가 나올 때까지 모든 거래가 멈추고, 결과가 나오면 리더 협의로 넘어갑니다.

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from './Icon.vue'
 /**
  * 보석·골드 발행 (화이트팀 = 보석, 옐로우팀 = 골드). 요청은 리더만, 팀원은 진행 상황만 본다.
  * 수량 입력 → "발행" → 확인 팝업 → 확정하면 즉시 팀 재화에 더해진다 (진행자 수락 없음, docs/103 §9). 되돌릴 수 없다.
@@ -20,7 +21,6 @@ const error = ref('')
 const confirmOpen = ref(false)
 
 const label = computed(() => RESOURCE_LABELS[props.issue.kind])
-const emoji = computed(() => RESOURCE_BY_KEY[props.issue.kind].emoji)
 const valid = computed(() => Number.isInteger(amount.value) && amount.value! >= 1 && amount.value! <= props.issue.remaining)
 const canRequest = computed(() => props.isLeader && props.issue.open && !props.issue.issuedToday && props.issue.remaining > 0)
 const hint = computed(() => {
@@ -53,14 +53,14 @@ async function submit() {
 
 <template>
   <div class="card">
-    <h2>{{ emoji }} {{ label }} 발행</h2>
+    <h2><Icon :name="issue.kind" /> {{ label }} 발행</h2>
     <p class="remain">
       이번 라운드 남은 발행 가능량 <strong>{{ issue.remaining }}</strong>개
       <span class="muted">· {{ carryNote }}</span>
     </p>
 
     <p v-if="issue.lastRoundPhases" class="warn-note">
-      🔒 마지막 라운드: <strong>{{ lastPhases }}</strong> 단계에서만 발행할 수 있습니다. 이번 발행량은 공개되지 않습니다.
+      <Icon name="lock" /> 마지막 라운드: <strong>{{ lastPhases }}</strong> 단계에서만 발행할 수 있습니다. 이번 발행량은 공개되지 않습니다.
     </p>
 
     <p v-if="canRequest" class="muted once">발행은 라운드당 1회이며 누르는 즉시 팀 재화에 더해집니다.</p>
