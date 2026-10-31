@@ -30,7 +30,7 @@ export type GameStatus = 'setup' | 'ready' | 'running' | 'final' | 'ended'
 
 /** 단계 타이머(초, docs/103 §14): 거래 15분 · 리더 협의 5분. 강제는 없고 0이 되면 전체에 "시간 종료" 알림 1회 */
 export const PHASE_TIMER_SECONDS: Partial<Record<Phase, number>> = { trade: 15 * 60, council: 5 * 60 }
-export const PHASE_TIMEOUT_MESSAGES: Partial<Record<Phase, string>> = { trade: '⏱️ 거래 시간이 종료되었습니다.', council: '⏱️ 리더간 협의가 종료되었습니다.' }
+export const PHASE_TIMEOUT_MESSAGES: Partial<Record<Phase, string>> = { trade: '거래 시간이 종료되었습니다.', council: '리더간 협의가 종료되었습니다.' }
 
 /** 진행 중 단계 타이머 (프레젠테이션 카운트다운용). 클라이언트는 serverNow 와 자기 시계의 차이로 보정한다 */
 export interface PhaseTimer {
@@ -148,7 +148,7 @@ export interface GameState {
    * 화면 코드에 넣으면 JS 파일로 미리 보이므로 서버에만 둔다 (server/src/db/game.ts GAME_TITLE)
    */
   title: string | null
-  /** 전쟁 (진행 중일 때만 의미 있음). 모든 화면 상단 "⚔️ 전쟁 중" 띠, 거래 금지 표시에 쓴다 */
+  /** 전쟁 (진행 중일 때만 의미 있음). 모든 화면 상단 "전쟁 중" 띠, 거래 금지 표시에 쓴다 */
   war: PublicWarState
   /** 현황판 공개: 마지막 라운드 전까지 수락된 골드 발행 합계 (docs/100 D5). 시작 전은 null. 최종장 결과 발표부터 마지막 라운드 포함 */
   goldIssued: number | null
@@ -233,7 +233,7 @@ export interface GameSettings {
 
 /** 운명의 카드: 달 = 테러리스트 후보, 태양 = 후보 아님 */
 export type Fate = 'sun' | 'moon'
-export const FATE_LABELS: Record<Fate, string> = { sun: '☀️ 태양', moon: '🌙 달' }
+export const FATE_LABELS: Record<Fate, string> = { sun: '태양', moon: '달' }
 /** 시작 이후 탈락자 1명당 적립, 최대 (룰 03 §12) */
 export const SPY_REWARD_PER = 5000
 export const SPY_REWARD_MAX = 50000

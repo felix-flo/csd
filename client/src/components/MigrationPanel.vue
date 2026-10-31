@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from './Icon.vue'
 /**
  * 이주 (참가자, docs/100 N3). 이주 시작 라운드부터 보인다.
  * - 일반 팀원: 받을 팀을 골라 신청 (확인 팝업: 빈손 이동) → 대기 중이면 취소. 1인 대기 1건
@@ -67,7 +68,7 @@ function onConfirm() {
 
 <template>
   <div v-if="day >= migration.startDay" class="card">
-    <h2>🧳 이주</h2>
+    <h2><Icon name="migration" /> 이주</h2>
     <!-- 리더: 받은 신청 -->
     <template v-if="isLeader">
       <p class="muted">리더는 이주를 신청할 수 없습니다. 우리 팀으로 온 신청을 수락하거나 거절하세요.</p>

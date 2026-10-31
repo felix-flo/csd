@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from './Icon.vue'
 /**
  * 테스트 모드 (탭 로그인, docs/101.테스트모드_탭로그인.md) 전환 (관리자).
  * 켜면 로그인 때 리프레시 쿠키를 심지 않아 탭마다 따로 로그인한다 — 한 기기에서 여러 계정으로 테스트할 때.
@@ -31,7 +32,7 @@ async function toggle(e: Event) {
 <template>
   <label class="row tab-login" :class="{ on }" style="gap: 6px">
     <input type="checkbox" :checked="on" :disabled="busy" @change="toggle" />
-    🧪 테스트 모드 (탭 로그인)
+    <Icon name="flask" /> 테스트 모드 (탭 로그인)
     <span class="muted">— 리프레시 토큰을 쓰지 않아 탭마다 따로 로그인합니다. 실제 진행 전에 끄세요</span>
     <span v-if="error" class="error">{{ error }}</span>
   </label>

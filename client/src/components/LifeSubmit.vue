@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from './Icon.vue'
 /**
  * 라이프 제출 (리더). 살릴 인원 수(= 쓸 라이프 수)와 자진 탈락 여부만 정한다 (docs/100.최종룰_차이_결정사항.md D1).
  * - 자진 탈락 안 함: 리더 생존 + 리더 외 팀원 중 무작위 (N−1)명. 자진 탈락: 리더 외 팀원 중 무작위 N명
@@ -142,9 +143,9 @@ const nameOf = (id: number) => shown.value?.names[id] ?? props.members.find((m) 
       </p>
 
       <p v-if="noLives" class="warn">라이프가 없어 1명만 생존합니다 (라이프 소모 없음).</p>
-      <p v-else-if="alone" class="warn">💙 살릴 인원 1명 (본인) · 라이프 1개 사용</p>
+      <p v-else-if="alone" class="warn"><Icon name="life" /> 살릴 인원 1명 (본인) · 라이프 1개 사용</p>
       <div v-else class="stepper">
-        <span>💙 살릴 인원 <span class="muted">/ 최대 {{ max }}</span></span>
+        <span><Icon name="life" /> 살릴 인원 <span class="muted">/ 최대 {{ max }}</span></span>
         <span class="row" style="gap: 4px">
           <button class="secondary sq" type="button" :disabled="busy || count <= 1" @click="setCount(count - 1); note = ''">−</button>
           <input

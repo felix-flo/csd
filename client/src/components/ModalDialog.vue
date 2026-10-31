@@ -38,7 +38,7 @@ const emit = defineEmits<{ confirm: []; cancel: []; alt: [] }>()
   position: fixed;
   inset: 0;
   z-index: 900;
-  background: rgba(0, 0, 0, 0.35);
+  background: rgba(0, 0, 0, 0.65);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -47,10 +47,9 @@ const emit = defineEmits<{ confirm: []; cancel: []; alt: [] }>()
 .modal {
   width: min(420px, 100%);
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 2px solid var(--line-strong);
   border-radius: var(--radius);
   padding: 18px 16px 14px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
 }
 .msg { margin: 0 0 12px; white-space: pre-line; }
 .actions { justify-content: flex-end; margin-top: 12px; }

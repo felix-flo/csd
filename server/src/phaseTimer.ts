@@ -20,7 +20,7 @@ export function schedulePhaseTimer() {
   handle = setTimeout(() => {
     handle = null
     if (!markPhaseTimerFired(day, t.phase)) return // 그사이 단계가 바뀌었거나 이미 보냄
-    const message = PHASE_TIMEOUT_MESSAGES[t.phase] ?? '⏱️ 시간이 종료되었습니다.'
+    const message = PHASE_TIMEOUT_MESSAGES[t.phase] ?? '시간이 종료되었습니다.'
     publishEvent(insertEvent({ type: 'game', scope: 'all', targetId: null, payload: { kind: 'phase.timeout', message, day, phase: t.phase }, createdBy: null }))
   }, ms)
 }

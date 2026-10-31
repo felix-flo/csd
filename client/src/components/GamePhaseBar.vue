@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import Icon from './Icon.vue'
 /**
  * 게임 진행 표시줄. 모든 역할의 상단바 아래에 붙는다 (TopBar).
  * "2라운드 / 총 6라운드 · 거래 중" + 라운드 흐름 5단계 중 현재 위치. 준비 상태에서는 "게임 준비 중".
  * 최종장(docs/100 N2)은 "최종장 · 최종 투표" + 최종 투표 → 결과 발표 → 정산. "테러리스트 공개" 칩은 그 단계가 되기 전까지 숨긴다 (docs/103 §13: 테러리스트 존재를 미리 알리지 않게).
- * 전쟁 중(선포~결과)에는 아래에 "⚔️ 전쟁 중: 공격팀 → 방어팀 · 모든 거래 중지" 띠를 붙인다.
+ * 전쟁 중(선포~결과)에는 아래에 "전쟁 중: 공격팀 → 방어팀 · 모든 거래 중지" 띠를 붙인다.
  */
 import { computed } from 'vue'
 import { useGameStore } from '../stores/game'
@@ -45,7 +46,7 @@ const finalFlow = computed(() => (s.value?.final?.step === 'spy' ? FINAL_FLOW : 
     <div v-else class="now"><strong>게임 끝</strong><span class="muted">수고하셨습니다</span></div>
   </div>
   <div v-if="war" class="war-bar" :class="{ large }" role="status">
-    ⚔️ <strong>전쟁 중: {{ nameOf(war.attacker) }} → {{ nameOf(war.defender) }}</strong>
+    <Icon name="war" /> <strong>전쟁 중: {{ nameOf(war.attacker) }} → {{ nameOf(war.defender) }}</strong>
     <span>· 결과가 나올 때까지 모든 거래 중지</span>
   </div>
 </template>
@@ -60,8 +61,8 @@ const finalFlow = computed(() => (s.value?.final?.step === 'spy' ? FINAL_FLOW : 
   padding: 10px 12px;
   margin-bottom: 14px;
   background: var(--surface);
-  border: 1px solid var(--line-soft);
-  border-left: 3px solid var(--blue);
+  border: 2px solid var(--line-soft);
+  border-left: 4px solid var(--blue);
   border-radius: var(--radius);
 }
 .war-bar { margin: -6px 0 14px; padding: 10px 12px; border: 2px solid var(--red); border-left-width: 6px; border-radius: var(--radius); background: var(--red-bg); color: var(--red); }
@@ -71,15 +72,16 @@ const finalFlow = computed(() => (s.value?.final?.step === 'spy' ? FINAL_FLOW : 
 .phase-bar.ended { border-left-color: var(--ink); }
 .phase-bar.ready { border-left-color: var(--line-strong); }
 .now { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
-.now strong { font-size: 1.1rem; }
-.day { font-size: 0.9rem; }
+.now strong { font-family: var(--font-display); font-weight: 900; font-stretch: 125%; text-transform: uppercase; font-size: 1.15rem; letter-spacing: 0.02em; }
+.day { font-size: 0.9rem; font-variant-numeric: tabular-nums; }
 .steps { display: flex; gap: 4px; list-style: none; margin: 0; padding: 0; flex-wrap: wrap; }
 .steps li {
   font-family: var(--font-mono);
   font-size: 0.78rem;
   padding: 2px 8px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  text-transform: uppercase;
   color: var(--muted);
 }
 .steps li.past { color: var(--line-strong); border-color: var(--line-soft); }

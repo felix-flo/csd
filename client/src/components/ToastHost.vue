@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from './Icon.vue'
 /** 화면 상단 플로팅 알림. App.vue 에 한 번만 둔다 */
 import { computed } from 'vue'
 import { useAuthStore } from '../stores/auth'
@@ -15,11 +16,11 @@ const large = computed(() => auth.user?.role === 'presenter')
     <TransitionGroup name="toast">
       <div v-for="(t, i) in toasts.items" :key="t.id" class="toast" :class="{ war: t.war, sticky: toasts.sticky && i === toasts.items.length - 1 }">
         <div class="toast-head">
-          <span class="label">📢 {{ t.label }}</span>
-          <button class="close" type="button" aria-label="닫기" @click="toasts.dismiss(t.id)">✕</button>
+          <span class="label"><Icon name="megaphone" /> {{ t.label }}</span>
+          <button class="close" type="button" aria-label="닫기" @click="toasts.dismiss(t.id)"></button>
         </div>
         <div class="toast-body">{{ t.message }}</div>
-        <div v-if="toasts.sticky && i === toasts.items.length - 1" class="hold">닫기(✕)를 누르면 사라집니다</div>
+        <div v-if="toasts.sticky && i === toasts.items.length - 1" class="hold">닫기()를 누르면 사라집니다</div>
         <div v-else class="bar" :style="{ width: `${(t.remaining / toasts.duration) * 100}%` }" />
       </div>
     </TransitionGroup>
@@ -49,11 +50,10 @@ const large = computed(() => auth.user?.role === 'presenter')
   overflow: hidden;
   background: var(--surface);
   color: var(--ink);
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--blue);
+  border: 2px solid var(--line-strong);
+  border-left: 4px solid var(--blue);
   border-radius: var(--radius);
   padding: 10px 12px 12px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
 }
 .toast-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; }
 .toast .label { color: var(--muted); font-family: var(--font-mono); font-size: 0.8rem; letter-spacing: 0.04em; }
@@ -65,7 +65,7 @@ const large = computed(() => auth.user?.role === 'presenter')
 .large .close { font-size: 1rem; padding: 4px 12px; }
 .close {
   background: transparent;
-  border: 1px solid var(--line);
+  border: 2px solid var(--line);
   color: var(--muted);
   padding: 2px 8px;
   font-size: 0.85rem;

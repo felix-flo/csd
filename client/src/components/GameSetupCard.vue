@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from './Icon.vue'
 /**
  * 게임 설정 (시작 전: 설정·준비 상태): 총 일수, 팀별 최대 인원, 테스트 계정 포함 여부, 발행 한도, 마지막 라운드 발행 단계, 이주 시작 라운드, 팀별 초기 재화. (라이프 매장량은 2026-10-30 폐지)
  * - 설정 상태: "초기셋팅완료" → 준비 상태 (최대 인원 합계만큼 팀 없는 PIN 생성, 참가자가 로그인해 팀 선택)
@@ -156,8 +157,8 @@ async function prepare() {
       <TabLoginToggle />
     </div>
     <div class="row" style="margin-bottom: 10px">
-      <label>💎 보석 발행 한도 <input v-model.number="issueLimit.gem" type="number" min="0" style="width: 6em" /> /라운드</label>
-      <label>🥇 골드 발행 한도 <input v-model.number="issueLimit.gold" type="number" min="0" style="width: 6em" /> /라운드 (이월)</label>
+      <label><Icon name="gem" /> 보석 발행 한도 <input v-model.number="issueLimit.gem" type="number" min="0" style="width: 6em" /> /라운드</label>
+      <label><Icon name="gold" /> 골드 발행 한도 <input v-model.number="issueLimit.gold" type="number" min="0" style="width: 6em" /> /라운드 (이월)</label>
     </div>
     <div class="row" style="margin-bottom: 10px">
       <span>마지막 라운드 발행 단계</span>
@@ -165,14 +166,14 @@ async function prepare() {
       <span v-if="!lastIssuePhases.length" class="error" style="font-size: 0.85rem">1개 이상 고르세요</span>
     </div>
     <div class="row" style="margin-bottom: 10px">
-      <label>🧳 이주 시작 라운드 <input v-model.number="migrationStartDay" type="number" min="1" max="30" style="width: 5em" /></label>
+      <label><Icon name="migration" /> 이주 시작 라운드 <input v-model.number="migrationStartDay" type="number" min="1" max="30" style="width: 5em" /></label>
       <span class="muted" style="font-size: 0.85rem">
         <template v-if="totalDays && migrationStartDay > totalDays">총 {{ totalDays }}라운드라 이주가 열리지 않습니다</template>
         <template v-else>이 라운드부터 마지막 라운드까지 (라이프 제출 단계 제외)</template>
       </span>
     </div>
     <div class="row" style="margin-bottom: 10px">
-      <span>⚔️ 1라운드 전쟁 선포 비용</span>
+      <span><Icon name="war" /> 1라운드 전쟁 선포 비용</span>
       <label>보석 <input v-model.number="warCost.gem" type="number" min="0" style="width: 5em" /></label>
       <label>골드 <input v-model.number="warCost.gold" type="number" min="0" style="width: 5em" /></label>
       <label>크레딧 <input v-model.number="warCost.credit" type="number" min="0" style="width: 5em" /></label>
@@ -189,7 +190,7 @@ async function prepare() {
         <tr>
           <th>팀</th>
           <th>최대 인원</th>
-          <th v-for="r in RESOURCES" :key="r.key">{{ r.emoji }} {{ r.label }}</th>
+          <th v-for="r in RESOURCES" :key="r.key"><Icon :name="r.key" /> {{ r.label }}</th>
           <th></th>
         </tr>
       </thead>

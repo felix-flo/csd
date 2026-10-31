@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import Icon from './Icon.vue'
 /**
- * 최종 투표 (참가자, docs/100 N2). 비밀·동시 투표: 💎 보석 / 🥇 골드 중 하나.
+ * 최종 투표 (참가자, docs/100 N2). 비밀·동시 투표: 보석 / 골드 중 하나.
  * - 기본 1표는 리더만 (2026-10-30 결정). 안건 부결이면 팀원은 투표하지 않는다
  * - 라이프 투표권 안건이 통과됐으면 팀 라이프 1개로 1표 (선착순, 1인 1장): 리더는 체크해서 +1표, 팀원은 이것으로만 투표 (체크 고정)
  * - 확인 팝업 뒤 확정. 한 번 내면 바꿀 수 없다 (서버도 already_voted 로 거부)
@@ -58,11 +59,11 @@ async function submit() {
 
 <template>
   <div class="card final-vote">
-    <h2>🗳️ 최종 투표</h2>
+    <h2><Icon name="vote" /> 최종 투표</h2>
     <template v-if="myVote">
       <p class="done-msg">
         <span class="badge on">투표 완료</span>
-        <strong>{{ myVote.choice === 'gem' ? '💎' : '🥇' }} {{ RESOURCE_LABELS[myVote.choice] }}</strong>
+        <strong><Icon :name="myVote.choice" /> {{ RESOURCE_LABELS[myVote.choice] }}</strong>
         · {{ myVote.weight }}표{{ myVote.extra ? ' (라이프 투표권 사용)' : '' }}
       </p>
       <p class="muted">{{ final.closed ? '투표가 마감되었습니다. 결과 발표를 기다리세요.' : `투표 ${final.votes.done} / ${final.votes.eligible}명 · 진행자가 마감하면 결과가 공개됩니다.` }}</p>
@@ -77,8 +78,8 @@ async function submit() {
       <p class="muted">상금이 될 화폐에 투표하세요. 비밀 투표이며 한 번 내면 바꿀 수 없습니다. 화폐로 표를 살 수 없습니다.</p>
       <p v-if="memberOnlyLife" class="muted">팀원은 <strong>라이프 투표권</strong>으로 투표합니다: 투표하면 팀 라이프 1개가 소모됩니다 (남은 팀 라이프 {{ teamLives }}).</p>
       <div class="choices">
-        <button class="choice" :class="{ on: picked === 'gem' }" :disabled="busy" @click="picked = 'gem'">💎 보석</button>
-        <button class="choice" :class="{ on: picked === 'gold' }" :disabled="busy" @click="picked = 'gold'">🥇 골드</button>
+        <button class="choice" :class="{ on: picked === 'gem' }" :disabled="busy" @click="picked = 'gem'"><Icon name="gem" /> 보석</button>
+        <button class="choice" :class="{ on: picked === 'gold' }" :disabled="busy" @click="picked = 'gold'"><Icon name="gold" /> 골드</button>
       </div>
       <label v-if="lifeVote && isLeader" class="row extra" :class="{ off: !canExtra }">
         <input v-model="extra" type="checkbox" :disabled="busy || !canExtra" />

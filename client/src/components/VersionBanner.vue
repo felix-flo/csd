@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from './Icon.vue'
 /** 서버에 새 클라이언트 빌드가 배포되면 새로고침을 안내하는 배너. App.vue 에 한 번만 둔다 */
 import { useRealtimeStore } from '../stores/realtime'
 
@@ -7,7 +8,7 @@ const rt = useRealtimeStore()
 
 <template>
   <div v-if="rt.outdated" class="version-banner row">
-    <span>🔄 새 버전이 배포되었습니다. 새로고침하면 최신 화면으로 바뀝니다.</span>
+    <span><Icon name="refresh" /> 새 버전이 배포되었습니다. 새로고침하면 최신 화면으로 바뀝니다.</span>
     <button class="small" :disabled="rt.reloading" @click="rt.reloadForUpdate()">새로고침</button>
   </div>
 </template>
@@ -20,7 +21,7 @@ const rt = useRealtimeStore()
   justify-content: space-between;
   background: var(--blue-bg);
   color: var(--ink);
-  border-bottom: 1px solid #cfe2ff;
+  border-bottom: 2px solid var(--blue);
   padding: 8px 16px;
 }
 .version-banner button { background: var(--blue); border-color: var(--blue); color: #fff; }

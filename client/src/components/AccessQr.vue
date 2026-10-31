@@ -29,7 +29,8 @@ onMounted(async () => {
 
 <style scoped>
 .qr { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
-.qr-box { width: min(280px, 60vw); background: #fff; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius); }
+/* QR 은 스캔을 위해 흰 박스 유지 (다크 테마에서도) */
+.qr-box { width: min(280px, 60vw); background: #fff; padding: 8px; border: 2px solid #fff; border-radius: var(--radius); }
 .qr-box :deep(svg) { display: block; width: 100%; height: auto; }
 .qr-url { font-family: var(--font-mono); font-size: 1.3rem; font-weight: 600; letter-spacing: 0.02em; word-break: break-all; }
 </style>

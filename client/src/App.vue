@@ -42,12 +42,13 @@ onMounted(() => {
   display: grid;
   place-items: center;
   padding: 16px;
-  background: color-mix(in srgb, var(--ink) 88%, transparent);
+  background: rgba(0, 0, 0, 0.9);
 }
 .eliminated .title {
   margin: 0;
-  color: #fff;
+  color: var(--red);
   font-family: var(--font-display);
+  font-weight: 900;
   font-size: clamp(2rem, 9vw, 4rem);
   text-align: center;
 }

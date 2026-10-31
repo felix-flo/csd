@@ -23,8 +23,8 @@ const html = computed(() =>
 <style scoped>
 .md { line-height: 1.6; word-break: keep-all; overflow-wrap: anywhere; }
 .md.large { font-size: 1.5rem; line-height: 1.7; }
-.md :deep(h1) { font-family: var(--font-display); font-weight: 400; font-size: 2em; line-height: 1; letter-spacing: -0.03em; margin: 0.4em 0 0.4em; }
-.md :deep(h2) { font-family: var(--font-display); font-weight: 400; font-size: 1.5em; line-height: 1; margin: 1em 0 0.4em; border-bottom: 1px solid var(--line-soft); padding-bottom: 6px; }
+.md :deep(h1) { font-family: var(--font-display); font-weight: 900; font-size: 2em; line-height: 1; letter-spacing: -0.03em; margin: 0.4em 0 0.4em; }
+.md :deep(h2) { font-family: var(--font-display); font-weight: 900; font-size: 1.5em; line-height: 1; margin: 1em 0 0.4em; border-bottom: 1px solid var(--line-soft); padding-bottom: 6px; }
 .md :deep(h3) { font-size: 1.1em; margin: 0.8em 0 0.3em; }
 .md :deep(p) { margin: 0.5em 0; }
 .md :deep(ul), .md :deep(ol) { padding-left: 1.4em; margin: 0.4em 0; }
