@@ -21,10 +21,10 @@ const done = computed(() => props.election?.status === 'done')
       <p><span class="badge on">지정 완료</span> 이번 라운드 리더: <strong>{{ leader?.name ?? '-' }}</strong><span v-if="leader?.id === auth.user?.id" class="muted"> (나)</span></p>
     </template>
     <template v-else>
-      <p>팀에서 협의해 리더를 정한 뒤 <strong>진행자에게 알려 주세요.</strong> 진행자가 지정하면 여기에 표시됩니다.</p>
+      <p>팀에서 협의해 리더를 정한 뒤 <strong>진행자에게 알려 주세요.</strong> 진행자가 지정하면 여기에 표시돼요.</p>
       <p class="muted" style="margin: 8px 0 0">
         현재 리더: <strong>{{ leader?.name ?? '없음' }}</strong><span v-if="leader?.id === auth.user?.id"> (나)</span>
-        · 지정 없이 단계가 넘어가면 현재 리더가 유지됩니다.
+        · 지정 없이 단계가 넘어가면 현재 리더가 유지돼요.
       </p>
     </template>
   </div>

@@ -19,12 +19,12 @@ function status(): string {
 
 /** 운명의 카드 선택. 준비 상태 · 팀을 고른 활성 참가자 · 1회 */
 export function chooseFate(userId: number, fate: Fate) {
-  if (status() !== 'ready') throw new GameError('not_ready', '게임 준비 중에만 고를 수 있습니다')
+  if (status() !== 'ready') throw new GameError('not_ready', '게임 준비 중에만 고를 수 있어요')
   const u = db.prepare(`SELECT group_id FROM users WHERE id = ? AND role = 'member' AND active = 1`).get(userId) as { group_id: number | null } | undefined
   if (!u) throw new GameError('not_found', '', 404)
   if (u.group_id == null) throw new GameError('no_group', '팀을 먼저 고르세요', 400)
   const ok = db.prepare('INSERT OR IGNORE INTO fate_choices (user_id, fate) VALUES (?, ?)').run(userId, fate).changes === 1
-  if (!ok) throw new GameError('already_chosen', '이미 카드를 골랐습니다. 선택은 되돌릴 수 없습니다')
+  if (!ok) throw new GameError('already_chosen', '이미 카드를 골랐어요. 선택은 되돌릴 수 없어요')
 }
 
 export function getMyFate(userId: number): Fate | null {
@@ -46,10 +46,10 @@ function selectedIds(): number[] {
 /** 관리자 지정 (준비 상태). 후보 중에서만, 목록 전체를 바꾼다 */
 export function setSpies(userIds: number[]) {
   db.transaction(() => {
-    if (status() !== 'ready') throw new GameError('not_ready', '테러리스트는 게임 준비 중에만 지정할 수 있습니다')
+    if (status() !== 'ready') throw new GameError('not_ready', '테러리스트는 게임 준비 중에만 지정할 수 있어요')
     const ok = new Set(candidates().map((c) => c.userId))
     const bad = userIds.filter((id) => !ok.has(id))
-    if (bad.length) throw new GameError('not_candidate', '달을 고른 후보 중에서만 지정할 수 있습니다', 400)
+    if (bad.length) throw new GameError('not_candidate', '달을 고른 후보 중에서만 지정할 수 있어요', 400)
     db.prepare('DELETE FROM spies').run()
     const ins = db.prepare('INSERT INTO spies (user_id) VALUES (?)')
     for (const id of new Set(userIds)) ins.run(id)
@@ -63,7 +63,7 @@ export function setSpies(userIds: number[]) {
 export function prepareSpiesForStart(): void {
   db.prepare(`DELETE FROM spies WHERE user_id NOT IN (SELECT id FROM users WHERE role = 'member' AND active = 1 AND group_id IS NOT NULL)`).run()
   if (candidates().length > 0 && selectedIds().length === 0) {
-    throw new GameError('no_spy', '달을 고른 후보가 있습니다. 테러리스트를 1명 이상 지정하세요')
+    throw new GameError('no_spy', '달을 고른 후보가 있어요. 테러리스트를 1명 이상 지정하세요')
   }
   const roster = (db.prepare(`SELECT id FROM users WHERE role = 'member' AND active = 1 AND group_id IS NOT NULL`).all() as { id: number }[]).map((r) => r.id)
   db.prepare('UPDATE game SET start_roster = ? WHERE id = 1').run(JSON.stringify(roster))

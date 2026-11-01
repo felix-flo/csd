@@ -40,7 +40,7 @@ const teamName = (teamId: number | null) => props.groups.find((g) => g.id === te
 function copyPins() {
   const lines = pins.value.map((u, i) => `${i + 1}\t${u.pin ?? ''}`)
   navigator.clipboard?.writeText(lines.join('\n')).then(
-    () => { message.value = `PIN ${pins.value.length}개를 복사했습니다` },
+    () => { message.value = `PIN ${pins.value.length}개를 복사했어요` },
     () => { message.value = '복사 실패' },
   )
 }
@@ -50,8 +50,8 @@ function copyPins() {
   <div v-if="isBeforeStart(game.admin?.state.status) && pins.length > 0" class="card">
     <h2>참가자 PIN</h2>
     <p class="muted">
-      PIN 은 팀에 묶여 있지 않습니다. 아무 PIN 이나 나눠 주면 참가자가 로그인해 이름을 입력하고 팀을 직접 고릅니다.
-      <template v-if="game.admin?.state.status === 'setup'"> 지금은 설정 단계라 참가자가 팀을 고를 수 없습니다.</template>
+      PIN 은 팀에 묶여 있지 않아요. 아무 PIN 이나 나눠 주면 참가자가 로그인해 이름을 입력하고 팀을 직접 골라요.
+      <template v-if="game.admin?.state.status === 'setup'"> 지금은 설정 단계라 참가자가 팀을 고를 수 없어요.</template>
     </p>
     <div class="row summary">
       <span>PIN {{ pins.length }}개</span>

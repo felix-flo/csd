@@ -88,7 +88,7 @@ export function finalizeElection(day: number, teamId: number, force = false): Fi
 /** 진행자 지정. 리더 선출 단계가 아니어도(수동 교체) 쓸 수 있고, 그 일차 행이 있으면 완료로 표시한다 */
 export function designateLeader(day: number, teamId: number, userId: number): FinalizeResult {
   return db.transaction(() => {
-    if (!activeMemberIds(teamId).includes(userId)) throw new GameError('bad_candidate', '이 팀의 활성 팀원만 리더로 지정할 수 있습니다', 400)
+    if (!activeMemberIds(teamId).includes(userId)) throw new GameError('bad_candidate', '이 팀의 활성 팀원만 리더로 지정할 수 있어요', 400)
     const changed = userId !== currentLeaderId(teamId)
     if (changed) setTeamLeader(teamId, userId)
     if (getRow(day, teamId)) markDone(day, teamId, userId)

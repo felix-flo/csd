@@ -48,7 +48,7 @@ async function reload() {
         <button class="secondary small" :disabled="busy" @click="reload">다시 불러오기</button>
       </span>
     </div>
-    <p v-if="all.length === 0" class="muted">받은 알림이 없습니다.</p>
+    <p v-if="all.length === 0" class="muted">받은 알림이 없어요.</p>
     <ul v-else class="feed">
       <li v-for="ev in items" :key="ev.id">
         <span class="badge" :class="ev.scope" :style="ev.scope === 'group' ? { '--team': teams.colorOf(ev.targetId) } : undefined">{{ scopeLabel(ev) }}</span>

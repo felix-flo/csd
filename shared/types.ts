@@ -124,7 +124,7 @@ export type EventType = 'notice' | 'system' | 'document.updated' | 'game' | 'tra
  * - final.ended        : 게임 끝 (scope=all)
  * 이주 (docs/100 N3)
  * - migration.requested: 이주 신청 (scope=user 받는 팀 리더 / role admin 무음)
- * - migration.accepted : 이주 완료 (scope=all) "[이름]님이 [원래 팀]에서 [새 팀]으로 이주했습니다"
+ * - migration.accepted : 이주 완료 (scope=all) "[이름]님이 [원래 팀]에서 [새 팀]으로 이주했어요"
  * - migration.rejected : 거절 (scope=user 신청자)
  * - migration.cancelled: 취소 (scope=user 신청자, 받는 팀 리더에게는 무음 갱신)
  */
@@ -170,7 +170,7 @@ export interface ServerToClientEvents {
    * 놓쳐도 재접속 때 상태를 다시 받으므로 outbox(events) 에 남기지 않는다
    */
   'signal': (kind: 'lobby') => void
-  /** 서버가 세션을 끊기 직전에 사유를 알린다. 'eliminated' = 탈락 (라이프 제출·관리자 탈락 처리) → "탈락되었습니다" 5초 후 로그아웃 */
+  /** 서버가 세션을 끊기 직전에 사유를 알린다. 'eliminated' = 탈락 (라이프 제출·관리자 탈락 처리) → "탈락되었어요" 5초 후 로그아웃 */
   'session:ended': (reason: 'eliminated') => void
 }
 

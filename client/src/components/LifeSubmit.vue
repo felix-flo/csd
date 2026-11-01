@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import Icon from './Icon.vue'
 /**
  * 라이프 제출 (리더). 살릴 인원 수(= 쓸 라이프 수)와 자진 탈락 여부만 정한다 (docs/100.최종룰_차이_결정사항.md D1).
  * - 자진 탈락 안 함: 리더 생존 + 리더 외 팀원 중 무작위 (N−1)명. 자진 탈락: 리더 외 팀원 중 무작위 N명
  * - 범위 1 ~ min(팀 라이프, 살릴 수 있는 인원). 라이프 0개 팀은 숫자 없이 1명만 생존 (라이프 소모 없음)
- * - 제출 → "정말로 제출하겠습니까?" 확인 → 서버가 무작위로 정하고, 살지 못한 팀원은 즉시 탈락(로그인 차단·세션 종료).
+ * - 제출 → "정말로 제출할까요?" 확인 → 서버가 무작위로 정하고, 살지 못한 팀원은 즉시 탈락(로그인 차단·세션 종료).
  * 팀원은 진행 상황만 본다. 활성 팀원이 1명이고 라이프가 0개면 제출하지 않는다 (자동 생존). 1명이라도 라이프가 있으면 제출해야 하고
  * 라이프 1개를 쓰고 생존한다 (자진 탈락 불가. docs/103 §8).
  */
@@ -14,6 +15,7 @@ import { api, ApiError } from '../lib/api'
 import { useAuthStore } from '../stores/auth'
 import { useGameStore } from '../stores/game'
 import ModalDialog from './ModalDialog.vue'
+import FixedBottomCta from './FixedBottomCta.vue'
 
 const props = defineProps<{
   members: PublicUser[]
@@ -47,7 +49,7 @@ function setCount(n: number) {
 watch(max, (m) => {
   if (count.value > m) {
     setCount(m)
-    note.value = `최대 ${m}명까지 살릴 수 있어 ${m}(으)로 맞췄습니다`
+    note.value = `최대 ${m}명까지 살릴 수 있어 ${m}(으)로 맞췄어요`
   }
 })
 
@@ -59,7 +61,7 @@ function onInput(e: Event) {
   if (n > max.value) {
     n = max.value
     digits = String(n)
-    note.value = `최대 ${n}명까지 살릴 수 있습니다`
+    note.value = `최대 ${n}명까지 살릴 수 있어요`
   } else note.value = ''
   text.value = digits
   el.value = digits
@@ -91,8 +93,8 @@ const preview = computed(() => {
 })
 const valid = computed(() => noLives.value || (count.value >= 1 && count.value <= max.value))
 const confirmMessage = computed(() =>
-  `${noLives.value ? '라이프가 없어 1명만 생존합니다 (라이프 소모 없음).' : `라이프 ${count.value}개를 사용합니다.`}\n${preview.value}\n\n` +
-  '리더 외 생존자는 제출하는 순간 무작위로 정해집니다. 제출하면 되돌릴 수 없고, 탈락한 팀원은 바로 접속이 끊깁니다.',
+  `${noLives.value ? '라이프가 없어 1명만 생존해요 (라이프 소모 없음).' : `라이프 ${count.value}개를 사용해요.`}\n${preview.value}\n\n` +
+  '리더 외 생존자는 제출하는 순간 무작위로 정해져요. 제출하면 되돌릴 수 없고, 탈락한 팀원은 바로 접속이 끊겨요.',
 )
 
 async function submit() {
@@ -102,7 +104,7 @@ async function submit() {
     const body = { count: noLives.value ? 0 : count.value, selfEliminate: selfEliminate.value }
     const res = await api.post<{ submission: LifeSubmissionView }>('/api/game/life', body)
     result.value = res.submission
-    // 리더 본인이 탈락했으면 서버가 탈락을 통보하고 세션을 끊는다 ("탈락되었습니다" 5초 후 로그아웃, App.vue)
+    // 리더 본인이 탈락했으면 서버가 탈락을 통보하고 세션을 끊는다 ("탈락되었어요" 5초 후 로그아웃, App.vue)
     if (!res.submission.eliminated.includes(auth.user?.id ?? -1)) void game.load()
   } catch (e) {
     error.value = e instanceof ApiError && e.detail ? e.detail : (e as Error).message
@@ -127,24 +129,24 @@ const nameOf = (id: number) => shown.value?.names[id] ?? props.members.find((m) 
     </template>
 
     <template v-else-if="isLifeExempt(members.length, lives)">
-      <p>팀원이 1명이고 라이프가 없어 라이프 제출이 없습니다. 탈락 없이 그대로 생존합니다.</p>
+      <p>팀원이 1명이고 라이프가 없어 라이프 제출이 없어요. 탈락 없이 그대로 생존해요.</p>
     </template>
 
     <template v-else-if="!isLeader">
-      <p class="muted">리더가 살릴 인원 수를 정하는 중입니다. 리더 외 생존자는 무작위로 정해지고, 나머지 팀원은 탈락합니다.</p>
+      <p class="muted">리더가 살릴 인원 수를 정하는 중이에요. 리더 외 생존자는 무작위로 정해지고, 나머지 팀원은 탈락해요.</p>
     </template>
 
     <template v-else>
       <p class="muted">
         팀 라이프 <strong class="mono">{{ lives }}</strong> · 팀원 <strong class="mono">{{ members.length }}</strong>명 (본인 포함).
-        <template v-if="alone">팀원이 1명이라도 라이프가 있으면 제출해야 합니다. 라이프 1개를 쓰고 생존합니다.</template>
-        <template v-else>살릴 인원 수만 정하면 리더는 생존하고, 나머지 자리는 리더 외 팀원 중 무작위로 정해집니다.</template>
+        <template v-if="alone">팀원이 1명이라도 라이프가 있으면 제출해야 해요. 라이프 1개를 쓰고 생존해요.</template>
+        <template v-else>살릴 인원 수만 정하면 리더는 생존하고, 나머지 자리는 리더 외 팀원 중 무작위로 정해져요.</template>
       </p>
 
-      <p v-if="noLives" class="warn">라이프가 없어 1명만 생존합니다 (라이프 소모 없음).</p>
-      <p v-else-if="alone" class="warn">💙 살릴 인원 1명 (본인) · 라이프 1개 사용</p>
+      <p v-if="noLives" class="warn">라이프가 없어 1명만 생존해요 (라이프 소모 없음).</p>
+      <p v-else-if="alone" class="warn"><Icon name="life" /> 살릴 인원 1명 (본인) · 라이프 1개 사용</p>
       <div v-else class="stepper">
-        <span>💙 살릴 인원 <span class="muted">/ 최대 {{ max }}</span></span>
+        <span><Icon name="life" /> 살릴 인원 <span class="muted">/ 최대 {{ max }}</span></span>
         <span class="row" style="gap: 4px">
           <button class="secondary sq" type="button" :disabled="busy || count <= 1" @click="setCount(count - 1); note = ''">−</button>
           <input
@@ -168,24 +170,23 @@ const nameOf = (id: number) => shown.value?.names[id] ?? props.members.find((m) 
 
       <label v-if="!alone" class="self">
         <input v-model="selfEliminate" type="checkbox" :disabled="busy" />
-        리더 자진 탈락 <span class="muted">(리더도 탈락하고, 생존자를 모두 리더 외 팀원 중 무작위로 정합니다)</span>
+        리더 자진 탈락 <span class="muted">(리더도 탈락하고, 생존자를 모두 리더 외 팀원 중 무작위로 정해요)</span>
       </label>
 
       <p class="preview" :style="{ '--team': teamColor }">{{ preview }}</p>
 
-      <div class="row" style="margin-top: 12px">
-        <button :disabled="busy || !valid" @click="confirmOpen = true">제출</button>
-      </div>
+      <!-- 주요 동작은 하단 고정 CTA (docs/108) -->
+      <FixedBottomCta label="라이프 제출하기" :disabled="!valid" :busy="busy" @click="confirmOpen = true" />
     </template>
 
     <p v-if="error" class="error">{{ error }}</p>
 
     <ModalDialog
       :open="confirmOpen"
-      title="정말로 제출하겠습니까?"
+      title="정말로 제출할까요?"
       :message="confirmMessage"
       confirm-label="제출"
-      cancel-label="취소"
+      cancel-label="닫기"
       danger
       :busy="busy"
       @confirm="submit"

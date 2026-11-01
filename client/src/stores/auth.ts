@@ -29,7 +29,7 @@ export const useAuthStore = defineStore('auth', {
     tabLogin: false,
     ready: false,
     bootstrapping: null as Promise<void> | null,
-    /** 탈락 통보를 받음 → "탈락되었습니다" 화면을 5초 보여준 뒤 로그아웃. 그동안 401·연결 끊김으로 먼저 로그아웃하지 않는다 */
+    /** 탈락 통보를 받음 → "탈락되었어요" 화면을 5초 보여준 뒤 로그아웃. 그동안 401·연결 끊김으로 먼저 로그아웃하지 않는다 */
     eliminated: false,
   }),
   getters: {

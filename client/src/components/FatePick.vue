@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 운명의 카드 (docs/100 N4). 준비 상태에서 팀을 고른 직후 전체 화면으로 뜬다 — 닫기 없음, 1회.
- * 태양·달 카드 중 하나를 누르면 "지금 선택을 제출하겠습니까? 선택은 되돌릴 수 없습니다" 예/아니오 → 제출.
+ * 태양·달 카드 중 하나를 누르면 "지금 선택을 제출할까요? 선택은 되돌릴 수 없어요" 예/아니오 → 제출.
  * 달 = 테러리스트 후보 (화면에는 의미를 쓰지 않는다)
  */
 import { ref } from 'vue'
@@ -32,7 +32,7 @@ async function submit() {
     const code = e instanceof ApiError ? e.code : ''
     // 이미 골랐으면(다른 탭 등) 서버 값을 다시 받도록 부모에 맡긴다
     if (code === 'already_chosen') emit('chosen', fate)
-    else error.value = e instanceof ApiError && e.detail ? e.detail : '제출하지 못했습니다. 다시 시도하세요.'
+    else error.value = e instanceof ApiError && e.detail ? e.detail : '제출하지 못했어요. 다시 시도하세요.'
   } finally {
     busy.value = false
     picked.value = null
@@ -51,13 +51,13 @@ async function submit() {
           <span class="label">{{ c.label }}</span>
         </button>
       </div>
-      <p class="hint">선택은 되돌릴 수 없습니다</p>
+      <p class="hint">선택은 되돌릴 수 없어요</p>
       <p v-if="error" class="error">{{ error }}</p>
     </div>
     <ModalDialog
       :open="!!picked"
-      :title="`${picked === 'moon' ? '달' : '태양'} 카드를 선택했습니다`"
-      message="지금 선택을 제출하겠습니까? 선택은 되돌릴 수 없습니다."
+      :title="`${picked === 'moon' ? '달' : '태양'} 카드를 선택했어요`"
+      message="지금 선택을 제출할까요? 선택은 되돌릴 수 없어요."
       confirm-label="예"
       cancel-label="아니오"
       :busy="busy"

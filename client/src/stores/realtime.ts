@@ -92,7 +92,7 @@ export const useRealtimeStore = defineStore('realtime', {
           if (!ok) auth.clear()
         }
       })
-      // 서버가 끊기 직전에 보내는 사유. 탈락이면 "탈락되었습니다" 5초 후 로그아웃
+      // 서버가 끊기 직전에 보내는 사유. 탈락이면 "탈락되었어요" 5초 후 로그아웃
       socket.on('session:ended', (reason) => {
         if (reason === 'eliminated') auth.eliminate()
       })

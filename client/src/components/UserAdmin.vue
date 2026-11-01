@@ -94,7 +94,7 @@ async function run(label: string, fn: () => Promise<{ users: AdminUser[] } & Rec
 
 function setActive(ids: number[], active: boolean, label?: string) {
   if (ids.length === 0) return
-  if (!active && ids.length > 1 && !confirm(`${label ?? '선택한 참가자'} ${ids.length}명을 탈락 처리할까요? 접속 중이면 즉시 끊깁니다.`)) return
+  if (!active && ids.length > 1 && !confirm(`${label ?? '선택한 참가자'} ${ids.length}명을 탈락 처리할까요? 접속 중이면 즉시 끊겨요.`)) return
   return run(active ? '복귀 처리됨' : '탈락 처리됨', () => api.post('/api/admin/users/active', { ids, active }))
 }
 
@@ -122,7 +122,7 @@ async function saveName(u: AdminUser) {
 }
 
 async function resetPin(u: AdminUser) {
-  if (!confirm(`${u.name} 의 PIN 을 새로 발급할까요? 접속 중이면 즉시 끊깁니다.`)) return
+  if (!confirm(`${u.name} 의 PIN 을 새로 발급할까요? 접속 중이면 즉시 끊겨요.`)) return
   const res = await run('', () => api.post(`/api/admin/users/${u.id}/reset-pin`))
   if (res) status.value = `${u.name} 새 PIN: ${res.pin as string}`
 }
@@ -134,7 +134,7 @@ function canResetPin(u: AdminUser) {
 function copyList() {
   const lines = props.users.map((u) => `${u.groupName ?? u.role}\t${u.name}\t${u.pin ?? ''}`)
   navigator.clipboard?.writeText(lines.join('\n')).then(
-    () => { status.value = '이름/PIN 목록을 클립보드에 복사했습니다' },
+    () => { status.value = '이름/PIN 목록을 클립보드에 복사했어요' },
     () => { status.value = '복사 실패' },
   )
 }
@@ -144,8 +144,8 @@ function copyList() {
   <div class="card">
     <h2>계정 관리</h2>
     <p class="muted">
-      이름을 클릭하면 수정할 수 있습니다. PIN 은 참가자에게 배부할 때만 표시하세요.
-      탈락 처리된 참가자는 로그인할 수 없고 팀 재화·알림을 받지 못합니다. 팀을 바꾸면 재로그인 없이 바로 반영됩니다.
+      이름을 클릭하면 수정할 수 있어요. PIN 은 참가자에게 배부할 때만 표시하세요.
+      탈락 처리된 참가자는 로그인할 수 없고 팀 재화·알림을 받지 못해요. 팀을 바꾸면 재로그인 없이 바로 반영돼요.
     </p>
 
     <div class="row" style="margin-bottom: 12px">
@@ -170,7 +170,7 @@ function copyList() {
             </template>
             <a v-else href="#" @click.prevent="startEdit(u)">{{ u.name }}</a>
           </td>
-          <td>{{ u.role }} <span v-if="u.isFixed" class="badge" title="리셋해도 남는 고정 계정">고정</span><span v-else-if="u.role === 'admin'" class="muted" title="게임 리셋 때 삭제됩니다">· 리셋 시 삭제</span></td>
+          <td>{{ u.role }} <span v-if="u.isFixed" class="badge" title="리셋해도 남는 고정 계정">고정</span><span v-else-if="u.role === 'admin'" class="muted" title="게임 리셋 때 삭제돼요">· 리셋 시 삭제</span></td>
           <td class="pin">
             <span class="mono">{{ pinShown(u.id) ? u.pin : '••••' }}</span>
             <button v-if="!showPins" class="secondary small pin-btn" type="button" @click="togglePin(u.id)">{{ openPins.has(u.id) ? 'PIN 숨기기' : 'PIN 보기' }}</button>
@@ -189,7 +189,7 @@ function copyList() {
             <span class="muted">{{ list.filter((u) => u.active).length }}명<template v-if="key !== 'none'"> 참가 중</template><template v-if="list.some((u) => !u.active)"> · {{ key === 'test' && excludeTests ? '제외' : '탈락' }} {{ list.filter((u) => !u.active).length }}명</template></span>
             <span v-if="key === 'none' && beforeStart" class="muted"> · PIN 상태는 "참가자 PIN" 카드</span>
             <span v-if="key === 'test'" class="muted"> · 팀·리더가 미리 정해진 개발용 계정<template v-if="excludeTests"> · 게임 설정에서 제외됨</template></span>
-            <span v-if="team && beforeStart && list.length === 0" class="muted"> · 아직 팀을 고른 참가자가 없습니다</span>
+            <span v-if="team && beforeStart && list.length === 0" class="muted"> · 아직 팀을 고른 참가자가 없어요</span>
           </td>
           <td colspan="2" class="row" style="justify-content: flex-end">
             <button :disabled="busy" class="secondary small" @click="setActive(list.map((u) => u.id), true)">전체 복귀</button>
@@ -206,7 +206,7 @@ function copyList() {
             <template v-else>
               <a href="#" @click.prevent="startEdit(u)">{{ u.name }}</a>
               <span v-if="u.isLeader" class="badge">리더</span>
-              <span v-if="u.isTest" class="badge role" title="시드 테스트 계정. 게임 설정에서 포함 여부를 정합니다">테스트</span>
+              <span v-if="u.isTest" class="badge role" title="시드 테스트 계정. 게임 설정에서 포함 여부를 정해요">테스트</span>
               <span v-if="!u.nameSet" class="badge warn">이름 미입력</span>
             </template>
           </td>
@@ -221,7 +221,7 @@ function copyList() {
             <button v-if="!showPins" class="secondary small pin-btn" type="button" @click="togglePin(u.id)">{{ openPins.has(u.id) ? 'PIN 숨기기' : 'PIN 보기' }}</button>
           </td>
           <td>
-            <span v-if="u.isTest && excludeTests && !u.active" class="badge" title="게임 설정에서 테스트 계정 포함을 꺼 두었습니다">제외</span>
+            <span v-if="u.isTest && excludeTests && !u.active" class="badge" title="게임 설정에서 테스트 계정 포함을 꺼 두었어요">제외</span>
             <span v-else class="badge" :class="u.active ? 'on' : 'off'">{{ u.active ? '참가 중' : '탈락' }}</span>
           </td>
           <td class="row">

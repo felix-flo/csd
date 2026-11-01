@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from '../components/Icon.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import TopBar from '../components/TopBar.vue'
 import EventFeed from '../components/EventFeed.vue'
@@ -48,7 +49,7 @@ const message = ref('')
 const status = ref('')
 
 async function clearNotices() {
-  if (!confirm('모든 공지 알림 기록을 삭제할까요? 룰 갱신 알림과 게임 기록은 유지됩니다.')) return
+  if (!confirm('모든 공지 알림 기록을 삭제할까요? 룰 갱신 알림과 게임 기록은 유지돼요.')) return
   status.value = ''
   try {
     const res = await api.delete<{ deleted: number }>('/api/admin/events', { types: ['notice'] })
@@ -79,7 +80,7 @@ async function send() {
   <div class="page" style="max-width: 960px">
     <TopBar title="게임 진행자">
       <template v-if="game.admin?.settings.tabLogin" #subtitle>
-        관리자 (admin) · <span class="badge warn">🧪 테스트 모드 (탭 로그인)</span>
+        관리자 (admin) · <span class="badge warn"><Icon name="flask" /> 테스트 모드 (탭 로그인)</span>
       </template>
     </TopBar>
     <GameControlCard :users="users" :groups="groups" @updated="onUpdated" />

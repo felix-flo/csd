@@ -22,12 +22,12 @@ interface CouncilRow {
 /** 원조 기록 + 재화 이동. 같은 라운드에 이미 원조가 있으면 aid_used_today */
 export function recordAid(day: number, fromTeam: number, toTeam: number, amounts: Resources, by: number) {
   db.transaction(() => {
-    if (db.prepare(`SELECT 1 FROM council_actions WHERE day = ? AND kind = 'aid'`).get(day)) throw new GameError('aid_used_today', '이번 라운드 원조는 이미 처리했습니다 (라운드당 1회)')
+    if (db.prepare(`SELECT 1 FROM council_actions WHERE day = ? AND kind = 'aid'`).get(day)) throw new GameError('aid_used_today', '이번 라운드 원조는 이미 처리했어요 (라운드당 1회)')
     const ok = db
       .prepare(`INSERT INTO council_actions (day, group_id, kind, target_group, amounts, created_by)
                 VALUES (?, ?, 'aid', ?, ?, ?) ON CONFLICT DO NOTHING`)
       .run(day, fromTeam, toTeam, JSON.stringify(amounts), by).changes === 1
-    if (!ok) throw new GameError('aid_used_today', '이번 라운드 원조는 이미 처리했습니다 (라운드당 1회)')
+    if (!ok) throw new GameError('aid_used_today', '이번 라운드 원조는 이미 처리했어요 (라운드당 1회)')
     applyDeltas(fromTeam, negate(amounts), { reason: 'aid', day, by })
     applyDeltas(toTeam, amounts, { reason: 'aid', day, by })
   })()

@@ -50,21 +50,21 @@ const modalText = computed(() => {
     case 'close':
       return {
         title: '최종 투표를 마감할까요?',
-        message: `투표 ${f.value.votes.done} / ${f.value.votes.eligible}명.${notVoted.value ? ` 아직 투표하지 않은 ${notVoted.value}명은 기권 처리됩니다.` : ''}\n마감하면 득표(보석 N표 · 골드 N표)가 전체에 공개되고, 더 이상 투표할 수 없습니다.`,
+        message: `투표 ${f.value.votes.done} / ${f.value.votes.eligible}명.${notVoted.value ? ` 아직 투표하지 않은 ${notVoted.value}명은 기권 처리돼요.` : ''}\n마감하면 득표(보석 N표 · 골드 N표)가 전체에 공개되고, 더 이상 투표할 수 없어요.`,
       }
     case 'result':
       return {
         title: '결과를 발표할까요?',
-        message: `상금 화폐 ${f.value.adopted ? RESOURCE_LABELS[f.value.adopted] : ''}와(과) 마지막 라운드 발행량(${issuer('gem')} 보석 · ${issuer('gold')} 골드)을 전체에 공개합니다.`,
+        message: `상금 화폐 ${f.value.adopted ? RESOURCE_LABELS[f.value.adopted] : ''}와(과) 마지막 라운드 발행량(${issuer('gem')} 보석 · ${issuer('gold')} 골드)을 전체에 공개해요.`,
       }
     case 'settle':
-      return { title: '정산을 발표할까요?', message: '지금 팀 재화로 보상 %를 계산해 전체에 공개합니다. 발표 뒤 재화를 정정하면 "다시 계산" 을 누르세요.' }
+      return { title: '정산을 발표할까요?', message: '지금 팀 재화로 보상 %를 계산해 전체에 공개해요. 발표 뒤 재화를 정정하면 "다시 계산" 을 누르세요.' }
     case 'spy': {
       const n = view.value.spy.spies.length
-      return { title: '테러리스트를 공개할까요?', message: n ? `테러리스트 ${n}명의 이름·팀·보상을 전체에 공개합니다.` : '테러리스트가 없었다고 전체에 알립니다.' }
+      return { title: '테러리스트를 공개할까요?', message: n ? `테러리스트 ${n}명의 이름·팀·보상을 전체에 공개해요.` : '테러리스트가 없었다고 전체에 알려요.' }
     }
     case 'end':
-      return { title: '게임을 끝낼까요?', message: '결과는 그대로 남고, 더 이상 진행할 수 없습니다.' }
+      return { title: '게임을 끝낼까요?', message: '결과는 그대로 남고, 더 이상 진행할 수 없어요.' }
     default:
       return { title: '', message: '' }
   }
@@ -118,7 +118,7 @@ function recompute() {
       <div class="row" style="margin-top: 10px">
         <template v-if="!f.closed">
           <button class="danger" :disabled="busy" @click="modal = 'close'">투표 마감</button>
-          <span class="muted">득표는 마감 전에는 관리자도 볼 수 없습니다</span>
+          <span class="muted">득표는 마감 전에는 관리자도 볼 수 없어요</span>
         </template>
         <template v-else>
           <strong class="mono">보석 {{ f.tally?.gem }}표 · 골드 {{ f.tally?.gold }}표</strong>
@@ -133,7 +133,7 @@ function recompute() {
       <div v-if="f.closed" class="row" style="margin-top: 10px">
         <button :disabled="busy || !f.adopted" @click="modal = 'result'">결과 발표 →</button>
         <span v-if="f.adopted" class="muted">채택 화폐: {{ RESOURCE_LABELS[f.adopted] }}</span>
-        <span v-else class="blocker">동점입니다. 화이트·옐로우 리더 가위바위보 결과를 넣으세요</span>
+        <span v-else class="blocker">동점이에요. 화이트·옐로우 리더 가위바위보 결과를 넣으세요</span>
       </div>
     </template>
 
@@ -155,7 +155,7 @@ function recompute() {
       :title="modalText.title"
       :message="modalText.message"
       :confirm-label="modal === 'close' ? '마감' : modal === 'end' ? '끝내기' : modal === 'spy' ? '공개' : '발표'"
-      cancel-label="취소"
+      cancel-label="닫기"
       :danger="modal === 'close' || modal === 'end'"
       :busy="busy"
       @confirm="onConfirm"
@@ -167,9 +167,9 @@ function recompute() {
 <style scoped>
 h3 { font-size: 0.95rem; margin: 16px 0 6px; font-weight: 600; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 .steps { display: flex; gap: 4px; list-style: none; margin: 8px 0 0; padding: 0; flex-wrap: wrap; }
-.steps li { font-family: var(--font-mono); font-size: 0.75rem; padding: 2px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); }
-.steps li.past { color: var(--line-strong); border-color: var(--line-soft); }
-.steps li.cur { color: #fff; background: var(--blue); border-color: var(--blue); }
+.steps li { font-size: 0.87rem; font-weight: 600; padding: 4px 10px 6px; border-bottom: 2px solid transparent; color: var(--muted); }
+.steps li.past { color: #b0b8c1; }
+.steps li.cur { color: var(--ink); border-bottom-color: var(--ink); }
 .tbl { border-collapse: collapse; font-size: 0.92rem; }
 .tbl td { text-align: left; padding: 5px 12px 5px 0; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
 .blocker { color: var(--red); font-size: 0.88rem; }

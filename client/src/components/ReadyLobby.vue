@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import Icon from './Icon.vue'
 /**
  * 게임 시작 전(설정·준비) 참가자 화면. 게임 화면 대신 "게임 준비중 입니다." 만 보여준다.
  * - 준비 상태이고 아직 팀이 없으면 팀을 고른다. 팀은 실제 이름 대신 A, B, C… 와 현재/최대 인원으로 표시, 꽉 찬 팀은 dim.
- * - 한 번 고르면 바꿀 수 없다 (바꾸려면 진행자가 수동 이동). 정원 경쟁은 서버가 판정하고 진 쪽은 "팀이 가득 찼습니다".
+ * - 한 번 고르면 바꿀 수 없다 (바꾸려면 진행자가 수동 이동). 정원 경쟁은 서버가 판정하고 진 쪽은 "팀이 가득 찼어요".
  * - 이름 입력(첫 로그인)은 GroupView 가 먼저 처리한다.
- * - 팀을 고르면 운명의 카드(태양/달, docs/100 N4)를 고른다 (FatePick, 1회). 고르고 나면 "팀 A · 🌙 달" 과 대기 문구를 시작 전까지 보여준다.
+ * - 팀을 고르면 운명의 카드(태양/달, docs/100 N4)를 고른다 (FatePick, 1회). 고르고 나면 "팀 A · 달" 과 대기 문구를 시작 전까지 보여준다.
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { FATE_LABELS, type Fate, type LobbyTeam } from '../../../shared/game'
@@ -54,7 +55,7 @@ async function join() {
     auth.user = res.user
   } catch (e) {
     const code = e instanceof ApiError ? e.code : ''
-    error.value = code === 'team_full' ? `${t.label} 팀이 가득 찼습니다. 다른 팀을 고르세요.` : e instanceof ApiError && e.detail ? e.detail : '팀 선택에 실패했습니다.'
+    error.value = code === 'team_full' ? `${t.label} 팀이 가득 찼어요. 다른 팀을 고르세요.` : e instanceof ApiError && e.detail ? e.detail : '팀 선택에 실패했어요.'
     if (code === 'already_joined') void auth.refreshMe()
   } finally {
     busy.value = false
@@ -69,7 +70,7 @@ async function join() {
     <h2 class="title">게임 준비중 입니다.</h2>
 
     <template v-if="canPick">
-      <p class="muted">들어갈 팀을 고르세요. 한 번 고르면 바꿀 수 없습니다.</p>
+      <p class="muted">들어갈 팀을 고르세요. 한 번 고르면 바꿀 수 없어요.</p>
       <div class="teams">
         <button
           v-for="t in lobby"
@@ -88,7 +89,7 @@ async function join() {
     </template>
     <template v-else-if="myTeam && fate">
       <p class="mine">
-        <span class="letter">{{ myTeam.label }}</span> 팀 <span class="dot">·</span> {{ FATE_LABELS[fate] }}
+        <span class="letter">{{ myTeam.label }}</span> 팀 <span class="dot">·</span> <Icon :name="fate" /> {{ FATE_LABELS[fate] }}
       </p>
       <div class="tale">
         <!-- 봉인 문양: 천천히 도는 점선 궤도 + 원 + 마름모 속 "?" -->
@@ -105,11 +106,11 @@ async function join() {
         </svg>
         <p class="eyebrow">YOUR DESTINY HAS BEEN SEALED</p>
         <p class="tale-title">예정에 없던 이야기</p>
-        <p class="body">작은 선택 하나가<br />모든 것을 바꿀 수도 있습니다.</p>
+        <p class="body">작은 선택 하나가<br />모든 것을 바꿀 수도 있어요.</p>
         <p class="hush">지금은 아무것도 묻지 마세요.</p>
       </div>
     </template>
-    <p v-else-if="myTeam" class="muted">{{ myTeam.label }} 팀에 배정되었습니다. 진행자가 게임을 시작하면 화면이 바뀝니다.</p>
+    <p v-else-if="myTeam" class="muted">{{ myTeam.label }} 팀에 배정되었어요. 진행자가 게임을 시작하면 화면이 바뀝니다.</p>
     <p v-else class="muted">진행자가 게임을 시작하면 화면이 바뀝니다.</p>
 
     <p v-if="error" class="error">{{ error }}</p>
@@ -118,9 +119,9 @@ async function join() {
     <ModalDialog
       :open="!!picked"
       :title="`${picked?.label} 팀으로 들어갈까요?`"
-      message="한 번 고르면 바꿀 수 없습니다. 바꾸려면 진행자에게 요청하세요."
+      message="한 번 고르면 바꿀 수 없어요. 바꾸려면 진행자에게 요청하세요."
       confirm-label="들어가기"
-      cancel-label="취소"
+      cancel-label="닫기"
       :busy="busy"
       @confirm="join"
       @cancel="picked = null"
@@ -140,13 +141,14 @@ async function join() {
   padding: 18px 10px;
   background: var(--surface);
   color: var(--ink);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border: 2px solid transparent;
+  border-radius: var(--radius-card);
+  background: var(--bg-soft);
 }
 .team:not(:disabled):hover { border-color: var(--blue); }
 .team:disabled, .team:disabled:hover { background: var(--bg-soft); color: var(--ink); border-color: var(--line-soft); }
 .team.full { opacity: 0.45; cursor: not-allowed; }
-.letter { font-family: var(--font-display); font-size: 2.6rem; line-height: 1; }
+.letter { font-family: var(--font-display); font-weight: 800; font-size: 2.6rem; line-height: 1; color: var(--blue); }
 .count { font-size: 0.95rem; }
 .small { font-size: 0.75rem; }
 .mine { font-size: 1.2rem; margin: 4px 0 16px; }

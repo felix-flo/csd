@@ -168,8 +168,8 @@ function isLastRound(g: GameRow): boolean {
  */
 export function setLastIssuePhases(phases: Phase[]) {
   const g = getGameRow()
-  if (g.status === 'final' || g.status === 'ended') throw new GameError('ended', '게임이 끝났습니다')
-  if (isLastRound(g)) throw new GameError('last_round_locked', '마지막 라운드가 시작되어 발행 단계를 바꿀 수 없습니다')
+  if (g.status === 'final' || g.status === 'ended') throw new GameError('ended', '게임이 끝났어요')
+  if (isLastRound(g)) throw new GameError('last_round_locked', '마지막 라운드가 시작되어 발행 단계를 바꿀 수 없어요')
   const sorted = sortPhases(phases)
   if (!sorted.length) throw new GameError('no_phase', '발행을 허용할 단계를 1개 이상 고르세요', 400)
   updateGame('last_issue_phases = ?', [JSON.stringify(sorted)])
@@ -182,8 +182,8 @@ function requireNoWar() {
 
 export function requireRunning(phase?: Phase): GameRow {
   const g = getGameRow()
-  if (g.status !== 'running') throw new GameError('not_running', '게임이 진행 중이 아닙니다')
-  if (phase && g.phase !== phase) throw new GameError('wrong_phase', '지금은 할 수 없는 단계입니다')
+  if (g.status !== 'running') throw new GameError('not_running', '게임이 진행 중이 아니에요')
+  if (phase && g.phase !== phase) throw new GameError('wrong_phase', '지금은 할 수 없는 단계예요')
   return g
 }
 
@@ -233,7 +233,7 @@ export function saveSettings(input: {
 }): number[] {
   return db.transaction(() => {
     const status = getGameRow().status
-    if (status !== 'setup' && status !== 'ready') throw new GameError('not_setup', '게임 설정은 시작 전에만 바꿀 수 있습니다')
+    if (status !== 'setup' && status !== 'ready') throw new GameError('not_setup', '게임 설정은 시작 전에만 바꿀 수 있어요')
     const teamIds = new Set(listGroups().map((t) => t.id))
     for (const key of [...Object.keys(input.initial), ...Object.keys(input.capacity)]) {
       if (!teamIds.has(Number(key))) throw new GameError('unknown_team', key, 400)
@@ -243,10 +243,10 @@ export function saveSettings(input: {
     for (const [key, cap] of Object.entries(input.capacity)) {
       const teamId = Number(key)
       const joined = countRegular(teamId)
-      if (cap < joined) throw new GameError('below_joined', `${teamLabel(teamId)} 에 이미 ${joined}명이 들어와 있습니다`, 400)
+      if (cap < joined) throw new GameError('below_joined', `${teamLabel(teamId)} 에 이미 ${joined}명이 들어와 있어요`, 400)
       setCap.run(cap, teamId)
     }
-    if (status === 'ready' && listGroups().some((t) => capacityOf(t.id) < 1)) throw new GameError('no_capacity', '모든 팀의 최대 인원은 1명 이상이어야 합니다', 400)
+    if (status === 'ready' && listGroups().some((t) => capacityOf(t.id) < 1)) throw new GameError('no_capacity', '모든 팀의 최대 인원은 1명 이상이어야 해요', 400)
     resetAmountsToInitial()
     updateGame('total_days = ?, include_test = ?', [input.totalDays, input.includeTest ? 1 : 0])
     if (input.warCost) setWarCost(1, input.warCost)
@@ -296,9 +296,9 @@ function syncParticipantPins(): { created: number; deleted: number[] } {
 export function prepareGame(): number[] {
   return db.transaction(() => {
     const g = getGameRow()
-    if (g.status !== 'setup') throw new GameError('not_setup', '설정 단계에서만 할 수 있습니다')
+    if (g.status !== 'setup') throw new GameError('not_setup', '설정 단계에서만 할 수 있어요')
     if (!g.total_days) throw new GameError('no_days', '총 라운드 수를 먼저 설정하세요')
-    if (listGroups().length === 0) throw new GameError('no_teams', '팀이 없습니다')
+    if (listGroups().length === 0) throw new GameError('no_teams', '팀이 없어요')
     const empty = listGroups().filter((t) => capacityOf(t.id) < 1)
     if (empty.length) throw new GameError('no_capacity', `최대 인원을 정하세요: ${empty.map((t) => t.name).join(', ')}`)
     const ended = applyTestAccounts(g.include_test === 1)
@@ -311,7 +311,7 @@ export function prepareGame(): number[] {
 /** 준비 → 설정으로 되돌리기. 팀을 고른 참가자는 그대로 둔다 */
 export function revertToSetup() {
   const ok = db.prepare(`UPDATE game SET status = 'setup', updated_at = datetime('now') WHERE id = 1 AND status = 'ready'`).run().changes === 1
-  if (!ok) throw new GameError('not_ready', '준비 상태에서만 할 수 있습니다')
+  if (!ok) throw new GameError('not_ready', '준비 상태에서만 할 수 있어요')
 }
 
 export type JoinError = 'not_ready' | 'not_found' | 'already_joined' | 'name_required' | 'test_account' | 'team_full'
@@ -322,18 +322,18 @@ export type JoinError = 'not_ready' | 'not_found' | 'already_joined' | 'name_req
  */
 export function joinTeam(userId: number, teamId: number): GroupInfo {
   return db.transaction(() => {
-    if (getGameRow().status !== 'ready') throw new GameError('not_ready', '팀 선택 시간이 아닙니다')
+    if (getGameRow().status !== 'ready') throw new GameError('not_ready', '팀 선택 시간이 아니에요')
     const u = db.prepare(`SELECT group_id, name_set, is_test FROM users WHERE id = ? AND role = 'member' AND active = 1`).get(userId) as
       | { group_id: number | null; name_set: number; is_test: number }
       | undefined
     const team = listGroups().find((t) => t.id === teamId)
     if (!u || !team) throw new GameError('not_found', '', 404)
-    if (u.is_test === 1) throw new GameError('test_account', '테스트 계정은 팀이 정해져 있습니다')
-    if (u.group_id != null) throw new GameError('already_joined', '이미 팀을 골랐습니다. 바꾸려면 진행자에게 요청하세요')
+    if (u.is_test === 1) throw new GameError('test_account', '테스트 계정은 팀이 정해져 있어요')
+    if (u.group_id != null) throw new GameError('already_joined', '이미 팀을 골랐어요. 바꾸려면 진행자에게 요청하세요')
     if (u.name_set !== 1) throw new GameError('name_required', '이름을 먼저 입력하세요', 400)
-    if (countRegular(teamId) + activeTestCount(teamId) >= capacityOf(teamId)) throw new GameError('team_full', '팀이 가득 찼습니다')
+    if (countRegular(teamId) + activeTestCount(teamId) >= capacityOf(teamId)) throw new GameError('team_full', '팀이 가득 찼어요')
     const ok = db.prepare('UPDATE users SET group_id = ?, is_leader = 0 WHERE id = ? AND group_id IS NULL').run(teamId, userId).changes === 1
-    if (!ok) throw new GameError('already_joined', '이미 팀을 골랐습니다')
+    if (!ok) throw new GameError('already_joined', '이미 팀을 골랐어요')
     return team
   })()
 }
@@ -354,7 +354,7 @@ export function getPrep(): { unassigned: number; noLeader: number[] } {
 export function startGame(by: number): number[] {
   return db.transaction(() => {
     const g = getGameRow()
-    if (g.status !== 'ready') throw new GameError('not_ready', '초기셋팅완료 후 준비 상태에서 시작할 수 있습니다')
+    if (g.status !== 'ready') throw new GameError('not_ready', '초기셋팅완료 후 준비 상태에서 시작할 수 있어요')
     if (!g.total_days) throw new GameError('no_days', '총 라운드 수를 먼저 설정하세요')
     const deactivated = applyTestAccounts(g.include_test === 1)
     // 팀을 고르지 않은 참가자는 비활성 (관리자가 나중에 팀에 넣고 복귀시킬 수 있다)
@@ -401,7 +401,7 @@ export interface AdvanceResult {
 export function advance(expect: { day: number; phase: Phase }): AdvanceResult {
   return db.transaction(() => {
     const g = requireRunning()
-    if (g.day !== expect.day || g.phase !== expect.phase) throw new GameError('stale', '이미 다음 단계로 넘어갔습니다. 화면을 새로고침하세요')
+    if (g.day !== expect.day || g.phase !== expect.phase) throw new GameError('stale', '이미 다음 단계로 넘어갔어요. 화면을 새로고침하세요')
     requireNoWar()
     const result: AdvanceResult = { day: g.day, phase: g.phase!, finalized: [], cancelledTrade: null }
     if (g.phase === 'leader') {
@@ -421,13 +421,13 @@ export function advance(expect: { day: number; phase: Phase }): AdvanceResult {
       if (g.phase === 'council') {
         const pending = pendingMigrations()
         if (pending.length) {
-          throw new GameError('migration_pending', `처리하지 않은 이주 신청이 있습니다 (${pending.map((m) => `${m.userName} → ${teamLabel(m.toTeamId)}`).join(', ')}). 받는 팀 리더가 처리하거나 진행자가 취소하세요`)
+          throw new GameError('migration_pending', `처리하지 않은 이주 신청이 있어요 (${pending.map((m) => `${m.userName} → ${teamLabel(m.toTeamId)}`).join(', ')}). 받는 팀 리더가 처리하거나 진행자가 취소하세요`)
         }
       }
       result.phase = PHASES[idx + 1]!
       updateGame(`phase = ?, phase_started_at = datetime('now'), phase_timer_fired = 0`, [result.phase])
     } else {
-      if (g.day >= (g.total_days ?? 0)) throw new GameError('last_day', '마지막 라운드입니다. 게임 종료를 누르세요')
+      if (g.day >= (g.total_days ?? 0)) throw new GameError('last_day', '마지막 라운드예요. 게임 종료를 누르세요')
       if (!getWarCost(g.day + 1)) throw new GameError('no_war_cost', `${g.day + 1}라운드 전쟁 선포 비용을 먼저 정하세요`)
       result.day = g.day + 1
       result.phase = 'leader'
@@ -446,10 +446,10 @@ export function advance(expect: { day: number; phase: Phase }): AdvanceResult {
 export function endGame(): { trade: TradeView | null; issues: IssueRequestView[] } {
   return db.transaction(() => {
     const g = requireRunning()
-    if (g.day < (g.total_days ?? 0)) throw new GameError('not_last_day', '마지막 라운드에만 종료할 수 있습니다')
+    if (g.day < (g.total_days ?? 0)) throw new GameError('not_last_day', '마지막 라운드에만 종료할 수 있어요')
     requireNoWar()
     if (g.phase !== 'life' || !allLivesDone(g.day)) {
-      throw new GameError('not_finished', '마지막 라운드 라이프 제출 단계에서 모든 팀이 제출해야 종료할 수 있습니다')
+      throw new GameError('not_finished', '마지막 라운드 라이프 제출 단계에서 모든 팀이 제출해야 종료할 수 있어요')
     }
     const trade = cancelActiveTrade()
     const issues = cancelPendingIssues()

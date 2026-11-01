@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from '../components/Icon.vue'
 import { onMounted, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
@@ -40,9 +41,9 @@ async function submit() {
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : null
     router.replace(redirect ?? auth.homePath)
   } catch (e) {
-    if (e instanceof ApiError && e.status === 401) error.value = 'PIN 이 올바르지 않습니다.'
-    else if (e instanceof ApiError && e.status === 429) error.value = '시도 횟수가 너무 많습니다. 잠시 후 다시 시도하세요.'
-    else error.value = '로그인에 실패했습니다.'
+    if (e instanceof ApiError && e.status === 401) error.value = 'PIN 이 올바르지 않아요.'
+    else if (e instanceof ApiError && e.status === 429) error.value = '시도 횟수가 너무 많아요. 잠시 후 다시 시도하세요.'
+    else error.value = '로그인에 실패했어요.'
   } finally {
     busy.value = false
   }
@@ -70,7 +71,7 @@ async function submit() {
         <button type="submit" :disabled="busy">입장</button>
       </form>
       <p v-if="error" class="error">{{ error }}</p>
-      <p v-if="tabLogin" class="muted" style="margin-top: 12px">🧪 테스트 모드: 이 탭에서만 로그인됩니다. 새 탭은 다시 로그인하세요.</p>
+      <p v-if="tabLogin" class="muted" style="margin-top: 12px"><Icon name="flask" /> 테스트 모드: 이 탭에서만 로그인돼요. 새 탭은 다시 로그인하세요.</p>
     </div>
   </div>
 </template>

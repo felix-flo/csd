@@ -30,7 +30,7 @@ onMounted(() => {
   </template>
   <!-- 탈락 통보: 5초 보여준 뒤 로그아웃 (auth.eliminate) -->
   <div v-if="auth.eliminated" class="eliminated" role="alertdialog" aria-live="assertive">
-    <p class="title">탈락되었습니다</p>
+    <p class="title">탈락되었어요</p>
   </div>
 </template>
 
@@ -42,12 +42,13 @@ onMounted(() => {
   display: grid;
   place-items: center;
   padding: 16px;
-  background: color-mix(in srgb, var(--ink) 88%, transparent);
+  background: rgba(25, 31, 40, 0.92);
 }
 .eliminated .title {
   margin: 0;
   color: #fff;
   font-family: var(--font-display);
+  font-weight: 800;
   font-size: clamp(2rem, 9vw, 4rem);
   text-align: center;
 }

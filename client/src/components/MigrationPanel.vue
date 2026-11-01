@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from './Icon.vue'
 /**
  * 이주 (참가자, docs/100 N3). 이주 시작 라운드부터 보인다.
  * - 일반 팀원: 받을 팀을 골라 신청 (확인 팝업: 빈손 이동) → 대기 중이면 취소. 1인 대기 1건
@@ -31,14 +32,14 @@ const modalText = computed(() => {
   if (m.kind === 'request') {
     return {
       title: `${nameOf(picked.value!)}으로 이주를 신청할까요?`,
-      message: '받는 팀 리더가 수락하면 바로 소속이 바뀌고 전체에 공지됩니다. 재화는 가져가지 않고(빈손), 이후 라이프는 새 팀이 냅니다.',
+      message: '받는 팀 리더가 수락하면 바로 소속이 바뀌고 전체에 공지돼요. 재화는 가져가지 않고(빈손), 이후 라이프는 새 팀이 내요.',
       confirm: '신청',
     }
   }
   if (m.kind === 'cancel') return { title: '이주 신청을 취소할까요?', message: '', confirm: '신청 취소' }
   return m.accept
-    ? { title: `${m.m.userName} 님의 이주를 수락할까요?`, message: `${nameOf(m.m.fromTeamId)} → 우리 팀. 수락하면 바로 우리 팀원이 되고 전체에 공지됩니다.`, confirm: '수락' }
-    : { title: `${m.m.userName} 님의 이주를 거절할까요?`, message: '신청한 사람에게만 알립니다.', confirm: '거절' }
+    ? { title: `${m.m.userName} 님의 이주를 수락할까요?`, message: `${nameOf(m.m.fromTeamId)} → 우리 팀. 수락하면 바로 우리 팀원이 되고 전체에 공지돼요.`, confirm: '수락' }
+    : { title: `${m.m.userName} 님의 이주를 거절할까요?`, message: '신청한 사람에게만 알려요.', confirm: '거절' }
 })
 
 async function run(fn: () => Promise<unknown>) {
@@ -67,10 +68,10 @@ function onConfirm() {
 
 <template>
   <div v-if="day >= migration.startDay" class="card">
-    <h2>🧳 이주</h2>
+    <h2><Icon name="migration" /> 이주</h2>
     <!-- 리더: 받은 신청 -->
     <template v-if="isLeader">
-      <p class="muted">리더는 이주를 신청할 수 없습니다. 우리 팀으로 온 신청을 수락하거나 거절하세요.</p>
+      <p class="muted">리더는 이주를 신청할 수 없어요. 우리 팀으로 온 신청을 수락하거나 거절하세요.</p>
       <p v-if="!migration.incoming.length" class="muted">받은 이주 신청 없음</p>
       <ul v-else class="list">
         <li v-for="m in migration.incoming" :key="m.id">
@@ -81,13 +82,13 @@ function onConfirm() {
           </span>
         </li>
       </ul>
-      <p v-if="migration.incoming.length && !migration.open" class="muted">라이프 제출 단계에는 처리할 수 없습니다.</p>
+      <p v-if="migration.incoming.length && !migration.open" class="muted">라이프 제출 단계에는 처리할 수 없어요.</p>
     </template>
     <!-- 일반 팀원: 신청 -->
     <template v-else-if="migration.mine">
       <p>
         <span class="badge warn">대기 중</span>
-        <TeamMark :color="teams.byId(migration.mine.toTeamId)?.color ?? ''" /><strong>{{ nameOf(migration.mine.toTeamId) }}</strong> 에 이주 신청 중 — 그 팀 리더의 수락을 기다립니다
+        <TeamMark :color="teams.byId(migration.mine.toTeamId)?.color ?? ''" /><strong>{{ nameOf(migration.mine.toTeamId) }}</strong> 에 이주 신청 중 — 그 팀 리더의 수락을 기다려요
       </p>
       <button class="secondary small" :disabled="busy" @click="modal = { kind: 'cancel' }">신청 취소</button>
     </template>
@@ -97,10 +98,10 @@ function onConfirm() {
         {{ migration.done.day }}라운드에 <TeamMark :color="teams.byId(migration.done.fromTeamId)?.color ?? ''" />{{ nameOf(migration.done.fromTeamId) }} →
         <TeamMark :color="teams.byId(migration.done.toTeamId)?.color ?? ''" /><strong>{{ nameOf(migration.done.toTeamId) }}</strong>
       </p>
-      <p class="muted">이주는 한 번만 할 수 있습니다.</p>
+      <p class="muted">이주는 한 번만 할 수 있어요.</p>
     </template>
     <template v-else-if="migration.open">
-      <p class="muted">다른 팀으로 옮길 수 있습니다. 신청은 받는 팀 리더에게만 전달되고, 수락되면 바로 소속이 바뀝니다 (빈손 이동).</p>
+      <p class="muted">다른 팀으로 옮길 수 있어요. 신청은 받는 팀 리더에게만 전달되고, 수락되면 바로 소속이 바뀝니다 (빈손 이동).</p>
       <div class="teams">
         <button v-for="t in others" :key="t.id" class="team" :class="{ on: picked === t.id }" :disabled="busy" @click="picked = t.id">
           <TeamMark :color="t.color" />{{ t.name }}
@@ -111,7 +112,7 @@ function onConfirm() {
         <span v-if="picked == null" class="muted">옮길 팀을 고르세요</span>
       </div>
     </template>
-    <p v-else class="muted">라이프 제출 단계에는 이주를 신청할 수 없습니다. 다음 라운드에 신청하세요.</p>
+    <p v-else class="muted">라이프 제출 단계에는 이주를 신청할 수 없어요. 다음 라운드에 신청하세요.</p>
     <p v-if="error" class="error">{{ error }}</p>
     <ModalDialog
       :open="modal !== null"
@@ -131,7 +132,7 @@ function onConfirm() {
 .list { list-style: none; margin: 0; padding: 0; }
 .list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line-soft); flex-wrap: wrap; }
 .teams { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
-.team { background: var(--surface); color: var(--ink); border: 2px solid var(--line); padding: 12px; }
-.team.on { border-color: var(--blue); background: var(--blue); color: #fff; }
+.team { background: var(--bg-soft); color: var(--ink); border: 2px solid transparent; border-radius: var(--radius-card); padding: 12px; }
+.team.on { border-color: var(--blue); background: var(--blue-bg); color: var(--blue-600); }
 button.small { padding: 4px 10px; font-size: 0.85rem; }
 </style>

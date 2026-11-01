@@ -37,7 +37,7 @@ function testToast() {
     targetId: null,
     targetRole: null,
     targetName: null,
-    payload: { message: '알림음 테스트입니다.' },
+    payload: { message: '알림음 테스트예요.' },
     createdBy: null,
     createdAt: new Date().toISOString(),
   })
@@ -55,11 +55,11 @@ function testToast() {
 
     <div class="card">
       <p class="muted" style="margin-top: 0">
-        전체 공지와 시스템 알림이 도착하면 팝업과 함께 한 번 울립니다. 그룹·개인 대상 알림은 팝업만 뜨고 소리는 나지 않습니다.
-        프레젠테이션·참가자 화면에서만 나고, 관리자에게는 나지 않습니다. 선택은 이 기기(브라우저)에만 저장됩니다.
+        전체 공지와 시스템 알림이 도착하면 팝업과 함께 한 번 울려요. 그룹·개인 대상 알림은 팝업만 뜨고 소리는 나지 않아요.
+        프레젠테이션·참가자 화면에서만 나고, 관리자에게는 나지 않아요. 선택은 이 기기(브라우저)에만 저장돼요.
       </p>
-      <p v-if="!toasts.sound" class="badge warn">현재 계정({{ auth.user?.role }})은 알림음 대상이 아니라 미리듣기만 됩니다.</p>
-      <p v-if="blocked" class="badge off">브라우저가 소리를 막았습니다. 화면을 한 번 클릭한 뒤 다시 눌러 보세요.</p>
+      <p v-if="!toasts.sound" class="badge warn">현재 계정({{ auth.user?.role }})은 알림음 대상이 아니라 미리듣기만 돼요.</p>
+      <p v-if="blocked" class="badge off">브라우저가 소리를 막았어요. 화면을 한 번 클릭한 뒤 다시 눌러 보세요.</p>
 
       <ul class="chimes">
         <li v-for="c in CHIMES" :key="c.id" :class="{ selected: c.id === selected }">

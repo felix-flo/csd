@@ -78,7 +78,7 @@ function transition(id: number, from: TradeStatus[], set: string, params: unknow
 function sideOf(t: TradeRow, teamId: number): 'from' | 'to' {
   if (t.from_group === teamId) return 'from'
   if (t.to_group === teamId) return 'to'
-  throw new GameError('not_party', '거래 당사자가 아닙니다', 403)
+  throw new GameError('not_party', '거래 당사자가 아니에요', 403)
 }
 
 function requireRow(id: number): TradeRow {
@@ -91,7 +91,7 @@ function requireAffordable(teamId: number, offer: Resources, needCredit: boolean
   const own = getTeamResources(teamId)
   const need = { ...offer, credit: offer.credit + (needCredit ? 1 : 0) }
   const short = RESOURCE_KINDS.find((k) => need[k] > own[k])
-  if (short) throw new GameError('insufficient', `${label}의 ${RESOURCE_LABELS[short]}이(가) 부족합니다 (필요 ${need[short]}, 보유 ${own[short]})`)
+  if (short) throw new GameError('insufficient', `${label}의 ${RESOURCE_LABELS[short]}이(가) 부족해요 (필요 ${need[short]}, 보유 ${own[short]})`)
 }
 
 export interface TradeProposal {
@@ -105,17 +105,17 @@ export interface TradeProposal {
 /** 진행자 제안. 두 팀 모두 리더가 있어야 하고, 각 팀이 줄 재화(+수수료)는 보유량 이하여야 한다 */
 export function proposeTrade(day: number, p: TradeProposal, by: number, teamName: (id: number) => string): TradeView {
   return db.transaction(() => {
-    if (p.fromTeam === p.toTeam) throw new GameError('same_team', '같은 팀끼리는 거래할 수 없습니다', 400)
+    if (p.fromTeam === p.toTeam) throw new GameError('same_team', '같은 팀끼리는 거래할 수 없어요', 400)
     if (!findGroupById(p.fromTeam) || !findGroupById(p.toTeam)) throw new GameError('not_found', '', 404)
-    if (p.creditPayer !== p.fromTeam && p.creditPayer !== p.toTeam) throw new GameError('bad_payer', '크레딧은 거래하는 두 팀 중 한 팀이 냅니다', 400)
+    if (p.creditPayer !== p.fromTeam && p.creditPayer !== p.toTeam) throw new GameError('bad_payer', '크레딧은 거래하는 두 팀 중 한 팀이 내요', 400)
     if (!isResources(p.fromOffer) || !isResources(p.toOffer) || RESOURCE_KINDS.some((k) => p.fromOffer[k] < 0 || p.toOffer[k] < 0)) throw new GameError('bad_offer', '', 400)
     if (RESOURCE_KINDS.every((k) => p.fromOffer[k] === 0 && p.toOffer[k] === 0)) throw new GameError('bad_offer', '교환할 재화를 입력하세요', 400)
     for (const id of [p.fromTeam, p.toTeam]) {
-      if (!listGroupMembers(id).some((m) => m.isLeader)) throw new GameError('no_leader', `${teamName(id)}에 리더가 없습니다`)
+      if (!listGroupMembers(id).some((m) => m.isLeader)) throw new GameError('no_leader', `${teamName(id)}에 리더가 없어요`)
     }
     // 전쟁 중(선포~결과)에는 모든 거래 금지 (war.ts 가 이 모듈을 쓰므로 직접 조회)
-    if (db.prepare(`SELECT 1 FROM wars WHERE status = 'declared' LIMIT 1`).get()) throw new GameError('war_active', '전쟁 중에는 거래할 수 없습니다')
-    if (getActiveTrade()) throw new GameError('trade_busy', '진행 중인 거래가 있습니다. 끝나거나 취소된 뒤 올리세요')
+    if (db.prepare(`SELECT 1 FROM wars WHERE status = 'declared' LIMIT 1`).get()) throw new GameError('war_active', '전쟁 중에는 거래할 수 없어요')
+    if (getActiveTrade()) throw new GameError('trade_busy', '진행 중인 거래가 있어요. 끝나거나 취소된 뒤 올리세요')
     requireAffordable(p.fromTeam, p.fromOffer, p.creditPayer === p.fromTeam, teamName(p.fromTeam))
     requireAffordable(p.toTeam, p.toOffer, p.creditPayer === p.toTeam, teamName(p.toTeam))
     try {
@@ -124,7 +124,7 @@ export function proposeTrade(day: number, p: TradeProposal, by: number, teamName
         .run(day, p.fromTeam, p.toTeam, p.creditPayer, JSON.stringify(p.fromOffer), JSON.stringify(p.toOffer), by)
       return getTrade(Number(info.lastInsertRowid))!
     } catch (e) {
-      if ((e as { code?: string }).code === 'SQLITE_CONSTRAINT_UNIQUE') throw new GameError('trade_busy', '진행 중인 거래가 있습니다')
+      if ((e as { code?: string }).code === 'SQLITE_CONSTRAINT_UNIQUE') throw new GameError('trade_busy', '진행 중인 거래가 있어요')
       throw e
     }
   })()
@@ -138,13 +138,13 @@ export function decideTrade(id: number, teamId: number, accept: boolean, day: nu
   return db.transaction(() => {
     const t = requireRow(id)
     const side = sideOf(t, teamId)
-    if (t.status !== 'proposed') throw new GameError('stale', '이미 끝난 거래입니다')
+    if (t.status !== 'proposed') throw new GameError('stale', '이미 끝난 거래예요')
     if (!accept) {
-      if (!transition(id, ['proposed'], `status = 'rejected', closed_by = ?`, [teamId])) throw new GameError('stale', '이미 끝난 거래입니다')
+      if (!transition(id, ['proposed'], `status = 'rejected', closed_by = ?`, [teamId])) throw new GameError('stale', '이미 끝난 거래예요')
       return { trade: getTrade(id)!, completed: false }
     }
-    if ((side === 'from' ? t.from_accepted : t.to_accepted) === 1) throw new GameError('already_accepted', '이미 수락했습니다')
-    if (!transition(id, ['proposed'], `${side}_accepted = 1`)) throw new GameError('stale', '이미 끝난 거래입니다')
+    if ((side === 'from' ? t.from_accepted : t.to_accepted) === 1) throw new GameError('already_accepted', '이미 수락했어요')
+    if (!transition(id, ['proposed'], `${side}_accepted = 1`)) throw new GameError('stale', '이미 끝난 거래예요')
     const now = getRow(id)!
     if (!(now.from_accepted && now.to_accepted)) return { trade: toView(now), completed: false }
     // 양쪽 수락 → 완료. 조건부 전이로 한 번만 실행. 재화가 부족하면 applyDeltas 가 던져 전체 롤백
@@ -166,7 +166,7 @@ export function cancelTrade(id: number): TradeView {
   return db.transaction(() => {
     requireRow(id)
     if (!transition(id, [...ACTIVE_TRADE_STATUSES], `status = 'cancelled', closed_by = NULL`)) {
-      throw new GameError('stale', '이미 끝난 거래입니다')
+      throw new GameError('stale', '이미 끝난 거래예요')
     }
     return getTrade(id)!
   })()

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from './Icon.vue'
 /**
  * 게임 설정 (시작 전: 설정·준비 상태): 총 일수, 팀별 최대 인원, 테스트 계정 포함 여부, 발행 한도, 마지막 라운드 발행 단계, 이주 시작 라운드, 팀별 초기 재화. (라이프 매장량은 2026-10-30 폐지)
  * - 설정 상태: "초기셋팅완료" → 준비 상태 (최대 인원 합계만큼 팀 없는 PIN 생성, 참가자가 로그인해 팀 선택)
@@ -141,11 +142,11 @@ async function prepare() {
     <h2>게임 설정 <span v-if="status === 'ready'" class="badge on">준비 중</span></h2>
     <p v-if="status === 'setup'" class="muted">
       총 라운드 수와 팀별 최대 인원, 초기 재화를 정한 뒤 <strong>초기셋팅완료</strong>를 누르세요. 최대 인원 합계만큼 팀 없는 PIN 이 만들어지고,
-      참가자가 로그인해 이름을 입력하고 팀(A, B, C…)을 직접 고릅니다. 진행자 계정은 "팀 · 진행자 구성" 카드에서 만듭니다.
+      참가자가 로그인해 이름을 입력하고 팀(A, B, C…)을 직접 골라요. 진행자 계정은 "팀 · 진행자 구성" 카드에서 만들어요.
     </p>
     <p v-else class="muted">
-      준비 중에도 설정을 바꿀 수 있습니다. 최대 인원을 늘리면 PIN 이 추가되고, 줄이면 아직 쓰지 않은 PIN 이 지워집니다 (이미 들어온 인원 아래로는 줄일 수 없습니다).
-      게임 시작은 위 "게임 진행" 카드에서 합니다.
+      준비 중에도 설정을 바꿀 수 있어요. 최대 인원을 늘리면 PIN 이 추가되고, 줄이면 아직 쓰지 않은 PIN 이 지워져요 (이미 들어온 인원 아래로는 줄일 수 없어요).
+      게임 시작은 위 "게임 진행" 카드에서 해요.
     </p>
 
     <div class="row" style="margin-bottom: 10px">
@@ -156,8 +157,8 @@ async function prepare() {
       <TabLoginToggle />
     </div>
     <div class="row" style="margin-bottom: 10px">
-      <label>💎 보석 발행 한도 <input v-model.number="issueLimit.gem" type="number" min="0" style="width: 6em" /> /라운드</label>
-      <label>🥇 골드 발행 한도 <input v-model.number="issueLimit.gold" type="number" min="0" style="width: 6em" /> /라운드 (이월)</label>
+      <label><Icon name="gem" /> 보석 발행 한도 <input v-model.number="issueLimit.gem" type="number" min="0" style="width: 6em" /> /라운드</label>
+      <label><Icon name="gold" /> 골드 발행 한도 <input v-model.number="issueLimit.gold" type="number" min="0" style="width: 6em" /> /라운드 (이월)</label>
     </div>
     <div class="row" style="margin-bottom: 10px">
       <span>마지막 라운드 발행 단계</span>
@@ -165,23 +166,23 @@ async function prepare() {
       <span v-if="!lastIssuePhases.length" class="error" style="font-size: 0.85rem">1개 이상 고르세요</span>
     </div>
     <div class="row" style="margin-bottom: 10px">
-      <label>🧳 이주 시작 라운드 <input v-model.number="migrationStartDay" type="number" min="1" max="30" style="width: 5em" /></label>
+      <label><Icon name="migration" /> 이주 시작 라운드 <input v-model.number="migrationStartDay" type="number" min="1" max="30" style="width: 5em" /></label>
       <span class="muted" style="font-size: 0.85rem">
-        <template v-if="totalDays && migrationStartDay > totalDays">총 {{ totalDays }}라운드라 이주가 열리지 않습니다</template>
+        <template v-if="totalDays && migrationStartDay > totalDays">총 {{ totalDays }}라운드라 이주가 열리지 않아요</template>
         <template v-else>이 라운드부터 마지막 라운드까지 (라이프 제출 단계 제외)</template>
       </span>
     </div>
     <div class="row" style="margin-bottom: 10px">
-      <span>⚔️ 1라운드 전쟁 선포 비용</span>
+      <span><Icon name="war" /> 1라운드 전쟁 선포 비용</span>
       <label>보석 <input v-model.number="warCost.gem" type="number" min="0" style="width: 5em" /></label>
       <label>골드 <input v-model.number="warCost.gold" type="number" min="0" style="width: 5em" /></label>
       <label>크레딧 <input v-model.number="warCost.credit" type="number" min="0" style="width: 5em" /></label>
-      <span v-if="!settings?.warCost" class="error" style="font-size: 0.85rem">저장해야 게임을 시작할 수 있습니다</span>
+      <span v-if="!settings?.warCost" class="error" style="font-size: 0.85rem">저장해야 게임을 시작할 수 있어요</span>
     </div>
     <p class="muted" style="margin-top: 0">
-      테스트 계정은 팀·리더가 미리 정해져 있고 최대 인원에 들어갑니다 (팀마다 리더 → 팀원 순으로 최대 인원까지만 활성, 최대 인원 1이면 리더만). 빼면 탈락(로그인 차단) 처리됩니다.
-      전쟁 선포 비용: 2라운드부터는 게임 진행 카드에서 전 라운드가 끝나기 전에 정합니다(0 이면 무료).
-      발행 한도: 화이트팀 리더는 보석을 라운드마다 한도까지(이월 없음), 옐로우팀 리더는 골드를 라운드마다 한도씩 쌓아서(안 쓴 만큼 이월) 발행 요청할 수 있습니다.
+      테스트 계정은 팀·리더가 미리 정해져 있고 최대 인원에 들어가요 (팀마다 리더 → 팀원 순으로 최대 인원까지만 활성, 최대 인원 1이면 리더만). 빼면 탈락(로그인 차단) 처리돼요.
+      전쟁 선포 비용: 2라운드부터는 게임 진행 카드에서 전 라운드가 끝나기 전에 정해요(0 이면 무료).
+      발행 한도: 화이트팀 리더는 보석을 라운드마다 한도까지(이월 없음), 옐로우팀 리더는 골드를 라운드마다 한도씩 쌓아서(안 쓴 만큼 이월) 발행 요청할 수 있어요.
     </p>
 
     <table class="res-table">
@@ -189,7 +190,7 @@ async function prepare() {
         <tr>
           <th>팀</th>
           <th>최대 인원</th>
-          <th v-for="r in RESOURCES" :key="r.key">{{ r.emoji }} {{ r.label }}</th>
+          <th v-for="r in RESOURCES" :key="r.key"><Icon :name="r.key" /> {{ r.label }}</th>
           <th></th>
         </tr>
       </thead>
@@ -210,7 +211,7 @@ async function prepare() {
         </tr>
       </tbody>
     </table>
-    <p class="muted" style="margin: 6px 0 0">참가자 PIN {{ totalCapacity }}개<template v-if="testSeats"> (테스트 계정 {{ testSeats }}명 제외)</template> · 참가자에게는 팀 이름 대신 A, B, C… 로 보입니다.</p>
+    <p class="muted" style="margin: 6px 0 0">참가자 PIN {{ totalCapacity }}개<template v-if="testSeats"> (테스트 계정 {{ testSeats }}명 제외)</template> · 참가자에게는 팀 이름 대신 A, B, C… 로 보여요.</p>
 
     <div class="row" style="margin-top: 12px">
       <button :class="status === 'setup' ? 'secondary' : ''" :disabled="busy || !dirty || !lastIssuePhases.length" @click="save">설정 저장</button>
@@ -222,9 +223,9 @@ async function prepare() {
     <ModalDialog
       :open="confirmPrepare"
       title="초기셋팅을 완료할까요?"
-      :message="`참가자 PIN ${totalCapacity}개를 만들고 게임 준비 상태로 바꿉니다. 참가자는 로그인해 이름을 입력하고 팀을 고를 수 있습니다.\n준비 중에도 설정은 바꿀 수 있습니다.`"
+      :message="`참가자 PIN ${totalCapacity}개를 만들고 게임 준비 상태로 바꿉니다. 참가자는 로그인해 이름을 입력하고 팀을 고를 수 있어요.\n준비 중에도 설정은 바꿀 수 있어요.`"
       confirm-label="초기셋팅완료"
-      cancel-label="취소"
+      cancel-label="닫기"
       :busy="busy"
       @confirm="prepare"
       @cancel="confirmPrepare = false"

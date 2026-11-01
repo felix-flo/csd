@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from './Icon.vue'
 /**
  * 팀 재화 (관리자, 게임 시작 후): 현재 보유량, 생산·정정 입력, 대가 없는 원조, 변동 이력.
  * - 생산·원조의 팀 선택은 고른 팀의 색으로 칠해 다른 팀에 잘못 넣는 실수를 막는다 (docs/103 §2)
@@ -88,7 +89,7 @@ async function applyAid() {
       <thead>
         <tr>
           <th>팀</th>
-          <th v-for="r in RESOURCES" :key="r.key">{{ r.emoji }} {{ r.label }}</th>
+          <th v-for="r in RESOURCES" :key="r.key"><Icon :name="r.key" /> {{ r.label }}</th>
           <th>팀원</th>
         </tr>
       </thead>
@@ -112,16 +113,16 @@ async function applyAid() {
         <option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}</option>
       </select>
       <label v-for="r in RESOURCES" :key="r.key" class="row" style="gap: 4px">
-        {{ r.emoji }} <input v-model.number="adj[r.key]" type="number" style="width: 5em" :title="`${r.label} 증감 (음수 = 차감)`" />
+        <Icon :name="r.key" /> <input v-model.number="adj[r.key]" type="number" style="width: 5em" :title="`${r.label} 증감 (음수 = 차감)`" />
       </label>
       <label class="row" style="gap: 4px"><input v-model="reason" type="radio" value="production" /> 생산</label>
       <label class="row" style="gap: 4px"><input v-model="reason" type="radio" value="correction" /> 정정</label>
       <button type="submit" :disabled="busy || !adjTeam || !adjText" :style="teamStyle(adjTeam)" class="team-apply">{{ adjTeam ? `${team(adjTeam)?.name}에 적용` : '적용' }}</button>
     </form>
-    <p class="muted" style="margin: 4px 0 0">증감으로 입력합니다 (음수 = 차감). 팀원에게 "생산: 보석 +3" 처럼 알림이 갑니다. 라이프 지급에 제한은 없습니다.</p>
+    <p class="muted" style="margin: 4px 0 0">증감으로 입력해요 (음수 = 차감). 팀원에게 "생산: 보석 +3" 처럼 알림이 가요. 라이프 지급에 제한은 없어요.</p>
 
     <h3>대가 없는 원조 <span class="muted">리더 협의 단계 · 게임 전체 라운드당 1회</span></h3>
-    <p class="muted" style="margin: 0 0 6px">리더 4명 중 3명 이상 찬성해야 통과합니다. 통과한 원조만 입력하세요. 한 라운드에 1건만 가능하고 다음 라운드에 다시 할 수 있습니다.</p>
+    <p class="muted" style="margin: 0 0 6px">리더 4명 중 3명 이상 찬성해야 통과해요. 통과한 원조만 입력하세요. 한 라운드에 1건만 가능하고 다음 라운드에 다시 할 수 있어요.</p>
     <ul v-if="view.aidsToday.length" class="aids">
       <li v-for="a in view.aidsToday" :key="a.fromTeamId">
         <TeamMark :color="team(a.fromTeamId)?.color ?? ''" />{{ team(a.fromTeamId)?.name }} →
@@ -129,8 +130,8 @@ async function applyAid() {
         <span class="mono">{{ amountText(a.amounts) }}</span>
       </li>
     </ul>
-    <p v-if="!aidPhase" class="muted">리더 협의 단계에서 입력할 수 있습니다.</p>
-    <p v-else-if="aidUsed" class="muted"><span class="badge off">이번 라운드 원조 완료</span> 다음 라운드 리더 협의에서 다시 할 수 있습니다.</p>
+    <p v-if="!aidPhase" class="muted">리더 협의 단계에서 입력할 수 있어요.</p>
+    <p v-else-if="aidUsed" class="muted"><span class="badge off">이번 라운드 원조 완료</span> 다음 라운드 리더 협의에서 다시 할 수 있어요.</p>
     <form v-else class="row" @submit.prevent="aidConfirm = true">
       <select v-model="aidFrom" required class="team-select" :class="{ picked: !!aidFrom }" :style="teamStyle(aidFrom)">
         <option :value="null" disabled>주는 팀</option>
@@ -142,7 +143,7 @@ async function applyAid() {
         <option v-for="g in groups" :key="g.id" :value="g.id" :disabled="g.id === aidFrom">{{ g.name }}</option>
       </select>
       <label v-for="r in RESOURCES" :key="r.key" class="row" style="gap: 4px">
-        {{ r.emoji }} <input v-model.number="aid[r.key]" type="number" min="0" style="width: 5em" />
+        <Icon :name="r.key" /> <input v-model.number="aid[r.key]" type="number" min="0" style="width: 5em" />
       </label>
       <button type="submit" :disabled="busy || !aidFrom || !aidTo || !aidText">원조 처리</button>
     </form>
@@ -168,9 +169,9 @@ async function applyAid() {
     <ModalDialog
       :open="aidConfirm"
       title="원조를 처리할까요?"
-      :message="`${team(aidFrom ?? 0)?.name} → ${team(aidTo ?? 0)?.name}: ${aidText}\n이번 라운드에는 더 이상 원조할 수 없습니다 (라운드당 1회).`"
+      :message="`${team(aidFrom ?? 0)?.name} → ${team(aidTo ?? 0)?.name}: ${aidText}\n이번 라운드에는 더 이상 원조할 수 없어요 (라운드당 1회).`"
       confirm-label="처리"
-      cancel-label="취소"
+      cancel-label="닫기"
       :busy="busy"
       @confirm="applyAid"
       @cancel="aidConfirm = false"
@@ -189,6 +190,6 @@ h3 .muted { font-weight: 400; font-size: 0.8rem; }
 summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
 /* 팀 선택 강조 (docs/103 §2): 고른 팀 색으로 테두리·글자, 옆에 팀 칩 */
 .team-select.picked { border: 2px solid var(--team); color: var(--team); font-weight: 700; background: color-mix(in srgb, var(--team) 12%, var(--surface)); }
-.team-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 2px solid var(--team); border-radius: 999px; font-weight: 700; color: var(--team); background: color-mix(in srgb, var(--team) 12%, var(--surface)); }
+.team-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 2px solid var(--team); border-radius: var(--radius); font-weight: 700; color: var(--team); background: color-mix(in srgb, var(--team) 12%, var(--surface)); }
 .team-apply { border: 2px solid var(--team, var(--ink)); }
 </style>

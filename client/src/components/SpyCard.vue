@@ -27,21 +27,21 @@ const markdown = computed(() => {
   const s = props.spy
   const reward = s.alive
     ? `지금까지 탈락자 **${s.eliminated}**명 · 적립 **${won(s.reward)}**`
-    : '탈락하여 적립금이 사라졌습니다'
+    : '탈락하여 적립금이 사라졌어요'
   const lines = [
-    '## 당신은 테러리스트입니다',
+    '## 당신은 테러리스트예요',
     '',
-    '- 겉으로는 소속 팀원으로 행동합니다.',
+    '- 겉으로는 소속 팀원으로 행동해요.',
     '- 목표: **탈락자를 많이 만들기**',
     `- 탈락자 1명당 \`${won(SPY_REWARD_PER)}\` (최대 \`${won(SPY_REWARD_MAX)}\`)`,
-    '- 본인이 탈락하면 적립금은 전부 사라집니다.',
-    '- 정체는 최종장 마지막에 공개됩니다.',
+    '- 본인이 탈락하면 적립금은 전부 사라져요.',
+    '- 정체는 최종장 마지막에 공개돼요.',
     '',
     '---',
     '',
     reward,
   ]
-  if (props.intro) lines.push('', '> 상단의 **내 이름을 3번 연속 누르면** 이 화면을 다시 볼 수 있습니다.')
+  if (props.intro) lines.push('', '> 상단의 **내 이름을 3번 연속 누르면** 이 화면을 다시 볼 수 있어요.')
   return lines.join('\n')
 })
 </script>
@@ -60,7 +60,7 @@ const markdown = computed(() => {
       </div>
       <div class="card">
         <MarkdownView :markdown="markdown" />
-        <p class="muted" style="margin-top: 16px">화면을 누르면 닫힙니다 · 10초 뒤 저절로 닫힙니다</p>
+        <p class="muted" style="margin-top: 16px">화면을 누르면 닫혀요 · 10초 뒤 저절로 닫혀요</p>
       </div>
     </div>
   </div>

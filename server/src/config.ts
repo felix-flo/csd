@@ -6,7 +6,7 @@ function required(name: string, devDefault: string): string {
   const v = env[name]
   if (v && v !== '' && !v.startsWith('change-me')) return v
   if (env.NODE_ENV === 'production') {
-    throw new Error(`[config] 환경변수 ${name} 이(가) 설정되지 않았습니다. .env 를 확인하세요.`)
+    throw new Error(`[config] 환경변수 ${name} 이(가) 설정되지 않았어요. .env 를 확인하세요.`)
   }
   console.warn(`[config] ${name} 미설정 → 개발용 기본값 사용`)
   return devDefault

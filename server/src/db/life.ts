@@ -54,22 +54,22 @@ function pickRandom(ids: number[], n: number): number[] {
 
 export function submitLife(day: number, teamId: number, leaderId: number, input: { count: number; selfEliminate: boolean }): LifeSubmissionView {
   return db.transaction(() => {
-    if (getLifeSubmission(day, teamId)) throw new GameError('already_submitted', '이미 제출했습니다')
+    if (getLifeSubmission(day, teamId)) throw new GameError('already_submitted', '이미 제출했어요')
     const members = listGroupMembers(teamId)
     const lives = getTeamResources(teamId).life
-    if (isLifeExempt(members.length, lives)) throw new GameError('not_required', '팀원이 1명이고 라이프가 없어 라이프 제출이 없습니다')
-    if (!members.some((m) => m.id === leaderId && m.isLeader)) throw new GameError('not_leader', '리더만 할 수 있습니다', 403)
+    if (isLifeExempt(members.length, lives)) throw new GameError('not_required', '팀원이 1명이고 라이프가 없어 라이프 제출이 없어요')
+    if (!members.some((m) => m.id === leaderId && m.isLeader)) throw new GameError('not_leader', '리더만 할 수 있어요', 403)
     const others = members.filter((m) => m.id !== leaderId).map((m) => m.id)
     const { count, selfEliminate } = input
-    if (members.length === 1 && selfEliminate) throw new GameError('bad_count', '팀원이 1명이면 자진 탈락할 수 없습니다', 400)
+    if (members.length === 1 && selfEliminate) throw new GameError('bad_count', '팀원이 1명이면 자진 탈락할 수 없어요', 400)
 
     let saved: number[]
     if (lives === 0) {
-      if (count !== 0) throw new GameError('bad_count', '라이프가 없어 1명만 생존합니다', 400)
+      if (count !== 0) throw new GameError('bad_count', '라이프가 없어 1명만 생존해요', 400)
       saved = selfEliminate ? pickRandom(others, 1) : [leaderId]
     } else {
       const max = lifeSubmitMax(members.length, lives, selfEliminate)
-      if (count < 1 || count > max) throw new GameError('bad_count', `살릴 인원은 1~${max}명입니다`, 400)
+      if (count < 1 || count > max) throw new GameError('bad_count', `살릴 인원은 1~${max}명이에요`, 400)
       saved = selfEliminate ? pickRandom(others, count) : [leaderId, ...pickRandom(others, count - 1)]
       applyDeltas(teamId, { life: -count }, { reason: 'life', day, by: leaderId })
     }

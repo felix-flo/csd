@@ -26,7 +26,7 @@ export function runMigrations() {
     path.resolve(__dirname, '../../migrations'),
   ]
   const dir = candidates.find((d) => fs.existsSync(d))
-  if (!dir) throw new Error(`migrations 폴더를 찾을 수 없습니다: ${candidates.join(', ')}`)
+  if (!dir) throw new Error(`migrations 폴더를 찾을 수 없어요: ${candidates.join(', ')}`)
 
   const applied = new Set(
     (db.prepare('SELECT name FROM _migrations').all() as { name: string }[]).map((r) => r.name),

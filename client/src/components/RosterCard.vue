@@ -90,8 +90,8 @@ async function removeTeam(g: GroupInfo) {
   <div class="card">
     <h2>팀 · 진행자 구성</h2>
     <p class="muted">
-      팀 이름을 클릭하면 이름과 색을 바꿀 수 있습니다. 팀별 최대 인원은 "게임 설정" 카드에서 정하고, 참가자는 게임 준비 상태에서 직접 팀을 고릅니다.
-      진행자는 <strong>늘리기만</strong> 할 수 있고, 게임 리셋 때 삭제되므로 게임마다 다시 만듭니다.
+      팀 이름을 클릭하면 이름과 색을 바꿀 수 있어요. 팀별 최대 인원은 "게임 설정" 카드에서 정하고, 참가자는 게임 준비 상태에서 직접 팀을 골라요.
+      진행자는 <strong>늘리기만</strong> 할 수 있고, 게임 리셋 때 삭제되므로 게임마다 다시 만들어요.
     </p>
 
     <table class="teams">
@@ -116,7 +116,7 @@ async function removeTeam(g: GroupInfo) {
           </td>
           <td class="muted">{{ countOf(g.id) }}명</td>
           <td>
-            <button class="secondary small" :disabled="busy || countOf(g.id) > 0" :title="countOf(g.id) > 0 ? '소속 참가자가 있는 팀은 삭제할 수 없습니다' : ''" @click="removeTeam(g)">삭제</button>
+            <button class="secondary small" :disabled="busy || countOf(g.id) > 0" :title="countOf(g.id) > 0 ? '소속 참가자가 있는 팀은 삭제할 수 없어요' : ''" @click="removeTeam(g)">삭제</button>
           </td>
         </tr>
       </tbody>

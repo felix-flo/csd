@@ -15,7 +15,7 @@ import type { DocumentInfo } from '../../../shared/types.js'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 /** 0003 마이그레이션이 넣는 초기 전체 룰 본문 */
-const PRISTINE_GLOBAL = '# 게임 룰\n\n진행자가 작성 중입니다.'
+const PRISTINE_GLOBAL = '# 게임 룰\n\n진행자가 작성 중이에요.'
 
 /** src/db 와 dist/db 모두 server/rules 를 가리킨다 */
 function rulesDir(): string | null {
@@ -42,7 +42,7 @@ export interface LoadDefaultRulesResult {
 export function loadDefaultRules(userId: number | null): LoadDefaultRulesResult {
   const result: LoadDefaultRulesResult = { loaded: [], changed: [], skipped: [] }
   const common = readRuleFile('common.md')
-  if (common == null) throw new Error('기본 룰 파일(common.md)을 찾을 수 없습니다')
+  if (common == null) throw new Error('기본 룰 파일(common.md)을 찾을 수 없어요')
 
   const global = getDocument(GLOBAL_RULES_SLUG)!
   const updatedGlobal = updateDocument(GLOBAL_RULES_SLUG, { title: global.title, markdown: common }, userId)!

@@ -19,7 +19,7 @@ async function submit() {
   try {
     await auth.setName(v)
   } catch {
-    error.value = '저장에 실패했습니다. 다시 시도하세요.'
+    error.value = '저장에 실패했어요. 다시 시도하세요.'
   } finally {
     busy.value = false
   }
@@ -29,7 +29,7 @@ async function submit() {
 <template>
   <div class="card" style="text-align: center">
     <h2>이름을 입력하세요</h2>
-    <p class="muted">다른 참가자와 진행자에게 표시됩니다. 한 번 저장하면 진행자만 바꿀 수 있습니다.</p>
+    <p class="muted">다른 참가자와 진행자에게 표시돼요. 한 번 저장하면 진행자만 바꿀 수 있어요.</p>
     <form @submit.prevent="submit" class="row" style="justify-content: center">
       <input v-model="name" maxlength="20" placeholder="이름" style="width: 12em; font-size: 1.2rem" autofocus />
       <button type="submit" :disabled="busy">저장</button>

@@ -169,16 +169,16 @@ export function getAdminIssues() {
 export function requestIssue(teamId: number, amount: number, by: number): IssueRequestView {
   return db.transaction(() => {
     const g = getGameRow()
-    if (g.status !== 'running') throw new GameError('not_running', '게임이 진행 중이 아닙니다')
+    if (g.status !== 'running') throw new GameError('not_running', '게임이 진행 중이 아니에요')
     const kind = teamKind(teamId)
-    if (!kind) throw new GameError('not_issuer', '발행 요청을 할 수 없는 팀입니다', 403)
+    if (!kind) throw new GameError('not_issuer', '발행 요청을 할 수 없는 팀이에요', 403)
     const last = lastRoundPhases(g)
     if (last && !phaseOpen(g)) {
-      throw new GameError('wrong_phase', `마지막 라운드에는 ${last.map((p) => PHASE_LABELS[p]).join(', ')} 단계에서만 발행할 수 있습니다`)
+      throw new GameError('wrong_phase', `마지막 라운드에는 ${last.map((p) => PHASE_LABELS[p]).join(', ')} 단계에서만 발행할 수 있어요`)
     }
-    if (issuedOn(teamId, g.day)) throw new GameError('issued_today', '이번 라운드에는 이미 발행했습니다 (라운드당 1회)')
+    if (issuedOn(teamId, g.day)) throw new GameError('issued_today', '이번 라운드에는 이미 발행했어요 (라운드당 1회)')
     const left = remainingFor(teamId, kind)
-    if (amount > left) throw new GameError('limit_exceeded', `이번 라운드 남은 ${RESOURCE_LABELS[kind]} 발행 가능량은 ${left}개입니다`)
+    if (amount > left) throw new GameError('limit_exceeded', `이번 라운드 남은 ${RESOURCE_LABELS[kind]} 발행 가능량은 ${left}개예요`)
     const info = db
       .prepare(`INSERT INTO issue_requests (day, phase, group_id, kind, amount, status, requested_by, decided_by, decided_at) VALUES (?, ?, ?, ?, ?, 'approved', ?, NULL, datetime('now'))`)
       .run(g.day, g.phase, teamId, kind, amount, by)
