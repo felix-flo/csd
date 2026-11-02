@@ -86,7 +86,7 @@ const task = computed<{ kicker: string; title: string; desc?: string } | null>((
     case 'leader': return { kicker: `${round} · 리더 선출`, title: '팀 리더를 정해 진행자에게 알려 주세요', desc: '진행자가 리더를 지정하면 알림이 와요.' }
     case 'production': return { kicker: `${round} · 생산게임`, title: '생산게임에 참여해 주세요', desc: '결과에 따라 진행자가 팀 재화를 넣어 줘요.' }
     case 'trade': return L
-      ? { kicker: `${round} · 거래`, title: '다른 팀과 거래하거나 전쟁을 선포할 수 있어요', desc: '거래는 진행자가 입력하고 두 리더가 수락하면 체결돼요.' }
+      ? { kicker: `${round} · 거래`, title: '다른 팀과 거래하거나 전쟁을 선포할 수 있어요', desc: '거래는 협의한 내용을 진행자에게 알리면 진행자가 바로 체결해요.' }
       : { kicker: `${round} · 거래`, title: '리더가 거래를 진행하는 중이에요', desc: '팀 재화와 알림을 확인해 주세요.' }
     case 'council': return L
       ? { kicker: `${round} · 리더 협의`, title: '리더 협의에 참여해 주세요', desc: '안건은 대가 없는 원조(게임 전체 라운드당 1회, 리더 4명 중 3명 찬성)와 다음 라운드 전쟁 허용/제재예요. 결과는 진행자가 입력해요.' }
@@ -141,12 +141,7 @@ const final = computed(() => (s.value?.status === 'final' || s.value?.status ===
     </div>
 
     <LeaderSelect v-if="phase === 'leader'" :members="members" :election="game.team?.election ?? null" />
-    <TradePanel
-      v-else-if="phase === 'trade' && group && game.team"
-      :my-team-id="group.id"
-      :is-leader="isLeader"
-      :trade="game.team.trade"
-    />
+    <TradePanel v-else-if="phase === 'trade' && group && game.team" />
     <LifeSubmit
       v-else-if="phase === 'life' && group && game.team"
       :members="members"

@@ -3,7 +3,7 @@
  * - 모든 역할: GET /game (일차·단계·초기 재화 합계·발표된 등수)
  * - 프레젠테이션·관리자: GET /game/roster 팀 현황 (팀원 명단·탈락, 시작 후에만)
  * - 프레젠테이션·관리자: GET /game/intro 오프닝 영상 유무 (data/media/intro.mp4 → /media/intro.mp4)
- * - 참가자  : GET /game/team, 라이프 제출(리더), 거래 수락/거부(리더, POST /trade/:id/decide). 리더는 투표가 아니라 진행자가 지정한다 (docs/100 §7-6)
+ * - 참가자  : GET /game/team, 라이프 제출(리더), 리더는 투표가 아니라 진행자가 지정한다 (docs/100 §7-6)
  * - 관리자  : /admin/game/* 설정·초기셋팅완료·설정으로 되돌리기·시작·다음 단계·종료(=최종장 시작)·리셋, 재화 조정, 원조, 리더 지정(/admin/game/leader),
  *             거래 제안(POST /admin/game/trade, docs/103 §10)·강제 취소
  * - 이주 (docs/100 N3): 참가자 POST /migration/request · /migration/:id/cancel, 받는 팀 리더 POST /migration/:id/decide, 관리자 POST /admin/migration/:id/cancel
@@ -34,7 +34,7 @@ import {
 } from '../db/migration.js'
 import { chooseFate, getAdminSpyView, getMyFate, getMySpy, setSpies } from '../db/spy.js'
 import { allLivesDone, getLifeSubmission, submitLife } from '../db/life.js'
-import { cancelActiveTrade, decideTrade, getActiveTrade, getActiveTradeForTeam, proposeTrade } from '../db/trades.js'
+import { cancelActiveTrade, executeTrade, getActiveTrade, getActiveTradeForTeam } from '../db/trades.js'
 import { getAdminIssues, getTeamIssue, issueTeamId, requestIssue } from '../db/issuance.js'
 import {
   advanceFinal, castFinalVote, closeFinalVotes, finalVoteProgress, getMyFinalVote, recomputeResults, setLifeVote, setTiebreak,
@@ -748,13 +748,8 @@ gameRouter.post('/war/declare', requireRole('member'), handle(z.object({ defende
   res.json({ ok: true })
 }))
 
-// ---- 거래 (docs/103 §10): 진행자 제안 → 두 리더 수락 ----
+// ---- 거래 (docs/103 §10): 진행자 입력 → 즉시 체결 (2026-11-02 리더 수락 단계 삭제) ----
 
-const tradeIdOf = (req: Request) => {
-  const id = Number(req.params.id)
-  if (!Number.isInteger(id)) throw new GameError('not_found', '', 404)
-  return id
-}
 const giveText = (o: Resources) => describeDeltas(o).replaceAll('+', '') || '없음'
 const tradeSummary = (t: TradeView) =>
   `${teamName(t.from.teamId)} (${giveText(t.from.offer)}) ↔ ${teamName(t.to.teamId)} (${giveText(t.to.offer)}) · 크레딧 ${teamName(t.creditPayer)} 부담`
@@ -767,32 +762,13 @@ const tradeProposalSchema = z.object({
   toOffer: resourcesSchema,
 })
 
-/** 진행자가 오프라인 협의 내용을 입력해 거래를 올린다. 두 팀 리더 화면에 요약이 뜨고 둘 다 수락해야 체결 */
+/** 진행자가 오프라인 협의 내용을 입력해 거래를 체결한다 (관리자 화면 확인 팝업 뒤). 두 팀에 완료 알림 */
 gameRouter.post('/admin/game/trade', requireRole('admin'), handle(tradeProposalSchema, (req, res, body) => {
   const g = requireRunning('trade')
   const by = req.auth!.sub
-  const t = proposeTrade(g.day, { fromTeam: body.fromTeamId, toTeam: body.toTeamId, creditPayer: body.creditPayer, fromOffer: body.fromOffer, toOffer: body.toOffer }, by, teamName)
-  const msg = `거래 제안: ${tradeSummary(t)} · 리더가 수락하면 체결돼요`
-  announceTrade(t, 'trade.proposed', { from: msg, to: msg }, by)
+  const t = executeTrade(g.day, { fromTeam: body.fromTeamId, toTeam: body.toTeamId, creditPayer: body.creditPayer, fromOffer: body.fromOffer, toOffer: body.toOffer }, by, teamName)
+  const msg = `거래 완료: ${tradeSummary(t)}`
+  announceTrade(t, 'trade.completed', { from: msg, to: msg }, by)
+  emit('game', 'group', t.creditPayer, 'resources.updated', '거래 크레딧: 크레딧 -1', by, { silent: true })
   res.json(adminView())
-}))
-
-/** 리더 수락/거부. 둘 다 수락하면 크레딧 차감 + 교환. 한쪽이라도 거부하면 거래 취소 (관리자가 다시 올린다) */
-gameRouter.post('/trade/:id/decide', requireRole('member'), handle(z.object({ accept: z.boolean() }), (req, res, body) => {
-  const g = requireRunning('trade')
-  const teamId = requireLeader(req)
-  const by = req.auth!.sub
-  const { trade: t, completed } = decideTrade(tradeIdOf(req), teamId, body.accept, g.day, by)
-  if (!body.accept) {
-    const msg = `${josa(teamName(teamId), '이/가')} 거래를 거부했어요 (${tradeSummary(t)})`
-    announceTrade(t, 'trade.closed', { from: msg, to: msg }, by, NOTIFY_SELF)
-  } else if (completed) {
-    const msg = `거래 완료: ${tradeSummary(t)}`
-    announceTrade(t, 'trade.completed', { from: msg, to: msg }, by, NOTIFY_SELF)
-    emit('game', 'group', t.creditPayer, 'resources.updated', '거래 크레딧: 크레딧 -1', by, { silent: true })
-  } else {
-    const msg = `${josa(teamName(teamId), '이/가')} 거래를 수락했어요. 상대 리더의 수락을 기다려요`
-    announceTrade(t, 'trade.updated', { from: msg, to: msg }, by)
-  }
-  res.json({ trade: t, completed })
 }))

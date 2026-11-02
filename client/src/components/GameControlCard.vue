@@ -11,7 +11,7 @@ import Icon from './Icon.vue'
  * - 리셋은 어느 상태에서나: 참가자·진행자 계정과 모든 기록·알림을 지우고 설정 단계로 (리셋한 사람이 진행자면 본인도 로그아웃).
  * - 다음 단계 요청에 보고 있던 일차·단계를 함께 보내 중복 클릭·관리자 2명 동시 조작을 막는다 (서버 stale 거부).
  * - 리더 선출 단계: 팀이 오프라인 협의 결과를 알려 오면 여기서 팀별로 리더를 지정한다 (docs/100 §7-6, 투표 없음). 팀원 1명은 자동.
- * - 거래 단계 (docs/103 §10): 오프라인 협의 내용을 여기서 입력해 "거래 진행" → 두 리더가 수락하면 체결. 강제 취소 가능.
+ * - 거래 단계 (docs/103 §10): 오프라인 협의 내용을 여기서 입력해 "거래 진행" → 확인 팝업(예/아니오) 뒤 바로 체결 (2026-11-02 리더 수락 삭제).
  * - 전쟁 (docs/103 §4): 리더 선포 즉시 시작. 여기서는 결과만 지정하고, 승·패·무승부면 리더 협의로 자동 전환된다.
  * - 리더 협의 (docs/103 §11·§12): 원조는 팀 재화 카드에서, 다음 라운드 전쟁 허용/제재는 여기서 입력.
  */
@@ -223,11 +223,11 @@ const modalText = computed(() => {
     case 'revert':
       return { title: '설정 단계로 되돌릴까요?', message: '참가자는 팀을 고를 수 없게 돼요. 이미 팀을 고른 참가자와 PIN 은 그대로 남아요.' }
     case 'cancelTrade':
-      return { title: '진행 중인 거래를 취소할까요?', message: '이미 낸 크레딧은 돌려주지 않아요.' }
+      return { title: '대기 중인 거래를 취소할까요?', message: '아직 체결되지 않은 거래라 재화는 그대로예요. 취소한 뒤 아래에서 다시 진행하세요.' }
     case 'trade':
       return {
         title: '거래를 진행할까요?',
-        message: `${tradeSummaryText.value}\n두 팀 리더 화면에 이 내용이 뜨고, 둘 다 "예" 를 누르면 크레딧 1개(${team(tradeForm.creditPayer ?? 0)?.name ?? ''})가 빠지고 재화가 교환돼요. 한쪽이라도 "아니오" 면 취소돼요.`,
+        message: `${tradeSummaryText.value}\n확인하면 바로 크레딧 1개(${team(tradeForm.creditPayer ?? 0)?.name ?? ''})가 빠지고 재화가 교환돼요. 되돌릴 수 없어요.`,
       }
     case 'war': {
       const w = warToday.value
@@ -322,7 +322,7 @@ async function submitTrade() {
     fromOffer: Object.fromEntries(RESOURCE_KINDS.map((k) => [k, Math.max(0, Math.floor(tradeForm.fromOffer[k] || 0))])),
     toOffer: Object.fromEntries(RESOURCE_KINDS.map((k) => [k, Math.max(0, Math.floor(tradeForm.toOffer[k] || 0))])),
   }
-  await run('거래 제안을 두 팀 리더에게 보냈어요', () => api.post('/api/admin/game/trade', body))
+  await run(`거래 완료: ${tradeSummaryText.value}`, () => api.post('/api/admin/game/trade', body))
   Object.assign(tradeForm.fromOffer, emptyResources())
   Object.assign(tradeForm.toOffer, emptyResources())
 }
@@ -460,15 +460,16 @@ const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(t
 
     <!-- 거래 -->
     <template v-if="s.status === 'running' && s.phase === 'trade'">
-      <h3><Icon name="aid" /> 거래 <span class="muted">오프라인 협의 → 여기서 입력 → 두 리더 수락</span></h3>
+      <h3><Icon name="aid" /> 거래 <span class="muted">오프라인 협의 → 여기서 입력 → 확인하면 바로 체결</span></h3>
+      <!-- 리더 수락 방식(2026-11-02 이전)으로 올려 둔 대기 거래가 남아 있으면 취소해야 새로 진행할 수 있다 -->
       <div v-if="view.trade" class="trade">
-        <div><strong>{{ tradeLine(view.trade) }}</strong> <span class="badge warn">리더 수락 대기</span></div>
+        <div><strong>{{ tradeLine(view.trade) }}</strong> <span class="badge warn">이전 방식 대기 거래</span></div>
         <div class="muted">
-          {{ team(view.trade.from.teamId)?.name }} 줌: {{ offerText(view.trade.from.offer) }} <span class="badge" :class="view.trade.from.accepted ? 'on' : 'warn'">{{ view.trade.from.accepted ? '수락' : '대기' }}</span>
-          · {{ team(view.trade.to.teamId)?.name }} 줌: {{ offerText(view.trade.to.offer) }} <span class="badge" :class="view.trade.to.accepted ? 'on' : 'warn'">{{ view.trade.to.accepted ? '수락' : '대기' }}</span>
+          {{ team(view.trade.from.teamId)?.name }} 줌: {{ offerText(view.trade.from.offer) }}
+          · {{ team(view.trade.to.teamId)?.name }} 줌: {{ offerText(view.trade.to.offer) }}
           · 크레딧 {{ team(view.trade.creditPayer)?.name }} 부담
         </div>
-        <button class="secondary small" :disabled="busy" @click="modal = 'cancelTrade'">강제 취소</button>
+        <button class="secondary small" :disabled="busy" @click="modal = 'cancelTrade'">취소하고 다시 진행</button>
       </div>
       <div v-else-if="warActive" class="muted"><Icon name="war" /> 전쟁 중에는 거래할 수 없어요.</div>
       <form v-else class="trade-form" @submit.prevent="!tradeProblem && (modal = 'trade')">
