@@ -371,7 +371,7 @@ apiRouter.post('/admin/users/:id/team', requireRole('admin'), (req, res) => {
   res.json({ users: listAllUsers() })
 })
 
-/** 리더 지정 (게임 시작 전에는 관리자가 팀마다 지정해야 시작할 수 있다. 진행 중에도 수동 교체용으로 쓸 수 있다) */
+/** 리더 지정 (시작 전 지정은 선택. 리더는 1라운드 리더 선출부터 정한다. 진행 중에도 수동 교체용으로 쓸 수 있다) */
 apiRouter.post('/admin/users/:id/leader', requireRole('admin'), (req, res) => {
   const user = targetUser(req)
   if (!user || user.role !== 'member') {

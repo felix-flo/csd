@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import Icon from './Icon.vue'
 /**
- * 게임 진행 (관리자): 준비 상태 점검·리더 지정·게임 시작 / 단계 넘기기 / 다음 날 / 게임 종료(= 최종장 시작) / 리셋, 그리고 현재 단계의 팀별 현황.
+ * 게임 진행 (관리자): 준비 상태 점검·게임 시작 (리더는 1라운드 리더 선출부터) / 단계 넘기기 / 다음 날 / 게임 종료(= 최종장 시작) / 리셋, 그리고 현재 단계의 팀별 현황.
  * - 마지막 라운드 리더 협의: 필수 안건(라이프 투표권) 통과/부결 입력. 넣어야 라이프 제출로 넘어간다 (docs/100 N2)
  * - 이주 (docs/100 N3): 대기 신청 목록·강제 취소. 대기 신청이 있으면 리더 협의 → 라이프 제출로 넘어가지 못한다
  * - 테러리스트 (docs/100 N4): 준비 상태에 운명의 카드 현황(태양·달·미선택)과 후보(달) 목록 → 체크해서 지정. 후보가 있으면 1명 이상 지정해야 시작.
@@ -35,7 +35,7 @@ import FinalControl from './FinalControl.vue'
 import ResultsBoard from './ResultsBoard.vue'
 
 const props = defineProps<{ users: AdminUser[]; groups: GroupInfo[] }>()
-const emit = defineEmits<{ updated: [users: AdminUser[]] }>()
+defineEmits<{ updated: [users: AdminUser[]] }>()
 const game = useGameStore()
 const auth = useAuthStore()
 const router = useRouter()
@@ -273,27 +273,11 @@ function onConfirm() {
   }
 }
 
-// ---- 준비: 팀별 입장 현황 · 리더 지정 ----
+// ---- 준비: 팀별 입장 현황 ----
 const letterOfTeam = (teamId: number) => teamLetter(props.groups.findIndex((g) => g.id === teamId))
 const lobbyOf = (teamId: number) => s.value?.lobby?.find((l) => l.teamId === teamId)
 const membersOf = (teamId: number) => props.users.filter((u) => u.role === 'member' && u.active && u.groupId === teamId)
 const leaderOf = (teamId: number) => membersOf(teamId).find((u) => u.isLeader)
-async function pickLeader(e: Event) {
-  const userId = Number((e.target as HTMLSelectElement).value)
-  if (!userId) return
-  busy.value = true
-  status.value = ''
-  try {
-    const res = await api.post<{ users: AdminUser[] }>(`/api/admin/users/${userId}/leader`)
-    emit('updated', res.users)
-    await game.load()
-    status.value = `${nameOf(userId)} 리더 지정`
-  } catch (e2) {
-    status.value = `실패: ${(e2 as Error).message}`
-  } finally {
-    busy.value = false
-  }
-}
 
 // ---- 리더 선출 단계: 팀별 수동 지정 ----
 const leaderPick = ref<Record<number, number>>({})
@@ -355,12 +339,9 @@ const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(t
       <template v-else-if="s.status === 'ready'">
         <span class="mono"><strong>게임 준비 중</strong> · 참가자 입장·팀 선택</span>
         <button class="secondary" :disabled="busy" @click="modal = 'revert'">설정으로 되돌리기</button>
-        <button :disabled="busy || view.prep.noLeader.length > 0 || !view.settings.warCost || !!spyBlocker" :title="view.prep.noLeader.length ? '리더가 없는 팀이 있어요' : ''" @click="modal = 'start'">게임 시작</button>
+        <button :disabled="busy || !view.settings.warCost || !!spyBlocker" @click="modal = 'start'">게임 시작</button>
         <span v-if="spyBlocker" class="blocker">{{ spyBlocker }}</span>
         <span v-if="!view.settings.warCost" class="blocker">아래 "게임 설정" 에서 1라운드 전쟁 선포 비용을 저장하세요</span>
-        <span v-if="view.prep.noLeader.length" class="blocker">
-          리더 미지정: {{ view.prep.noLeader.map(letterOfTeam).join(', ') }} 팀 — 아래 표에서 리더를 고르면 시작할 수 있어요
-        </span>
       </template>
       <template v-else-if="s.status === 'running'">
         <span class="mono">{{ s.day }}라운드 / 총 {{ s.totalDays }}라운드 · <strong>{{ PHASE_LABELS[s.phase!] }}</strong></span>
@@ -388,31 +369,21 @@ const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(t
       <button class="secondary small" type="button" @click="resetDone = null">닫기</button>
     </div>
 
-    <!-- 준비: 팀별 입장 현황 · 리더 지정 -->
+    <!-- 준비: 팀별 입장 현황 -->
     <template v-if="s.status === 'ready'">
       <h3>팀 입장 현황</h3>
       <table class="tbl">
-        <thead><tr><th>팀</th><th>입장 / 최대</th><th>리더</th></tr></thead>
+        <thead><tr><th>팀</th><th>입장 / 최대</th></tr></thead>
         <tbody>
           <tr v-for="(g, i) in groups" :key="g.id">
             <td><span class="mono letter">{{ teamLetter(i) }}</span> <TeamMark :color="g.color" />{{ g.name }}</td>
             <td class="mono">{{ lobbyOf(g.id)?.count ?? 0 }} / {{ lobbyOf(g.id)?.capacity ?? 0 }}<span v-if="membersOf(g.id).some((u) => u.isTest)" class="muted"> + 테스트 {{ membersOf(g.id).filter((u) => u.isTest).length }}</span></td>
-            <td>
-              <span v-if="membersOf(g.id).length === 0" class="muted">팀원 없음</span>
-              <span v-else class="row" style="gap: 6px">
-                <span v-if="!leaderOf(g.id)" class="badge warn">리더 미지정</span>
-                <select :value="leaderOf(g.id)?.id ?? ''" :disabled="busy" @change="pickLeader">
-                  <option value="" disabled>리더 선택</option>
-                  <option v-for="u in membersOf(g.id)" :key="u.id" :value="u.id">{{ u.name }}{{ u.isTest ? ' (테스트)' : '' }}</option>
-                </select>
-              </span>
-            </td>
           </tr>
         </tbody>
       </table>
       <p class="muted" style="margin: 8px 0 0">
         팀을 고르지 않은 참가자 {{ view.prep.unassigned }}명<template v-if="view.prep.unassigned"> · 시작하면 비활성 처리돼요</template>.
-        <template v-if="view.prep.noLeader.length"> 리더가 없는 팀이 있어 시작할 수 없어요.</template>
+        리더는 시작 후 1라운드 리더 선출 단계에서 지정해요.
         팀 이동은 아래 "계정 관리"에서 할 수 있어요.
       </p>
 

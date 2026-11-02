@@ -2,7 +2,7 @@
  * 게임 전역 상태 (game 테이블 1행) 와 진행 제어.
  * - setup  : 관리자가 총 일수·팀별 최대 인원·테스트 계정 포함·팀별 초기 재화를 설정 (라이프 매장량은 2026-10-30 폐지, docs/103 §3)
  * - ready  : "초기셋팅완료" 로 진입. 최대 인원 합계만큼 팀 없는 PIN 을 만들고, 참가자가 로그인해 이름을 입력하고 팀(A, B, C…)을 고른다.
- *            설정은 계속 바꿀 수 있고 setup 으로 되돌릴 수도 있다 (배정된 참가자 유지). 관리자가 팀별 리더를 지정해야 시작할 수 있다
+ *            설정은 계속 바꿀 수 있고 setup 으로 되돌릴 수도 있다 (배정된 참가자 유지). 리더 지정 없이 시작하고, 1라운드 리더 선출에서 정한다
  * - running: day 1..totalDays, phase 는 PHASES 순서. 관리자 "다음 단계" 로만 넘어간다. 라이프 제출 다음은 +1일 리더 선출
  * - final  : 최종장 (docs/100 N2). 마지막 라운드 라이프 제출이 끝나면 관리자 "게임 종료" 로 진입. 최종 투표 → 결과 발표 → 정산 (db/final.ts)
  * - ended  : 정산 뒤 관리자가 게임을 끝낸다
@@ -338,16 +338,10 @@ export function joinTeam(userId: number, teamId: number): GroupInfo {
   })()
 }
 
-/** 시작 전 점검: 미배정 활성 참가자 수, 리더가 없는 팀 */
-export function getPrep(): { unassigned: number; noLeader: number[] } {
+/** 시작 전 점검: 미배정 활성 참가자 수 */
+export function getPrep(): { unassigned: number } {
   const unassigned = (db.prepare(`SELECT COUNT(*) AS n FROM users WHERE role = 'member' AND active = 1 AND group_id IS NULL`).get() as { n: number }).n
-  const noLeader = listGroups()
-    .filter((t) => {
-      const members = listGroupMembers(t.id)
-      return members.length > 0 && !members.some((m) => m.isLeader)
-    })
-    .map((t) => t.id)
-  return { unassigned, noLeader }
+  return { unassigned }
 }
 
 /** 게임 시작: ready → running. 반환: 비활성으로 바뀐 계정 id (팀을 고르지 않은 참가자, 제외된 테스트 계정) */
@@ -363,8 +357,6 @@ export function startGame(by: number): number[] {
     deactivated.push(...unassigned)
     // 테러리스트 (docs/100 N4): 후보가 있으면 1명 이상 지정해야 시작. 시작 명단을 남긴다 (적립 기준)
     prepareSpiesForStart()
-    const { noLeader } = getPrep()
-    if (noLeader.length) throw new GameError('no_leader', `리더를 지정하세요: ${noLeader.map(teamLabel).join(', ')}`)
     if (!getWarCost(1)) throw new GameError('no_war_cost', '게임 설정에서 1라운드 전쟁 선포 비용을 저장하세요')
     clearWars()
     clearLedger()
@@ -379,7 +371,8 @@ export function startGame(by: number): number[] {
     recordInitialLedger(1, by)
     updateGame(`status = 'running', day = 1, phase = 'leader', aid_used = 0, results = NULL, phase_started_at = datetime('now'), phase_timer_fired = 0,
                 started_at = datetime('now'), ended_at = NULL, ${CLEAR_FINAL}`)
-    // 시작 전에는 리더 표시를 그대로 두므로 여기서 정리 (비활성 리더 해제. 활성 리더는 위에서 팀마다 확인했다)
+    // 시작 전에는 리더 표시를 건드리지 않으므로 여기서 정리 (비활성 리더 해제, 리더가 없는 팀은 임시 리더 = 활성 팀원 중 id 최소).
+    // 실제 리더는 바로 이어지는 1라운드 리더 선출 단계에서 진행자가 지정한다
     for (const t of listGroups()) ensureLeader(t.id)
     openElections(1)
     return deactivated

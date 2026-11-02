@@ -550,8 +550,6 @@ export interface AdminGameView {
   prep: {
     /** 팀을 고르지 않은 활성 참가자 (시작하면 비활성) */
     unassigned: number
-    /** 활성 팀원이 있는데 리더가 지정되지 않은 팀 */
-    noLeader: number[]
   }
   /** 보석·골드 발행 */
   issues: {
