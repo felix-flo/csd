@@ -336,7 +336,7 @@ gameRouter.post('/game/fate', requireRole('member'), handle(z.object({ fate: z.e
   res.json({ fate: body.fate })
 }))
 
-/** 관리자: 달을 고른 후보 중에서 테러리스트 지정 (준비 상태). 참가자에게 알리지 않는다 */
+/** 관리자: 악마를 고른 후보 중에서 테러리스트 지정 (준비 상태). 참가자에게 알리지 않는다 */
 gameRouter.put('/admin/spies', requireRole('admin'), handle(z.object({ userIds: z.array(z.number().int().positive()).max(200) }), (_req, res, body) => {
   setSpies(body.userIds)
   res.json(adminView())

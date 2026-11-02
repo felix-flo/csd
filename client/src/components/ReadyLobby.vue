@@ -5,7 +5,7 @@ import Icon from './Icon.vue'
  * - 준비 상태이고 아직 팀이 없으면 팀을 고른다. 팀은 실제 이름 대신 A, B, C… 와 현재/최대 인원으로 표시, 꽉 찬 팀은 dim.
  * - 한 번 고르면 바꿀 수 없다 (바꾸려면 진행자가 수동 이동). 정원 경쟁은 서버가 판정하고 진 쪽은 "팀이 가득 찼어요".
  * - 이름 입력(첫 로그인)은 GroupView 가 먼저 처리한다.
- * - 팀을 고르면 운명의 카드(태양/달, docs/100 N4)를 고른다 (FatePick, 1회). 고르고 나면 "팀 A · 달" 과 대기 문구를 시작 전까지 보여준다.
+ * - 팀을 고르면 운명의 카드(천사/악마, docs/100 N4)를 고른다 (FatePick, 1회). 고르고 나면 "팀 A · 악마" 과 대기 문구를 시작 전까지 보여준다.
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { FATE_LABELS, type Fate, type LobbyTeam } from '../../../shared/game'
@@ -89,7 +89,7 @@ async function join() {
     </template>
     <template v-else-if="myTeam && fate">
       <p class="mine">
-        <span class="letter">{{ myTeam.label }}</span> 팀 <span class="dot">·</span> <Icon :name="fate" /> {{ FATE_LABELS[fate] }}
+        <span class="letter">{{ myTeam.label }}</span> 팀 <span class="dot">·</span> <Icon :name="fate === 'moon' ? 'devil' : 'angel'" /> {{ FATE_LABELS[fate] }}
       </p>
       <div class="tale">
         <!-- 봉인 문양: 천천히 도는 점선 궤도 + 원 + 마름모 속 "?" -->

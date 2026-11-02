@@ -7,7 +7,7 @@
 export type IconName =
   | 'gem' | 'gold' | 'life' | 'credit'
   | 'timer' | 'council' | 'aid' | 'war' | 'scroll' | 'vote' | 'migration' | 'lock'
-  | 'bell' | 'bell-off' | 'mute' | 'spy' | 'sun' | 'moon' | 'flask' | 'warning' | 'refresh' | 'megaphone' | 'film' | 'trophy' | 'close'
+  | 'bell' | 'bell-off' | 'mute' | 'spy' | 'angel' | 'devil' | 'flask' | 'warning' | 'refresh' | 'megaphone' | 'film' | 'trophy' | 'close'
 
 const PATHS: Record<IconName, string> = {
   gem: 'M7 3h10l4 6-9 12L3 9zM3 9h18M10 3 8 9l4 12M14 3l2 6-4 12',
@@ -26,8 +26,8 @@ const PATHS: Record<IconName, string> = {
   'bell-off': 'M6 16v-5a6 6 0 0 1 9.5-4.9M18 13v3l2 2H8M10 21h4M3 3l18 18',
   mute: 'M4 9h4l5-4v14l-5-4H4zM17 9l4 6M21 9l-4 6',
   spy: 'M3 10h18M7 10V6h10v4M3 14a3 3 0 1 0 6 0 3 3 0 1 0-6 0M15 14a3 3 0 1 0 6 0 3 3 0 1 0-6 0M9 14h6',
-  sun: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4',
-  moon: 'M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z',
+  angel: 'M8 4a4 1.5 0 1 0 8 0 4 1.5 0 1 0-8 0M12 8a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM5 21a7 7 0 0 1 14 0',
+  devil: 'M12 9a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM8.5 10.5 6 4l4.5 4M15.5 10.5 18 4l-4.5 4M10 14h.01M14 14h.01',
   flask: 'M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3M7 15h10',
   warning: 'M12 3l10 18H2zM12 10v4M12 18h.01',
   refresh: 'M20 12a8 8 0 1 1-2.3-5.7M20 4v4h-4',

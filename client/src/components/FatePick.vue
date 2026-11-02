@@ -1,23 +1,23 @@
 <script setup lang="ts">
 /**
  * 운명의 카드 (docs/100 N4). 준비 상태에서 팀을 고른 직후 전체 화면으로 뜬다 — 닫기 없음, 1회.
- * 태양·달 카드 중 하나를 누르면 "지금 선택을 제출할까요? 선택은 되돌릴 수 없어요" 예/아니오 → 제출.
- * 달 = 테러리스트 후보 (화면에는 의미를 쓰지 않는다)
+ * 천사·악마 카드 중 하나를 누르면 "지금 선택을 제출할까요? 선택은 되돌릴 수 없어요" 예/아니오 → 제출.
+ * 악마 = 테러리스트 후보 (화면에는 의미를 쓰지 않는다). 내부 값은 sun(천사)·moon(악마) 그대로 (DB·API)
  */
 import { ref } from 'vue'
-import type { Fate } from '../../../shared/game'
+import { FATE_LABELS, type Fate } from '../../../shared/game'
 import { api, ApiError } from '../lib/api'
 import ModalDialog from './ModalDialog.vue'
-import sunUrl from '../assets/sun.webp'
-import moonUrl from '../assets/moon.webp'
+import angelUrl from '../assets/angel.webp'
+import devilUrl from '../assets/devil.webp'
 
 const emit = defineEmits<{ chosen: [fate: Fate] }>()
 const picked = ref<Fate | null>(null)
 const busy = ref(false)
 const error = ref('')
 const CARDS: { fate: Fate; src: string; label: string }[] = [
-  { fate: 'sun', src: sunUrl, label: '태양' },
-  { fate: 'moon', src: moonUrl, label: '달' },
+  { fate: 'sun', src: angelUrl, label: FATE_LABELS.sun },
+  { fate: 'moon', src: devilUrl, label: FATE_LABELS.moon },
 ]
 
 async function submit() {
@@ -56,7 +56,7 @@ async function submit() {
     </div>
     <ModalDialog
       :open="!!picked"
-      :title="`${picked === 'moon' ? '달' : '태양'} 카드를 선택했어요`"
+      :title="`${picked ? FATE_LABELS[picked] : ''} 카드를 선택했어요`"
       message="지금 선택을 제출할까요? 선택은 되돌릴 수 없어요."
       confirm-label="예"
       cancel-label="아니오"

@@ -231,9 +231,9 @@ export interface GameSettings {
 
 // ---- 테러리스트 (docs/100 N4) ----
 
-/** 운명의 카드: 달 = 테러리스트 후보, 태양 = 후보 아님 */
+/** 운명의 카드: moon = 악마 = 테러리스트 후보, sun = 천사 = 후보 아님 (2026-11-02 태양/달 → 천사/악마, 내부 값은 그대로) */
 export type Fate = 'sun' | 'moon'
-export const FATE_LABELS: Record<Fate, string> = { sun: '태양', moon: '달' }
+export const FATE_LABELS: Record<Fate, string> = { sun: '천사', moon: '악마' }
 /** 시작 이후 탈락자 1명당 적립, 최대 (룰 03 §12) */
 export const SPY_REWARD_PER = 5000
 export const SPY_REWARD_MAX = 50000
@@ -257,7 +257,7 @@ export interface SpyStatus {
 /** 관리자 화면 (준비 상태: 후보 지정 / 진행 중: 현황) */
 export interface AdminSpyView {
   counts: { sun: number; moon: number; none: number }
-  /** 달을 고른 활성 참가자 (팀이 있는 사람) */
+  /** 악마를 고른 활성 참가자 (팀이 있는 사람) */
   candidates: { userId: number; name: string; teamId: number; isTest: boolean }[]
   /** 지정된 테러리스트 id */
   selected: number[]

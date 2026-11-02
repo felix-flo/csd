@@ -1,6 +1,7 @@
 /**
  * 테러리스트 (docs/100.최종룰_차이_결정사항.md N4, 룰 03 §12 · 05).
- *   준비 상태: 팀을 고른 참가자가 "운명의 카드" 태양/달 중 하나를 고른다 (1회, 되돌릴 수 없음). 달 = 테러리스트 후보
+ *   준비 상태: 팀을 고른 참가자가 "운명의 카드" 천사/악마 중 하나를 고른다 (1회, 되돌릴 수 없음). 악마 = 테러리스트 후보.
+ *   내부 값은 sun = 천사, moon = 악마 (2026-11-02 태양/달 → 천사/악마, 표시만 변경)
  *            관리자가 후보 중에서 테러리스트를 직접 지정한다 (무작위 없음, 인원 자유). 후보가 있으면 1명 이상 지정해야 시작
  *   게임 시작: 시작 순간 활성 참가자 명단을 game.start_roster 에 남긴다
  *   적립   : 명단 중 지금 비활성(탈락)인 사람 수 − 본인 × 5천 원, 최대 5만 원. 본인이 탈락하면 0.
@@ -31,7 +32,7 @@ export function getMyFate(userId: number): Fate | null {
   return (db.prepare('SELECT fate FROM fate_choices WHERE user_id = ?').get(userId) as { fate: Fate } | undefined)?.fate ?? null
 }
 
-/** 후보 = 달을 고른, 팀이 있는 활성 참가자 */
+/** 후보 = 악마(moon)를 고른, 팀이 있는 활성 참가자 */
 function candidates(): AdminSpyView['candidates'] {
   return (db.prepare(
     `SELECT u.id, u.name, u.group_id, u.is_test FROM fate_choices f JOIN users u ON u.id = f.user_id
@@ -49,7 +50,7 @@ export function setSpies(userIds: number[]) {
     if (status() !== 'ready') throw new GameError('not_ready', '테러리스트는 게임 준비 중에만 지정할 수 있어요')
     const ok = new Set(candidates().map((c) => c.userId))
     const bad = userIds.filter((id) => !ok.has(id))
-    if (bad.length) throw new GameError('not_candidate', '달을 고른 후보 중에서만 지정할 수 있어요', 400)
+    if (bad.length) throw new GameError('not_candidate', '악마를 고른 후보 중에서만 지정할 수 있어요', 400)
     db.prepare('DELETE FROM spies').run()
     const ins = db.prepare('INSERT INTO spies (user_id) VALUES (?)')
     for (const id of new Set(userIds)) ins.run(id)
@@ -63,7 +64,7 @@ export function setSpies(userIds: number[]) {
 export function prepareSpiesForStart(): void {
   db.prepare(`DELETE FROM spies WHERE user_id NOT IN (SELECT id FROM users WHERE role = 'member' AND active = 1 AND group_id IS NOT NULL)`).run()
   if (candidates().length > 0 && selectedIds().length === 0) {
-    throw new GameError('no_spy', '달을 고른 후보가 있어요. 테러리스트를 1명 이상 지정하세요')
+    throw new GameError('no_spy', '악마를 고른 후보가 있어요. 테러리스트를 1명 이상 지정하세요')
   }
   const roster = (db.prepare(`SELECT id FROM users WHERE role = 'member' AND active = 1 AND group_id IS NOT NULL`).all() as { id: number }[]).map((r) => r.id)
   db.prepare('UPDATE game SET start_roster = ? WHERE id = 1').run(JSON.stringify(roster))

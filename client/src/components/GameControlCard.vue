@@ -4,7 +4,7 @@ import Icon from './Icon.vue'
  * 게임 진행 (관리자): 준비 상태 점검·게임 시작 (리더는 1라운드 리더 선출부터) / 단계 넘기기 / 다음 날 / 게임 종료(= 최종장 시작) / 리셋, 그리고 현재 단계의 팀별 현황.
  * - 마지막 라운드 리더 협의: 필수 안건(라이프 투표권) 통과/부결 입력. 넣어야 라이프 제출로 넘어간다 (docs/100 N2)
  * - 이주 (docs/100 N3): 대기 신청 목록·강제 취소. 대기 신청이 있으면 리더 협의 → 라이프 제출로 넘어가지 못한다
- * - 테러리스트 (docs/100 N4): 준비 상태에 운명의 카드 현황(태양·달·미선택)과 후보(달) 목록 → 체크해서 지정. 후보가 있으면 1명 이상 지정해야 시작.
+ * - 테러리스트 (docs/100 N4): 준비 상태에 운명의 카드 현황(천사·악마·미선택)과 후보(악마) 목록 → 체크해서 지정. 후보가 있으면 1명 이상 지정해야 시작.
  *   진행 중에는 테러리스트와 현재 적립금 (관리자만)
  * - 최종장(final): FinalControl (투표 마감·가위바위보·결과·정산)
  * - 준비 상태: 팀별 입장 현황(A 3/5)과 리더. 리더가 없는 팀이 있으면 시작할 수 없다. 팀을 고르지 않은 참가자는 시작할 때 비활성.
@@ -103,7 +103,7 @@ const spyDirty = computed(() => [...spyPick.value].sort().join() !== [...(view.v
 const spyBlocker = computed(() => {
   const sp = view.value?.spy
   if (!sp || !sp.candidates.length) return ''
-  if (!sp.selected.length) return '달을 고른 후보 중 테러리스트를 1명 이상 지정해 저장해야 시작할 수 있어요'
+  if (!sp.selected.length) return '악마를 고른 후보 중 테러리스트를 1명 이상 지정해 저장해야 시작할 수 있어요'
   return ''
 })
 function saveSpies() {
@@ -215,8 +215,8 @@ const modalText = computed(() => {
       const sp = view.value?.spy
       const spyWarn = !sp ? '' : sp.selected.length
         ? `\n테러리스트 ${sp.selected.length}명: ${sp.selected.map(nameOf).join(', ')} (시작하면 본인에게만 무음으로 알려요)`
-        : '\n\n달을 고른 후보가 없어 테러리스트 없이 시작해요.'
-      const fateWarn = sp?.counts.none ? `\n운명의 카드를 고르지 않은 ${sp.counts.none}명은 태양으로 처리돼요.` : ''
+        : '\n\n악마를 고른 후보가 없어 테러리스트 없이 시작해요.'
+      const fateWarn = sp?.counts.none ? `\n운명의 카드를 고르지 않은 ${sp.counts.none}명은 천사로 처리돼요.` : ''
       const tab = view.value?.settings.tabLogin ? '\n\n테스트 모드(탭 로그인)가 켜져 있어요. 참가자가 새 탭을 열 때마다 다시 로그인해야 해요. 실제 진행이면 "게임 설정"에서 끄세요.' : ''
       return { title: '게임을 시작할까요?', message: `총 ${st.totalDays}라운드. 시작하면 참가자 화면이 게임 화면으로 바뀌고 1라운드 리더 선출이 열려요.${warn}${fateWarn}${spyWarn}${tab}` }
     }
@@ -388,12 +388,12 @@ const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(t
       </p>
 
       <!-- 운명의 카드 · 테러리스트 지정 (docs/100 N4) -->
-      <h3><Icon name="moon" /> 운명의 카드 · 테러리스트 지정</h3>
+      <h3><Icon name="devil" /> 운명의 카드 · 테러리스트 지정</h3>
       <p class="muted" style="margin: 0 0 6px">
-        팀을 고른 참가자는 태양/달 중 하나를 골라요 (달 = 테러리스트 후보).
-        <Icon name="sun" /> 태양 <strong>{{ view.spy.counts.sun }}</strong> · <Icon name="moon" /> 달 <strong>{{ view.spy.counts.moon }}</strong> · 미선택 <strong>{{ view.spy.counts.none }}</strong>
+        팀을 고른 참가자는 천사/악마 중 하나를 골라요 (악마 = 테러리스트 후보).
+        <Icon name="angel" /> 천사 <strong>{{ view.spy.counts.sun }}</strong> · <Icon name="devil" /> 악마 <strong>{{ view.spy.counts.moon }}</strong> · 미선택 <strong>{{ view.spy.counts.none }}</strong>
       </p>
-      <p v-if="!view.spy.candidates.length" class="muted" style="margin: 0">아직 달을 고른 후보가 없어요. 후보가 없으면 테러리스트 없이 시작해요.</p>
+      <p v-if="!view.spy.candidates.length" class="muted" style="margin: 0">아직 악마를 고른 후보가 없어요. 후보가 없으면 테러리스트 없이 시작해요.</p>
       <template v-else>
         <table class="tbl">
           <thead><tr><th>지정</th><th>팀</th><th>후보</th></tr></thead>
