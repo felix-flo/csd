@@ -57,7 +57,7 @@ interface GameRow {
   /** 이주가 열리는 라운드 (docs/100 N3) */
   migration_start_day: number
   opening_step: OpeningStep | null
-  /** 전쟁 제재 금지 (1 = 리더 협의 안건에서 전쟁 제재 제외). 리셋 때 0 */
+  /** 전쟁 제재 금지 (1 = 리더 협의 안건에서 전쟁 제재 제외). 게임 시작·라운드 시작·리셋 때 0 */
   war_sanction_off: number
 }
 
@@ -353,7 +353,7 @@ export function startGame(by: number): number[] {
     clearMigrations()
     resetAmountsToInitial()
     recordInitialLedger(1, by)
-    updateGame(`status = 'running', opening_step = 'film', day = 1, phase = 'leader', aid_used = 0, results = NULL, phase_started_at = datetime('now'), phase_timer_fired = 0,
+    updateGame(`status = 'running', opening_step = 'film', day = 1, phase = 'leader', aid_used = 0, war_sanction_off = 0, results = NULL, phase_started_at = datetime('now'), phase_timer_fired = 0,
                 started_at = datetime('now'), ended_at = NULL, ${CLEAR_FINAL}`)
     // 임시 리더는 없다. 리더는 1라운드 리더 선출 단계에서 진행자가 지정한다
     db.prepare(`UPDATE users SET is_leader = 0 WHERE role = 'member'`).run()
@@ -413,10 +413,13 @@ export function advance(expect: { day: number; phase: Phase }): AdvanceResult {
       updateGame(`phase = ?, phase_started_at = datetime('now'), phase_timer_fired = 0`, [result.phase])
     } else {
       if (g.day >= (g.total_days ?? 0)) throw new GameError('last_day', '마지막 라운드입니다. 게임 종료를 누르세요')
+      // 라이프 제출 단계: 모든 팀이 제출해야 다음 라운드로 (팀원 0명 · 1명+라이프 0 팀은 완료로 본다)
+      if (g.phase === 'life' && !allLivesDone(g.day)) throw new GameError('lives_pending', '모든 팀이 라이프를 제출해야 다음 라운드로 넘어갈 수 있습니다')
       if (!getWarCost(g.day + 1)) throw new GameError('no_war_cost', `${g.day + 1}라운드 전쟁 선포 비용을 먼저 정하세요`)
       result.day = g.day + 1
       result.phase = 'leader'
-      updateGame(`day = ?, phase = 'leader', phase_started_at = datetime('now'), phase_timer_fired = 0`, [result.day])
+      // 전쟁 제재 금지는 라운드마다 OFF(안건 포함)로 돌아간다 (2026-11-03)
+      updateGame(`day = ?, phase = 'leader', war_sanction_off = 0, phase_started_at = datetime('now'), phase_timer_fired = 0`, [result.day])
       openElections(result.day)
     }
     return result

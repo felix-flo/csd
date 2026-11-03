@@ -129,6 +129,7 @@ function setLifeVote(passed: boolean) {
 const advanceBlocker = computed(() => {
   if (warBlocker.value) return warBlocker.value
   if (s.value?.phase === 'leader' && !s.value.leadersDone) return s.value.day > 1 ? '모든 팀의 재신임 결과를 입력해야 다음 단계로 넘어갈 수 있습니다' : '모든 팀의 리더를 지정해야 다음 단계로 넘어갈 수 있습니다'
+  if (s.value?.phase === 'life' && !nextPhase.value && !s.value.livesDone) return '모든 팀이 라이프를 제출해야 다음 라운드로 넘어갈 수 있습니다'
   if (s.value?.phase === 'council' && view.value?.migrations.pending.length) return '처리하지 않은 이주 신청이 있습니다. 받는 팀 리더가 처리하거나 아래 "이주"에서 취소해야 라이프 제출로 넘어갈 수 있습니다'
   if (!nextPhase.value && !isLastDay.value && !view.value?.war.nextCost) return `${(s.value?.day ?? 0) + 1}라운드 전쟁 선포 비용을 현재 단계 관리에서 정해야 다음 라운드로 넘어갈 수 있습니다`
   return ''
@@ -205,12 +206,11 @@ const modalText = computed(() => {
       if (nextPhase.value) {
         return { title: `${PHASE_LABELS[nextPhase.value]} 단계로 넘길까요?`, message: `${st.day}라운드 · ${phaseLabel(st.phase!, st.day)} → ${PHASE_LABELS[nextPhase.value]}` }
       }
-      const warn = st.livesDone ? '' : '\n아직 라이프를 제출하지 않은 팀이 있습니다. 미제출 팀은 라이프 소모·탈락 없이 넘어갑니다.'
       // 마지막 라운드로 넘어갈 때: 발행 허용 단계를 한 번 더 보여 준다 (넘어가면 바꿀 수 없다)
       const last = st.day + 1 >= (st.totalDays ?? 0)
         ? `\n\n${st.day + 1}라운드는 마지막 라운드입니다. 리더 협의와 라이프 제출 사이에 마지막 발행 단계가 들어갑니다.`
         : ''
-      return { title: last ? `마지막 라운드(${st.day + 1}라운드)로 넘길까요?` : `${st.day + 1}라운드로 넘길까요?`, message: `이번 라운드가 끝나고 ${st.day + 1}라운드 리더 선출이 시작됩니다.${warn}${last}` }
+      return { title: last ? `마지막 라운드(${st.day + 1}라운드)로 넘길까요?` : `${st.day + 1}라운드로 넘길까요?`, message: `이번 라운드가 끝나고 ${st.day + 1}라운드 리더 선출이 시작됩니다.${last}` }
     }
     case 'end': {
       const lv = st.lifeVote ? '1인 1표 + 팀마다 남은 라이프 수만큼 무작위로 뽑힌 사람은 2표 (1인 1장)' : '1인 1표'
@@ -529,11 +529,11 @@ const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(t
       <span v-else class="blocker">아직 정하지 않음 — 정해야 다음 라운드로 넘어갑니다</span>
     </div>
 
-    <!-- 전쟁 제재 금지 on/off: 리더 협의 단계 전에 정한다. 켜면 협의 안건에서 전쟁 제재가 빠진다 -->
+    <!-- 전쟁 제재 금지 on/off: 리더 협의 단계 전에 정한다. 켜면 협의 안건에서 전쟁 제재가 빠진다. 라운드마다 OFF 로 돌아간다 -->
     <div v-if="round && !isLastDay" class="row war-cost">
       <span><Icon name="war" /> 전쟁 제재 금지</span>
+      <button class="small" :class="{ secondary: view.war.sanctionOff }" :disabled="busy || round === 'council'" @click="setSanctionOff(false)">OFF · 안건 포함 (기본)</button>
       <button class="small" :class="{ secondary: !view.war.sanctionOff }" :disabled="busy || round === 'council'" @click="setSanctionOff(true)">ON · 안건 제외</button>
-      <button class="small" :class="{ secondary: view.war.sanctionOff }" :disabled="busy || round === 'council'" @click="setSanctionOff(false)">OFF · 안건 포함</button>
       <span class="muted">
         <template v-if="round === 'council'">리더 협의 중에는 바꿀 수 없습니다 · </template>
         {{ view.war.sanctionOff ? '리더 협의 안건에 전쟁 제재가 없습니다 (전쟁은 항상 가능)' : '리더 3명 이상이 제재에 찬성하면 다음 라운드 전쟁 금지를 걸 수 있습니다' }}
