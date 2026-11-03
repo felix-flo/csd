@@ -3,12 +3,12 @@
 import { RESOURCES, type ResourceKey } from '../lib/resources'
 import ResourceChip from './ResourceChip.vue'
 
-defineProps<{ amounts?: Partial<Record<ResourceKey, number | null>>; large?: boolean; showLabel?: boolean; grid?: boolean }>()
+defineProps<{ amounts?: Partial<Record<ResourceKey, number | null>>; large?: boolean; showLabel?: boolean; grid?: boolean; animated?: boolean }>()
 </script>
 
 <template>
   <div class="row res-row" :class="{ grid }">
-    <ResourceChip v-for="r in RESOURCES" :key="r.key" :kind="r.key" :amount="amounts?.[r.key]" :large="large" :show-label="showLabel || grid" />
+    <ResourceChip v-for="r in RESOURCES" :key="r.key" :kind="r.key" :amount="amounts?.[r.key]" :large="large" :show-label="showLabel || grid" :animated="animated" />
   </div>
 </template>
 

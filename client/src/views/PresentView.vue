@@ -19,6 +19,7 @@ import GamePhaseBar from '../components/GamePhaseBar.vue'
 import { teamInk } from '../lib/teamColor'
 import AccessQr from '../components/AccessQr.vue'
 import ResourceRow from '../components/ResourceRow.vue'
+import MarqueeText from '../components/MarqueeText.vue'
 import FinalStage from '../components/FinalStage.vue'
 import TeamMark from '../components/TeamMark.vue'
 import ResolveText from '../components/ResolveText.vue'
@@ -256,7 +257,7 @@ const council = computed(() => {
           </header>
           <p v-if="leaderOf(t)" class="leader">{{ leaderOf(t)?.name }} <span class="muted">리더</span></p>
           <ul>
-            <li v-for="(m, i) in othersOf(t)" :key="i" :class="{ out: m.eliminated }"><span>{{ m.name }}</span></li>
+            <li v-for="(m, i) in othersOf(t)" :key="i" :class="{ out: m.eliminated }"><MarqueeText>{{ m.name }}</MarqueeText></li>
           </ul>
         </section>
       </div>
@@ -337,8 +338,9 @@ const council = computed(() => {
 .team-card .count { margin-left: auto; font-size: 2.4vh; font-weight: 600; color: var(--muted); }
 .team-card .leader { margin: 2vh 0 0; font-size: 3.2vh; font-weight: 700; }
 .team-card .leader .muted { font-size: 1.9vh; font-weight: 500; }
-.team-card ul { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8vh 0.5vw; list-style: none; margin: 1.4vh 0 0; padding: 0; font-size: 2.6vh; font-weight: 500; }
-.team-card li { position: relative; overflow: hidden; padding: 1.1vh 0.7vw; border-radius: var(--radius); background: #f7f6f2; color: var(--ink); text-align: center; transition: background 1.2s ease, color 1.2s ease; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.team-card ul { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8vh 0.5vw; list-style: none; margin: 1.4vh 0 0; padding: 0; font-size: 2.2vh; font-weight: 500; }
+/* 이름은 한 줄. 그래도 넘치면 MarqueeText 가 좌우로 오가며 보여 준다 */
+.team-card li { position: relative; overflow: hidden; padding: 1.1vh 0.7vw; border-radius: var(--radius); background: #f7f6f2; color: var(--ink); text-align: center; transition: background 1.2s ease, color 1.2s ease; white-space: nowrap; }
 .team-card li.out { background: #e6e4de; color: #a8a6a0; }
 /* 라이프 제출이 끝나면 생존자 칸이 오른쪽 아래부터 파랗게 차오른다 */
 .lit .team-card li:not(.out)::before { content: ''; position: absolute; inset: 0; background: linear-gradient(to top left, #c6d9ef 0, transparent 70%); animation: fill-up 1.8s ease-out both; }
