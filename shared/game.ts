@@ -191,12 +191,12 @@ export const WAR_COST_KINDS = ['gem', 'gold', 'credit'] as const
 export type WarCost = Record<(typeof WAR_COST_KINDS)[number], number>
 
 /**
- * 기본 게임 설정 (2026-11-03 시뮬레이션으로 확정, 23명 7/8/4/4. docs/ideation/16-sim-7844.md. 같은 날 초기 재화 조정: 골드 팀 골드 300, 블루·레드 골드 50, 라이프 16/18/36/6).
+ * 기본 게임 설정 (2026-11-03 시뮬레이션으로 확정, 23명 7/8/4/4. docs/ideation/16-sim-7844.md. 같은 날 초기 재화 조정: 골드 팀 골드 300, 블루·레드 골드 50, 라이프 16/18/36/6, 화이트·골드 크레딧 6).
  * 운영진이 값을 기억하지 못해도 "기본값 불러오기"·설정 초기화·새 DB 에서 이 값이 들어간다. 팀은 code 기준
  */
 export const DEFAULT_TEAM_SETUP: Record<string, { capacity: number; initial: Resources }> = {
-  white: { capacity: 7, initial: { gem: 200, gold: 0, life: 16, credit: 3 } },
-  yellow: { capacity: 8, initial: { gem: 0, gold: 300, life: 18, credit: 3 } },
+  white: { capacity: 7, initial: { gem: 200, gold: 0, life: 16, credit: 6 } },
+  yellow: { capacity: 8, initial: { gem: 0, gold: 300, life: 18, credit: 6 } },
   blue: { capacity: 4, initial: { gem: 0, gold: 50, life: 36, credit: 3 } },
   red: { capacity: 4, initial: { gem: 0, gold: 50, life: 6, credit: 15 } },
 }
