@@ -22,6 +22,7 @@ import { useAuthStore } from '../stores/auth'
 import { useRealtimeStore } from '../stores/realtime'
 import { useGameStore } from '../stores/game'
 import { api } from '../lib/api'
+import { preloadFateImages } from '../lib/fateImages'
 import type { GroupInfo, PublicUser } from '../../../shared/types'
 import { isBeforeStart, isLifeExempt } from '../../../shared/game'
 
@@ -62,6 +63,10 @@ watch(() => auth.user?.groupId, () => game.load())
 watch(beforeStart, (v) => {
   if (!v) void load()
 })
+// 준비 상태면 운명의 카드 이미지를 미리 받는다 (이름 입력·팀 선택 중에 받아 두어 카드 창이 바로 뜨게)
+watch(() => s.value?.status, (status) => {
+  if (status === 'ready') preloadFateImages()
+}, { immediate: true })
 
 const phase = computed(() => (s.value?.status === 'running' && !s.value.opening ? s.value.phase : null))
 const isLeader = computed(() => !!auth.user?.isLeader)

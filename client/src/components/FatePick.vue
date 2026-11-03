@@ -8,8 +8,7 @@ import { ref } from 'vue'
 import { FATE_LABELS, type Fate } from '../../../shared/game'
 import { api, ApiError } from '../lib/api'
 import ModalDialog from './ModalDialog.vue'
-import angelUrl from '../assets/angel.webp'
-import devilUrl from '../assets/devil.webp'
+import { angelUrl, devilUrl, FATE_IMAGE_SIZE } from '../lib/fateImages'
 
 const emit = defineEmits<{ chosen: [fate: Fate] }>()
 const picked = ref<Fate | null>(null)
@@ -47,7 +46,7 @@ async function submit() {
       <p class="question">오늘 당신을 이끌<br />운명의 카드를 선택하세요</p>
       <div class="cards">
         <button v-for="c in CARDS" :key="c.fate" type="button" class="card-btn" :disabled="busy" :aria-label="c.label" @click="picked = c.fate">
-          <img :src="c.src" :alt="c.label" draggable="false" />
+          <img :src="c.src" :alt="c.label" :width="FATE_IMAGE_SIZE.width" :height="FATE_IMAGE_SIZE.height" decoding="async" draggable="false" />
           <span class="label">{{ c.label }}</span>
         </button>
       </div>
@@ -136,7 +135,8 @@ async function submit() {
 }
 .card-btn img {
   width: 100%;
-  aspect-ratio: 690 / 955;
+  height: auto;
+  aspect-ratio: 3 / 4;
   object-fit: cover;
   border-radius: 14px;
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.2);

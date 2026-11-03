@@ -17,6 +17,8 @@ const phone = window.matchMedia('(max-width: 767px)').matches
 /** 테스트 모드(탭 로그인, docs/101)면 안내. 로그인 전이라 공개 /api/health 로 본다 */
 const tabLogin = ref(false)
 onMounted(async () => {
+  // 로그인하는 사람은 대부분 참가자: PIN 을 입력하는 동안 참가자 화면 코드를 미리 받아 둔다 (라우터와 같은 청크라 로그인 직후 다시 받지 않는다)
+  setTimeout(() => { void import('./GroupView.vue') }, 300)
   try {
     const res = await fetch('/api/health', { cache: 'no-store' })
     tabLogin.value = !!((await res.json()) as { tabLogin?: boolean }).tabLogin
