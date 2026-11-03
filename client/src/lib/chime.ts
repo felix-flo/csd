@@ -169,3 +169,34 @@ export async function playChime(id?: string): Promise<boolean> {
   preset.render(c, master, c.currentTime + 0.02)
   return true
 }
+
+/**
+ * 재화가 바뀔 때 숫자가 굴러가는 동안 "따다다닥" 이어지는 효과음 (CountNumber 의 세는 시간과 같은 길이).
+ * 처음엔 빠르게, 끝으로 갈수록 느려지는 간격이 숫자 움직임과 맞는다. 늘면 음이 올라가고 줄면 내려간다.
+ * 알림음 끄기 설정을 따른다. 아직 잠겨 있으면 조용히 건너뛴다
+ */
+export const COUNT_DURATION = 1500
+
+export async function playCount(up: boolean): Promise<void> {
+  if (isMuted()) return
+  const c = getContext()
+  if (!c || !master) return
+  if (c.state === 'suspended') {
+    try { await c.resume() } catch { return }
+  }
+  if (c.state !== 'running') return
+  const t0 = c.currentTime + 0.02
+  const dur = COUNT_DURATION / 1000
+  const ticks = 14
+  for (let i = 0; i < ticks; i++) {
+    const p = i / (ticks - 1)
+    // 숫자는 1-(1-t)^3 으로 움직이므로, 같은 값 간격마다 소리를 내려면 t = 1-(1-p)^(1/3)
+    const at = t0 + dur * (1 - (1 - p) ** (1 / 3))
+    const f = up ? 880 * 2 ** (p * 1) : 660 * 2 ** (-p * 1)
+    tone(c, master, { f, at, dur: 0.06, type: up ? 'square' : 'triangle', gain: up ? 0.07 : 0.25 })
+  }
+  // 마지막에 한 번 받쳐 주는 음
+  const end = t0 + dur + 0.02
+  if (up) tone(c, master, { f: 1760 * 1.5, at: end, dur: 0.4, gain: 0.12 })
+  else tone(c, master, { f: 220, at: end, dur: 0.4, type: 'triangle', gain: 0.4 })
+}
