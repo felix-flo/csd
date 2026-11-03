@@ -1,42 +1,49 @@
 /*
- * CSD 테마 (docs/108, 2026-11-01): 앱인토스(TDS Mobile) 톤.
- * - 회색 바탕(grey100) 위 흰 면(카드, 반경 16px, 선·그림자 없음). 글자는 grey900/grey700/grey600 3단계.
- * - 포인트는 파랑(blue500 #3182f6) 하나. 빨강은 오류·전쟁, 초록은 완료, 노랑은 주의.
- * - 글꼴 Pretendard (TDS 타이포 스케일: 제목 22 bold, 카드 제목 17 bold, 본문 15~17, 보조 13). 대문자·자간 없음.
- * - 버튼: fill(파랑 채움) / weak(연한 파랑) / secondary=light(회색 면). 높이 small 32 · 기본 40 · lg 48 · xl 56(하단 CTA).
- * - 토스트는 아래쪽 어두운 알약, 팝업은 흰 카드(왼쪽 "닫기", 오른쪽 주요 버튼).
- * 밝은 테마 고정. 가시성 기준 (docs/104): 본문 대비 4.5:1, 보조 글자 최소 13px.
+ * 트래픽 커뮤니티 테마. 시안: 프레젠테이션 · 관리자 · 리더 · 팀원 화면 모음.
+ * - 종이색 바탕 위 흰 카드. 구분은 얇은 선과 부드러운 그림자로만.
+ * - 색은 원작 공식 사이트 값 (빨강 #ef321f, 파랑 #1646f5, 종이색 #f0eee7, 검정 #080808).
+ * - 제목만 Cafe24 PRO Slim (자간 -0.065em, 공식 사이트 값), 나머지는 Pretendard.
+ * - 버튼은 검정이 기본, 빨강은 전쟁과 되돌릴 수 없는 행동에만.
+ * - 팀색은 문장 칸, 점, 이름, 개인 화면의 배경 그라데이션에만 쓴다.
+ * 가시성 기준 (docs/104): 본문 대비 4.5:1, 보조 글자 최소 13px.
  * 프레젠테이션(html[data-screen='present'])은 빔 투사용이라 루트 20px + 회색을 진하게.
  */
+@font-face {
+  font-family: 'Cafe24ProSlim';
+  src: url('/fonts/Cafe24PROSlim-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
 :root {
   color-scheme: light;
   /* 면 */
-  --bg: #f2f4f6;           /* greyBackground (grey100) */
-  --surface: #ffffff;      /* layeredBackground */
-  --bg-soft: #f2f4f6;      /* 입력·light 버튼·표 머리글 (grey100) */
-  --well: #f9fafb;         /* grey50 */
-  /* 글자 (grey900 / grey700 / grey600) */
-  --ink: #191f28;
-  --ink-2: #4e5968;
-  --muted: #6b7684;        /* grey600: 흰 면 위 5.3:1 (grey500 은 4.5 미만이라 보조 글자에 안 씀) */
-  /* 선: 구분선(grey100) < 테두리(grey200) < 강조(grey300) */
-  --line-soft: #f2f4f6;
-  --line: #e5e8eb;
-  --line-strong: #d1d6db;
+  --bg: #f0eee7;
+  --surface: #ffffff;
+  --bg-soft: #f6f4ef;
+  --well: #faf9f5;
+  /* 글자 */
+  --ink: #080808;
+  --ink-2: #3d3d3d;
+  --muted: #5f5c55;
+  /* 선 */
+  --line-soft: rgba(8, 8, 8, 0.08);
+  --line: rgba(8, 8, 8, 0.16);
+  --line-strong: rgba(8, 8, 8, 0.32);
   /* 포인트 */
-  --blue: #3182f6;
-  --blue-600: #2272eb;
-  --blue-bg: #e8f3ff;      /* blue50 */
-  --glow: rgba(49, 130, 246, 0.25);
-  --green: #03b26c;
-  --green-bg: #f0faf6;
-  --red: #f04452;
-  --red-bg: #ffeeee;
-  --amber: #ee8f11;        /* yellow800 */
-  --amber-bg: #fff9e7;
+  --blue: #1646f5;
+  --blue-600: #0f37cc;
+  --blue-bg: #e7ecfe;
+  --glow: rgba(22, 70, 245, 0.24);
+  --green: #1f7f4e;
+  --green-bg: #e8f4ec;
+  --red: #ef321f;
+  --red-bg: #fde8e4;
+  --amber: #8a6400;
+  --amber-bg: #fbf1cf;
   --white: #ffffff;
-  --radius: 12px;          /* 버튼·입력 */
-  --radius-card: 16px;
+  --radius: 6px;           /* 버튼·입력 */
+  --radius-card: 10px;
 
   /* 이전 이름 호환 (컴포넌트 scoped 스타일에서 사용) */
   --paper: var(--bg);
@@ -45,14 +52,17 @@
   --yellow: var(--amber);
   --gold: var(--blue);
 
-  /* 재화: 칩은 회색 면, 숫자·아이콘 색만 재화별 */
-  --res-gem-fg: #333d4b;
-  --res-gold-fg: #dd7d02;
-  --res-life-fg: #3182f6;
-  --res-credit-fg: #e42939;
+  /* 재화: 숫자·아이콘 색만 재화별 */
+  --res-gem-fg: #3d3d3d;
+  --res-gold-fg: #8a6400;
+  --res-life-fg: #1646f5;
+  --res-credit-fg: #c9220f;
 
-  --font-display: 'Pretendard Variable', Pretendard, -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* 개인 화면 배경 그라데이션 시작색 (시안에서 정한 값) */
+  --tint: var(--bg);
+
+  --font-display: 'Cafe24ProSlim', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  --font-mono: 'Pretendard Variable', Pretendard, -apple-system, 'Apple SD Gothic Neo', sans-serif;
   --font-body: 'Pretendard Variable', Pretendard, -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', system-ui, sans-serif;
 
   font-family: var(--font-body);
@@ -62,10 +72,9 @@
 /* 프레젠테이션 (PresentView 가 켠다): 멀리서 보는 화면. 1rem = 20px, 회색은 진하게 (빔은 연한 회색을 날린다) */
 html[data-screen='present'] {
   font-size: 20px;
-  --muted: #4e5968;
-  --ink-2: #333d4b;
-  --line: #d1d6db;
-  --line-strong: #b0b8c1;
+  --muted: #4a4843;
+  --ink-2: #2b2b2b;
+  --radius-card: 16px;
 }
 
 * { box-sizing: border-box; }
@@ -74,32 +83,58 @@ body { background: var(--bg); color: var(--ink); word-break: keep-all; line-heig
 html[data-screen='present'] body { font-size: 1rem; }
 ::selection { background: var(--blue-bg); color: var(--ink); }
 #app { min-height: 100vh; }
+/* 개인 화면: 팀색이 오른쪽 아래에서 왼쪽 위로 사라진다 (GroupView 가 body[data-team] 을 켠다) */
+body[data-team='white'] { --tint: #ffffff; }
+body[data-team='yellow'] { --tint: #efd98f; }
+body[data-team='blue'] { --tint: #c6d9ef; }
+body[data-team='red'] { --tint: #f2cfc6; }
+body[data-team] #app { background: linear-gradient(to top left, var(--tint) 0, var(--bg) 70%); }
+body[data-team='white'] #app { background: linear-gradient(to top left, #fff 0, #fff 32%, var(--bg) 92%); }
 
 .page { max-width: 720px; margin: 0 auto; padding: 12px 16px 24px; }
 /* 하단 고정 CTA 가 떠 있을 때 (FixedBottomCta.vue) 마지막 카드가 가려지지 않게 */
-body.has-cta .page { padding-bottom: 112px; }
+body.has-cta .page, body.has-dock .page { padding-bottom: 112px; }
+
+/* 위쪽 고정 알림 한 줄 (NoticeBar, VersionBanner) */
+.notice-bar { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 8px 14px; border-radius: var(--radius-card); background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--line-soft), 0 8px 20px -14px rgba(8, 8, 8, 0.24); font-weight: 500; text-align: left; }
+.notice-bar:hover { background: var(--surface); }
+.notice-bar .text { flex: 1; min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: keep-all; }
+.notice-bar .more { flex: none; color: var(--muted); font-size: 0.87rem; }
+.notice-bar.war, .notice-bar.war:hover { background: var(--red); color: #fff; }
+.notice-bar.war .more { color: #ffe3df; }
+
+/* 입장 화면 (LoginView, NameSetup): 휴대폰 한 손 입력. 키보드가 올라와도 입력칸이 보이도록 위쪽에 둔다 */
+.entry { max-width: 400px; margin: 0 auto; padding: 44px 16px 24px; text-align: left; }
+.page > .entry { padding: 32px 0 0; } /* NameSetup 은 .page 안에 있다: 바깥 여백만큼 빼서 로그인과 위치를 맞춘다 */
+.entry h1 { font-size: 36px; margin-bottom: 14px; }
+.entry > p { margin: 0 0 16px; line-height: 1.5; }
+.entry form { display: flex; flex-direction: column; gap: 12px; }
+.entry form > input { width: 100%; height: 72px; padding: 0 20px; font-size: 1.4rem; border: 0; border-radius: var(--radius-card); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.entry form > input:focus { box-shadow: inset 0 0 0 2px var(--ink); }
+.entry form + p { margin: 16px 0 0; }
 
 .card {
   position: relative;
   background: var(--surface);
   border: 0;
   border-radius: var(--radius-card);
-  padding: 20px;
+  box-shadow: 0 0 0 1px var(--line-soft), 0 12px 32px -18px rgba(8, 8, 8, 0.14);
+  padding: 18px;
   margin-bottom: 12px;
 }
 
 /* 타이포 (TDS: Top 제목 t3 22 bold · ListHeader t5 17 bold · 본문 t5/t6 · 보조 t7 13) */
 h1 {
   font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 1.45rem;       /* 22px (루트 15px 기준) → 프레젠테이션 29px */
-  line-height: 1.35;
-  letter-spacing: -0.01em;
+  font-weight: 400;
+  font-size: 1.9rem;
+  line-height: 1.12;
+  letter-spacing: -0.065em;
   margin: 0 0 8px;
   color: var(--ink);
 }
 h2 {
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-weight: 700;
   font-size: 1.13rem;       /* 17px */
   line-height: 1.4;
@@ -121,13 +156,13 @@ h2 .muted { font-weight: 400; font-size: 0.87rem; letter-spacing: 0; vertical-al
 }
 .error { color: var(--red); }
 /* 큰 숫자 (타이머·누적량): 굵은 파랑, tabular */
-.led { font-family: var(--font-display); font-weight: 800; font-variant-numeric: tabular-nums; color: var(--blue); letter-spacing: -0.02em; }
+.led { font-family: var(--font-body); font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); letter-spacing: -0.03em; }
 
 /* 버튼 (TDS Button): 기본 = fill primary(40px). .secondary = light(회색 면), .weak = 연한 파랑, .danger = 빨강, .lg/.xl 큰 크기 */
 button {
   cursor: pointer;
   border: 0;
-  background: var(--blue);
+  background: var(--ink);
   color: #fff;
   border-radius: var(--radius);
   min-height: 40px;
@@ -139,20 +174,20 @@ button {
   line-height: 1.3;
   transition: background 0.12s, color 0.12s, opacity 0.12s, transform 0.08s;
 }
-button:hover { background: var(--blue-600); }
+button:hover { background: #2b2b2b; }
 button:active { transform: scale(0.98); }
 /* 보조 버튼은 회색 바탕(.page) 위에서도 보이도록 흰 면 + 헤어라인 */
 button.secondary { background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
 button.secondary:hover { background: var(--bg-soft); }
 button.weak { background: var(--blue-bg); color: var(--blue); }
-button.weak:hover { background: #d6e8ff; }
+button.weak:hover { background: #d7e0fd; }
 button.danger { background: var(--red); color: #fff; }
-button.danger:hover { background: #e42939; }
+button.danger:hover { background: #d92a18; }
 button.small { min-height: 32px; padding: 4px 12px; font-size: 0.87rem; }
 button.lg { min-height: 48px; padding: 10px 20px; font-size: 1.07rem; }
 button.xl { min-height: 56px; padding: 12px 24px; font-size: 1.13rem; font-weight: 700; width: 100%; }
 button:disabled { opacity: 0.35; cursor: default; transform: none; }
-button:disabled:hover { background: var(--blue); }
+button:disabled:hover { background: var(--ink); }
 button.secondary:disabled:hover { background: var(--surface); }
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
   outline: none;
@@ -173,7 +208,7 @@ input:hover, select:hover, textarea:hover { border-color: var(--line-strong); }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--blue); background: var(--surface); box-shadow: 0 0 0 3px var(--glow); }
 input[type='number'] { font-variant-numeric: tabular-nums; }
 input[type='checkbox'], input[type='radio'] { accent-color: var(--blue); width: 18px; height: 18px; padding: 0; }
-input::placeholder, textarea::placeholder { color: #b0b8c1; }
+input::placeholder, textarea::placeholder { color: #9b978e; }
 a { color: var(--blue); }
 
 /* 상단 (TDS Top): 제목 22 bold + 보조 15 grey700, 선 없음 */
@@ -182,14 +217,13 @@ a { color: var(--blue); }
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
   padding: 12px 0 4px;
   margin-bottom: 12px;
 }
 .topbar h1 { margin: 0; word-break: keep-all; }
+.topbar .who { font-size: 0.87rem; }
 .topbar .muted { font-family: var(--font-body); font-size: 0.93rem; letter-spacing: 0; color: var(--ink-2); }
 .topbar .row { gap: 6px; }
-.topbar button.secondary { min-height: 36px; padding: 6px 12px; font-size: 0.93rem; }
 
 /* 뱃지 (TDS Badge weak): 연한 바탕 + 같은 계열 글자, 반경 6px, 13px 600 */
 .badge {

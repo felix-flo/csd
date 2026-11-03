@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 참가자 PIN (게임 시작 전). 초기셋팅완료로 만든 PIN 은 팀에 묶여 있지 않으므로 팀 명단과 따로 보여준다.
- * - 상태: 대기(한 번도 로그인 안 함) → 접속함(로그인함, 이름 전) → 이름 입력함(팀 선택 전) → A 팀 배정
+ * - 상태: 대기(한 번도 로그인 안 함) → 접속함(로그인함, 이름 전) → 닉네임 입력함(팀 선택 전) → A 팀 배정
  * - 로그인·이름 입력·팀 선택 때 서버가 lobby 신호를 보내 관리자 화면이 계정 목록을 다시 받으므로 실시간으로 바뀐다.
  * - 테스트 계정은 팀이 미리 정해져 있어 여기서 빼고 계정 관리의 "테스트 계정" 묶음에 둔다.
  */
@@ -16,7 +16,7 @@ const showPins = ref(true)
 const message = ref('')
 
 type PinState = 'waiting' | 'connected' | 'named' | 'joined'
-const STATE_LABEL: Record<PinState, string> = { waiting: '대기', connected: '접속함', named: '이름 입력함', joined: '배정' }
+const STATE_LABEL: Record<PinState, string> = { waiting: '대기', connected: '접속함', named: '닉네임 입력함', joined: '배정' }
 
 // 만든 순서(id)로 고정: 팀을 골라도 번호가 바뀌지 않게
 const pins = computed(() => props.users.filter((u) => u.role === 'member' && !u.isTest).sort((a, b) => a.id - b.id))
@@ -40,7 +40,7 @@ const teamName = (teamId: number | null) => props.groups.find((g) => g.id === te
 function copyPins() {
   const lines = pins.value.map((u, i) => `${i + 1}\t${u.pin ?? ''}`)
   navigator.clipboard?.writeText(lines.join('\n')).then(
-    () => { message.value = `PIN ${pins.value.length}개를 복사했어요` },
+    () => { message.value = `PIN ${pins.value.length}개를 복사했습니다` },
     () => { message.value = '복사 실패' },
   )
 }
@@ -50,14 +50,14 @@ function copyPins() {
   <div v-if="isBeforeStart(game.admin?.state.status) && pins.length > 0" class="card">
     <h2>참가자 PIN</h2>
     <p class="muted">
-      PIN 은 팀에 묶여 있지 않아요. 아무 PIN 이나 나눠 주면 참가자가 로그인해 이름을 입력하고 팀을 직접 골라요.
-      <template v-if="game.admin?.state.status === 'setup'"> 지금은 설정 단계라 참가자가 팀을 고를 수 없어요.</template>
+      PIN 은 팀에 묶여 있지 않습니다. 아무 PIN 이나 나눠 주면 참가자가 로그인해 닉네임을 입력하고 팀을 직접 고릅니다.
+      <template v-if="game.admin?.state.status === 'setup'"> 지금은 설정 단계라 참가자가 팀을 고를 수 없습니다.</template>
     </p>
     <div class="row summary">
       <span>PIN {{ pins.length }}개</span>
       <span class="badge">대기 {{ counts.waiting }}</span>
       <span class="badge warn">접속함 {{ counts.connected }}</span>
-      <span class="badge warn">이름 입력함 {{ counts.named }}</span>
+      <span class="badge warn">닉네임 입력함 {{ counts.named }}</span>
       <span class="badge on">배정 {{ counts.joined }}</span>
       <span class="spacer" />
       <button class="secondary small" type="button" @click="showPins = !showPins">{{ showPins ? 'PIN 숨기기' : 'PIN 보기' }}</button>

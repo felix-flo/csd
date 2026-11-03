@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * 룰북 보기. 모든 역할 공용. 프레젠테이션용 큰 글씨 모드 포함 (docs/98.룰북_팀별룰.md)
- * - 참가자: 전체 룰 → 가로줄(---) → 우리 팀 룰. 팀 룰은 게임 시작 후에만 오고, 비어 있으면 전체 룰만
+ * - 전체 룰은 "=== 탭 이름 ===" 줄을 기준으로 탭으로 나눠 보여 준다 (RuleBook)
+ * - 참가자: 전체 룰 탭들 + 맨 끝 "우리 팀" 탭. 팀 룰은 게임 시작 후에만 오고, 비어 있으면 전체 룰만
  * - 프레젠테이션: 전체 룰만
  * - 관리자: "보기" 에서 팀을 고르면 그 팀원이 보는 화면 그대로 미리보기
  * 팀 이동·게임 시작·리셋 때 다시 받는다 (팀 룰 갱신은 document.updated 이벤트로)
@@ -12,7 +13,7 @@ import { useAuthStore } from '../stores/auth'
 import { useDocumentsStore } from '../stores/documents'
 import { useGameStore } from '../stores/game'
 import { useTeamsStore } from '../stores/teams'
-import MarkdownView from '../components/MarkdownView.vue'
+import RuleBook from '../components/RuleBook.vue'
 import type { DocumentInfo } from '../../../shared/types'
 import { teamLetter } from '../../../shared/game'
 
@@ -33,21 +34,12 @@ const teamRule = computed<DocumentInfo | null>(() => {
   if (isAdmin.value) return r.teams?.find((t) => t.teamId === previewTeam.value) ?? null
   return r.team
 })
-/** 전체 룰 + 가로줄 + 팀 룰 (팀 룰이 비어 있으면 전체 룰만) */
-const markdown = computed(() => {
-  const r = rules.value
-  if (!r) return ''
-  const t = teamRule.value
-  if (!t || !t.markdown.trim()) return r.global.markdown
-  return `${r.global.markdown}\n\n---\n\n# ${t.title}\n\n${t.markdown}`
-})
 const updatedAt = computed(() => {
   const times = [rules.value?.global.updatedAt, teamRule.value?.markdown.trim() ? teamRule.value.updatedAt : undefined].filter(Boolean) as string[]
   return times.sort().at(-1) ?? ''
 })
 
 onMounted(() => {
-  docs.dismissRules()
   void docs.loadRules()
   if (!game.state) void game.load()
   if (isAdmin.value && teams.teams.length === 0) void teams.load()
@@ -78,7 +70,7 @@ function toggleFullscreen() {
     </div>
     <div class="card">
       <p v-if="!rules" class="muted">불러오는 중…</p>
-      <MarkdownView v-else :markdown="markdown" :large="large" />
+      <RuleBook v-else :markdown="rules.global.markdown" :team-markdown="teamRule?.markdown" :large="large" />
       <p v-if="rules" class="muted" style="margin-top: 16px">마지막 수정: {{ updatedAt }}</p>
     </div>
   </div>

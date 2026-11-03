@@ -1,5 +1,5 @@
 /**
- * 문서(룰북) 캐시. 서버에서 'document.updated' 이벤트가 오면 다시 불러오고 갱신 배너를 띄운다.
+ * 문서(룰북) 캐시. 서버에서 'document.updated' 이벤트가 오면 다시 불러온다 (알림은 realtime 스토어가 띄운다).
  * 룰북은 GET /api/rules 한 번으로 역할에 맞게 받는다 (docs/98.룰북_팀별룰.md):
  * 참가자 = 전체 룰 + 자기 팀 룰(게임 시작 후), 프레젠테이션 = 전체 룰, 관리자 = 전체 룰 + 모든 팀 룰.
  * 받은 문서는 slug 별로 docs 에도 넣어 배너 제목·편집기에서 같이 쓴다.
@@ -16,7 +16,6 @@ export const useDocumentsStore = defineStore('documents', {
     docs: {} as Record<string, DocumentInfo>,
     rules: null as RulesResponse | null,
     /** 갱신 알림을 띄울 slug 목록 (사용자가 닫으면 제거) */
-    updated: [] as string[],
   }),
   actions: {
     async load(slug: string): Promise<DocumentInfo | null> {
@@ -42,10 +41,6 @@ export const useDocumentsStore = defineStore('documents', {
     /** 실시간 이벤트 수신 시 */
     async onUpdated(slug: string) {
       await this.load(slug)
-      if (!this.updated.includes(slug)) this.updated.push(slug)
-    },
-    dismiss(slug: string) {
-      this.updated = this.updated.filter((s) => s !== slug)
     },
     /** 관리자가 저장한 응답을 바로 반영 (rules 안의 같은 문서도 바꾼다) */
     set(doc: DocumentInfo) {
@@ -56,14 +51,9 @@ export const useDocumentsStore = defineStore('documents', {
       if (r.team?.slug === doc.slug) r.team = doc
       if (r.teams) r.teams = r.teams.map((t) => (t.slug === doc.slug ? doc : t))
     },
-    /** 갱신 배너 닫기용: 룰북 전체(전체 룰 + 팀 룰) */
-    dismissRules() {
-      this.updated = this.updated.filter((s) => !isRuleSlug(s))
-    },
     clear() {
       this.docs = {}
       this.rules = null
-      this.updated = []
     },
   },
 })

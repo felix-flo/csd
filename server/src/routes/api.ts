@@ -144,7 +144,7 @@ apiRouter.delete('/admin/events', requireRole('admin'), (req, res) => {
   const ev = insertEvent({
     type: 'system',
     scope: 'all',
-    payload: { kind: 'events.cleared', types, before, deleted, message: '공지 기록이 초기화되었어요' },
+    payload: { kind: 'events.cleared', types, before, deleted, message: '공지 기록이 초기화되었습니다' },
     createdBy: req.auth!.sub,
   })
   publishEvent(ev)
@@ -171,7 +171,7 @@ function announceLivesIfNowDone(before: boolean | null, by: number) {
   if (before !== false) return
   const g = getGameRow()
   if (!allLivesDone(g.day)) return
-  publishEvent(insertEvent({ type: 'game', scope: 'all', payload: { kind: 'life.all_done', message: '모든 팀의 라이프가 제출되었어요.', day: g.day }, createdBy: by }))
+  publishEvent(insertEvent({ type: 'game', scope: 'all', payload: { kind: 'life.all_done', message: '모든 팀의 라이프가 제출되었습니다.', day: g.day }, createdBy: by }))
 }
 
 apiRouter.post('/admin/users/active', requireRole('admin'), (req, res) => {
@@ -212,7 +212,7 @@ apiRouter.post('/admin/users/active', requireRole('admin'), (req, res) => {
         active,
         userIds: list.map((u) => u.id),
         names,
-        message: `${names.join(', ')} 님이 ${active ? '복귀했어요' : '탈락했어요'}`,
+        message: `${names.join(', ')} 님이 ${active ? '복귀했습니다' : '탈락했습니다'}`,
       },
       createdBy: req.auth!.sub,
     })
@@ -234,7 +234,7 @@ function announceTeams(userId: number, action: 'created' | 'updated' | 'deleted'
   const ev = insertEvent({
     type: 'system',
     scope: 'all',
-    payload: { kind: 'teams.updated', action, teamId: team.id, name: team.name, message: `팀 목록이 변경되었어요 (${team.name})` },
+    payload: { kind: 'teams.updated', action, teamId: team.id, name: team.name, message: `팀 목록이 변경되었습니다 (${team.name})` },
     createdBy: userId,
   })
   publishEvent(ev)
@@ -359,7 +359,7 @@ apiRouter.post('/admin/users/:id/team', requireRole('admin'), (req, res) => {
     fromTeamName: from?.name ?? null,
     toTeamId: to.id,
     toTeamName: to.name,
-    message: `${user.name} 님이 팀을 이동했어요 (${label(from)} → ${label(to)})`,
+    message: `${user.name} 님이 팀을 이동했습니다 (${label(from)} → ${label(to)})`,
   }
   for (const teamId of [from?.id, to.id]) {
     if (teamId == null) continue
@@ -387,7 +387,7 @@ apiRouter.post('/admin/users/:id/leader', requireRole('admin'), (req, res) => {
     type: 'system',
     scope: 'group',
     targetId: team.id,
-    payload: { kind: 'leader.set', userId: user.id, message: `${user.name} 님이 리더로 지정되었어요` },
+    payload: { kind: 'leader.set', userId: user.id, message: `${user.name} 님이 리더로 지정되었습니다` },
     createdBy: req.auth!.sub,
   }))
   announceMigrationSweep(req.auth!.sub)
@@ -462,7 +462,7 @@ function announceDocument(doc: DocumentInfo, userId: number) {
     scope: hidden ? 'role' : team ? 'group' : 'all',
     targetId: hidden ? null : doc.teamId,
     targetRole: hidden ? 'admin' : null,
-    payload: { slug: doc.slug, title: doc.title, teamId: doc.teamId, message: `"${doc.title}" 이(가) 갱신되었어요` },
+    payload: { slug: doc.slug, title: doc.title, teamId: doc.teamId, message: `"${doc.title}" 이(가) 갱신되었습니다` },
     createdBy: userId,
   })
   publishEvent(ev)
@@ -488,12 +488,19 @@ const teamIdParam = z.coerce.number().int().positive()
 
 /**
  * 기본 룰 불러오기 (docs/98 §6): server/rules/common.md → 전체 룰 본문, team-<code>.md → 팀 룰. 현재 내용은 직전 버전으로 보관.
+ * round(4·6)를 주면 그 라운드까지 공개되는 룰을 합쳐서 넣는다.
  * 내용이 실제로 바뀐 문서만 갱신 알림 (저장과 같은 범위). 파일이 없는 팀은 그대로 두고 skipped 로 알린다
  */
+const loadDefaultsSchema = z.object({ round: z.union([z.literal(4), z.literal(6)]).optional() })
 apiRouter.post('/admin/rules/load-defaults', requireRole('admin'), (req, res) => {
+  const parsed = loadDefaultsSchema.safeParse(req.body ?? {})
+  if (!parsed.success) {
+    res.status(400).json({ error: 'bad_request', issues: parsed.error.issues })
+    return
+  }
   let result
   try {
-    result = loadDefaultRules(req.auth!.sub)
+    result = loadDefaultRules(req.auth!.sub, parsed.data.round ?? null)
   } catch (e) {
     console.error(e)
     res.status(500).json({ error: 'defaults_missing' })

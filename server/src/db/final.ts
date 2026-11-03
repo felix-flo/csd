@@ -5,9 +5,9 @@
  *
  * 규칙:
  * - 투표: 활성 참가자(테러리스트·테스트 계정 포함, 탈락자 제외) 1인 1회, 보석/골드. 한 번 내면 바꿀 수 없다 (final_votes PRIMARY KEY)
- * - 기본 1표는 리더만 (2026-10-30 결정, final_votes.base). 안건 부결이면 리더만 투표한다
- * - 라이프 투표권: 안건 통과 시 팀 라이프 1개로 1표(extra), 즉시 차감 (선착순, 1인 1장). 리더는 기본표에 더하고(2표), 일반 팀원은 이것으로만 투표한다(1표).
- *   투표 기록과 차감은 한 트랜잭션
+ * - 모든 활성 참가자가 기본 1표 (2026-11-03 결정). 안건 부결이어도 전원 투표한다
+ * - 라이프 투표권: 안건이 통과하면 최종 투표가 열릴 때 팀마다 남은 라이프 수만큼 팀원을 무작위로 뽑는다 (life_vote_grants, 1인 1장, 뽑힌 수만큼 팀 라이프 차감).
+ *   뽑힌 사람의 표는 2표로 계산한다(extra). 뽑힌 사실은 본인만 안다
  * - 득표는 마감 전에는 아무도(관리자 포함) 볼 수 없고 인원 현황만 공개. 미투표자는 기권
  * - 동점이면 관리자가 가위바위보 결과(화이트 승 = 보석 / 옐로우 승 = 골드)를 넣어야 결과 발표로 넘어간다
  * - 결과 발표 단계부터 마지막 라운드 발행량(보석·골드)을 공개한다
@@ -15,7 +15,8 @@
  */
 import { db } from './index.js'
 import { listGroupMembers, listGroups } from './users.js'
-import { applyDeltas, getAllResources } from './resources.js'
+import { applyDeltas, getAllResources, getTeamResources } from './resources.js'
+import { pickRandom } from './life.js'
 import { lastRoundAmounts } from './issuance.js'
 import { listSpyStatus } from './spy.js'
 import { GameError } from './gameError.js'
@@ -47,40 +48,35 @@ function update(set: string, params: unknown[] = []): number {
 
 function requireFinal(step?: FinalStep): FinalRow {
   const r = getRow()
-  if (r.status !== 'final') throw new GameError('not_final', '최종장이 아니에요')
-  if (step && r.final_step !== step) throw new GameError('wrong_step', '지금은 할 수 없는 단계예요. 화면을 새로고침하세요')
+  if (r.status !== 'final') throw new GameError('not_final', '최종장이 아닙니다')
+  if (step && r.final_step !== step) throw new GameError('wrong_step', '지금은 할 수 없는 단계입니다. 화면을 새로고침하세요')
   return r
 }
 
 // ---- 마지막 라운드 안건 ----
 
-/** 라이프 투표권 안건 결과. 마지막 라운드 리더 협의 단계에서만, 그 단계 안에서는 고칠 수 있다 */
+/** 라이프 투표권 반영 여부 (관리자 입력). 기본은 반영, 리더 3명이 반대하면 미반영. 마지막 라운드 리더 협의 단계에서만 */
 export function setLifeVote(passed: boolean) {
   const r = getRow()
-  if (r.status !== 'running') throw new GameError('not_running', '게임이 진행 중이 아니에요')
+  if (r.status !== 'running') throw new GameError('not_running', '게임이 진행 중이 아닙니다')
   if (r.day < (r.total_days ?? Infinity) || r.phase !== 'council') {
-    throw new GameError('wrong_phase', '라이프 투표권 안건은 마지막 라운드 리더 협의 단계에서 입력해요')
+    throw new GameError('wrong_phase', '라이프 투표권은 마지막 라운드 리더 협의 단계에서 입력합니다')
   }
   update('life_vote_passed = ?', [passed ? 1 : 0])
 }
 
-export function getLifeVote(): boolean | null {
-  const v = getRow().life_vote_passed
-  return v == null ? null : v === 1
+export function getLifeVote(): boolean {
+  return getRow().life_vote_passed !== 0
 }
 
 // ---- 투표 ----
 
-/** 팀별 투표 진행. eligible = 안건 통과면 활성 팀원 수, 부결이면 리더 수(0~1) (최종장에는 탈락·이주가 없다) */
+/** 팀별 투표 진행. eligible = 활성 팀원 수 (최종장에는 탈락·이주가 없다) */
 export function finalVoteProgress(): { teamId: number; done: number; eligible: number }[] {
-  const passed = getRow().life_vote_passed === 1
   const done = new Map(
     (db.prepare('SELECT group_id, COUNT(*) AS n FROM final_votes GROUP BY group_id').all() as { group_id: number; n: number }[]).map((r) => [r.group_id, r.n]),
   )
-  return listGroups().map((t) => {
-    const members = listGroupMembers(t.id)
-    return { teamId: t.id, done: done.get(t.id) ?? 0, eligible: passed ? members.length : members.filter((m) => m.isLeader).length }
-  })
+  return listGroups().map((t) => ({ teamId: t.id, done: done.get(t.id) ?? 0, eligible: listGroupMembers(t.id).length }))
 }
 
 function tally(): { gem: number; gold: number } {
@@ -93,36 +89,39 @@ export function getMyFinalVote(userId: number): { choice: Choice; extra: boolean
   return r ? { choice: r.choice, extra: r.extra === 1, weight: r.base + r.extra } : null
 }
 
+export function hasLifeGrant(userId: number): boolean {
+  return !!db.prepare('SELECT 1 FROM life_vote_grants WHERE user_id = ?').get(userId)
+}
+
+/** 최종 투표 시작: 안건이 통과했으면 팀마다 남은 라이프 수만큼 무작위로 뽑는다. 반환: 뽑힌 사람들 */
+export function drawLifeGrants(): number[] {
+  const r = getRow()
+  if (r.life_vote_passed === 0) return [] // 리더 3명 반대로 미반영
+  const drawn: number[] = []
+  for (const t of listGroups()) {
+    // 1인 1장: 라이프가 팀원보다 많으면 팀원 수만큼만 뽑고 그만큼만 쓴다
+    const picked = pickRandom(listGroupMembers(t.id).map((m) => m.id), getTeamResources(t.id).life)
+    for (const id of picked) db.prepare('INSERT INTO life_vote_grants (user_id, group_id) VALUES (?, ?)').run(id, t.id)
+    if (picked.length) applyDeltas(t.id, { life: -picked.length }, { reason: 'final_vote', day: r.day, by: null })
+    drawn.push(...picked)
+  }
+  return drawn
+}
+
 /**
- * 투표 1회. extra = 라이프 투표권 사용 (안건 통과 시, 팀 라이프 1개).
- * 리더: 기본 1표 (+ extra). 일반 팀원: 안건 통과 시 extra 로만 1표, 부결이면 투표 불가. 반환: 투표한 사람의 팀과 득표
+ * 투표 1회. 누구나 1표, 라이프 투표권을 받았으면 2표. 반환: 투표한 사람의 득표
  */
-export function castFinalVote(userId: number, choice: Choice, extra: boolean): { teamId: number; weight: number } {
+export function castFinalVote(userId: number, choice: Choice): { weight: number } {
   return db.transaction(() => {
     const r = requireFinal('vote')
-    if (r.votes_closed) throw new GameError('votes_closed', '투표가 마감되었어요')
-    const u = db.prepare(`SELECT group_id, is_leader FROM users WHERE id = ? AND role = 'member' AND active = 1`).get(userId) as
-      | { group_id: number | null; is_leader: number }
-      | undefined
-    if (!u?.group_id) throw new GameError('not_eligible', '투표할 수 없는 계정이에요', 403)
-    const leader = u.is_leader === 1
-    const passed = r.life_vote_passed === 1
-    if (extra && !passed) throw new GameError('no_life_vote', '라이프 투표권 안건이 통과되지 않았어요')
-    if (!leader && !passed) throw new GameError('leader_only', '라이프 투표권 안건이 부결되어 리더만 투표해요', 403)
-    if (!leader && !extra) throw new GameError('life_required', '팀원은 라이프 투표권(팀 라이프 1개)으로만 투표할 수 있어요', 400)
-    const base = leader ? 1 : 0
-    const ok = db.prepare('INSERT OR IGNORE INTO final_votes (user_id, group_id, choice, extra, base) VALUES (?, ?, ?, ?, ?)')
-      .run(userId, u.group_id, choice, extra ? 1 : 0, base).changes === 1
-    if (!ok) throw new GameError('already_voted', '이미 투표했어요')
-    if (extra) {
-      try {
-        applyDeltas(u.group_id, { life: -1 }, { reason: 'final_vote', day: r.day, by: userId })
-      } catch (e) {
-        if (e instanceof GameError && e.code === 'insufficient') throw new GameError('no_life', '팀 라이프가 남아 있지 않아 라이프 투표권을 쓸 수 없어요')
-        throw e
-      }
-    }
-    return { teamId: u.group_id, weight: base + (extra ? 1 : 0) }
+    if (r.votes_closed) throw new GameError('votes_closed', '투표가 마감되었습니다')
+    const u = db.prepare(`SELECT group_id FROM users WHERE id = ? AND role = 'member' AND active = 1`).get(userId) as { group_id: number | null } | undefined
+    if (!u?.group_id) throw new GameError('not_eligible', '투표할 수 없는 계정입니다', 403)
+    const extra = hasLifeGrant(userId)
+    const ok = db.prepare('INSERT OR IGNORE INTO final_votes (user_id, group_id, choice, extra, base) VALUES (?, ?, ?, ?, 1)')
+      .run(userId, u.group_id, choice, extra ? 1 : 0).changes === 1
+    if (!ok) throw new GameError('already_voted', '이미 투표했습니다')
+    return { weight: extra ? 2 : 1 }
   })()
 }
 
@@ -130,7 +129,7 @@ export function castFinalVote(userId: number, choice: Choice, extra: boolean): {
 export function closeFinalVotes(): { gem: number; gold: number; tie: boolean; notVoted: number } {
   return db.transaction(() => {
     const r = requireFinal('vote')
-    if (r.votes_closed) throw new GameError('votes_closed', '이미 마감했어요')
+    if (r.votes_closed) throw new GameError('votes_closed', '이미 마감했습니다')
     const t = tally()
     const tie = t.gem === t.gold
     update('votes_closed = 1, adopted = ?', [tie ? null : t.gem > t.gold ? 'gem' : 'gold'])
@@ -146,7 +145,7 @@ export function setTiebreak(winner: Tiebreak): Choice {
     const r = requireFinal('vote')
     if (!r.votes_closed) throw new GameError('votes_open', '투표를 먼저 마감하세요')
     const t = tally()
-    if (t.gem !== t.gold) throw new GameError('no_tie', '동점이 아니에요')
+    if (t.gem !== t.gold) throw new GameError('no_tie', '동점이 아닙니다')
     const adopted = TIEBREAK_ADOPTS[winner]
     update('tiebreak = ?, adopted = ?', [winner, adopted])
     return adopted
@@ -179,15 +178,15 @@ export type FinalAdvance =
 export function advanceFinal(expect: FinalStep): FinalAdvance {
   return db.transaction((): FinalAdvance => {
     const r = requireFinal()
-    if (r.final_step !== expect) throw new GameError('stale', '이미 다음 단계로 넘어갔어요. 화면을 새로고침하세요')
+    if (r.final_step !== expect) throw new GameError('stale', '이미 다음 단계로 넘어갔습니다. 화면을 새로고침하세요')
     const step = (to: FinalStep) => {
       if (db.prepare(`UPDATE game SET final_step = ?, updated_at = datetime('now') WHERE id = 1 AND final_step = ?`).run(to, expect).changes !== 1) {
-        throw new GameError('stale', '이미 다음 단계로 넘어갔어요')
+        throw new GameError('stale', '이미 다음 단계로 넘어갔습니다')
       }
     }
     if (expect === 'vote') {
       if (!r.votes_closed) throw new GameError('votes_open', '투표를 먼저 마감하세요')
-      if (!r.adopted) throw new GameError('tie_unresolved', '동점이에요. 가위바위보 결과를 넣으세요')
+      if (!r.adopted) throw new GameError('tie_unresolved', '동점입니다. 가위바위보 결과를 넣으세요')
       step('result')
       return { to: 'result', adopted: r.adopted, tally: tally(), tiebreak: r.tiebreak, lastIssue: lastRoundAmounts(r.total_days ?? r.day) }
     }
@@ -248,5 +247,6 @@ export function getFinalState(): FinalState | null {
 
 /** 게임 시작·리셋 때 */
 export function clearFinalVotes() {
+  db.prepare('DELETE FROM life_vote_grants').run()
   db.prepare('DELETE FROM final_votes').run()
 }

@@ -12,13 +12,17 @@ defineProps<{
   altLabel?: string
   danger?: boolean
   busy?: boolean
+  /** 확인 버튼만 끈다 (닫기는 그대로) */
+  confirmDisabled?: boolean
+  /** 화면 아래에서 올라오는 모양. 버튼은 위아래로 쌓인다 */
+  sheet?: boolean
 }>()
 const emit = defineEmits<{ confirm: []; cancel: []; alt: [] }>()
 </script>
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="modal-backdrop" @click.self="emit('cancel')">
+    <div v-if="open" class="modal-backdrop" :class="{ sheet }" @click.self="emit('cancel')">
       <div class="modal" role="dialog" aria-modal="true" :aria-label="title">
         <h2>{{ title }}</h2>
         <p v-if="message" class="msg">{{ message }}</p>
@@ -26,7 +30,7 @@ const emit = defineEmits<{ confirm: []; cancel: []; alt: [] }>()
         <div class="row actions">
           <button v-if="cancelLabel" class="secondary lg" type="button" :disabled="busy" @click="emit('cancel')">{{ cancelLabel }}</button>
           <button v-if="altLabel" class="weak lg" type="button" :disabled="busy" @click="emit('alt')">{{ altLabel }}</button>
-          <button type="button" class="lg" :class="{ danger }" :disabled="busy" @click="emit('confirm')">{{ confirmLabel ?? '확인' }}</button>
+          <button type="button" class="lg" :class="{ danger }" :disabled="busy || confirmDisabled" @click="emit('confirm')">{{ confirmLabel ?? '확인' }}</button>
         </div>
       </div>
     </div>
@@ -56,4 +60,9 @@ const emit = defineEmits<{ confirm: []; cancel: []; alt: [] }>()
 /* TDS Dialog: 버튼이 나란히 꽉 차게. 왼쪽 "닫기"(회색 면), 오른쪽 주요 */
 .actions { margin-top: 16px; flex-wrap: nowrap; }
 .actions > button { flex: 1 1 0; }
+.sheet.modal-backdrop { align-items: flex-end; padding: 0; }
+.sheet .modal { width: 100%; max-width: 480px; border-radius: 14px 14px 0 0; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+.sheet .actions { flex-direction: column-reverse; align-items: stretch; }
+.sheet .actions > button { flex: none; }
+.sheet .actions > .secondary { background: none; box-shadow: none; }
 </style>

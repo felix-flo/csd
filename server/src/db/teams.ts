@@ -97,9 +97,16 @@ function beforeStart(): boolean {
   return !g || g.status === 'setup' || g.status === 'ready'
 }
 
+/** 첫 리더를 아직 뽑지 않은 때: 오프닝, 1라운드 리더 선출 */
+function noLeaderYet(): boolean {
+  const g = db.prepare('SELECT day, phase, opening_step FROM game WHERE id = 1').get() as { day: number; phase: string | null; opening_step: string | null }
+  return g.opening_step != null || (g.day === 1 && g.phase === 'leader')
+}
+
 /**
  * 팀당 리더 1명 보장. 활성 참가자만 리더가 될 수 있다.
  * 게임 시작 전에는 아무것도 바꾸지 않는다 (시작할 때 정리).
+ * 오프닝과 1라운드 리더 선출 중에는 진행자가 지정하기 전이므로 리더를 새로 세우지 않는다 (임시 리더 없음).
  * 반환: 새로 리더가 된 유저 id (변경 없으면 null)
  */
 export function ensureLeader(teamId: number): number | null {
@@ -108,7 +115,7 @@ export function ensureLeader(teamId: number): number | null {
     .prepare(`SELECT id, is_leader, active FROM users WHERE role = 'member' AND group_id = ? ORDER BY id`)
     .all(teamId) as { id: number; is_leader: number; active: number }[]
   const active = rows.filter((r) => r.active === 1)
-  const keep = active.find((r) => r.is_leader === 1) ?? active[0]
+  const keep = active.find((r) => r.is_leader === 1) ?? (noLeaderYet() ? undefined : active[0])
   const setLeader = db.prepare('UPDATE users SET is_leader = ? WHERE id = ?')
   let promoted: number | null = null
   for (const r of rows) {

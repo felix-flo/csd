@@ -6,20 +6,12 @@
  * - 상단바 내 이름을 3번 연속 누르면 뜬다 (TopBar). 화면 아무 곳이나 누르거나 "돌아가기" 로 닫히고, 10초 뒤 저절로 닫힌다
  * - intro: 게임 시작 때 1번 보여주는 무음 안내 (다시 보는 방법 포함). 기록·소리 없음
  */
-import { computed, onBeforeUnmount, onMounted } from 'vue'
+import { computed } from 'vue'
 import { SPY_REWARD_MAX, SPY_REWARD_PER, type SpyStatus } from '../../../shared/game'
 import MarkdownView from './MarkdownView.vue'
 
 const props = defineProps<{ spy: SpyStatus; intro?: boolean }>()
 const emit = defineEmits<{ close: [] }>()
-const AUTO_CLOSE_MS = 10_000
-let timer: ReturnType<typeof setTimeout> | null = null
-onMounted(() => {
-  timer = setTimeout(() => emit('close'), AUTO_CLOSE_MS)
-})
-onBeforeUnmount(() => {
-  if (timer) clearTimeout(timer)
-})
 const won = (n: number) => `${n.toLocaleString('ko-KR')}원`
 
 /** 룰 문서와 같은 마크다운으로 본문을 만든다 (MarkdownView 가 정화해서 그린다) */
@@ -27,21 +19,21 @@ const markdown = computed(() => {
   const s = props.spy
   const reward = s.alive
     ? `지금까지 탈락자 **${s.eliminated}**명 · 적립 **${won(s.reward)}**`
-    : '탈락하여 적립금이 사라졌어요'
+    : '탈락하여 적립금이 사라졌습니다'
   const lines = [
-    '## 당신은 테러리스트예요',
+    '## 당신은 테러리스트입니다',
     '',
-    '- 겉으로는 소속 팀원으로 행동해요.',
+    '- 겉으로는 소속 팀원으로 행동합니다.',
     '- 목표: **탈락자를 많이 만들기**',
     `- 탈락자 1명당 \`${won(SPY_REWARD_PER)}\` (최대 \`${won(SPY_REWARD_MAX)}\`)`,
-    '- 본인이 탈락하면 적립금은 전부 사라져요.',
-    '- 정체는 최종장 마지막에 공개돼요.',
+    '- 본인이 탈락하면 적립금은 전부 사라집니다.',
+    '- 정체는 최종장 마지막에 공개됩니다.',
     '',
     '---',
     '',
     reward,
   ]
-  if (props.intro) lines.push('', '> 상단의 **내 이름을 3번 연속 누르면** 이 화면을 다시 볼 수 있어요.')
+  if (props.intro) lines.push('', '> 상단의 **내 이름을 3번 연속 누르면** 이 화면을 다시 볼 수 있습니다.')
   return lines.join('\n')
 })
 </script>
@@ -60,7 +52,7 @@ const markdown = computed(() => {
       </div>
       <div class="card">
         <MarkdownView :markdown="markdown" />
-        <p class="muted" style="margin-top: 16px">화면을 누르면 닫혀요 · 10초 뒤 저절로 닫혀요</p>
+        <p class="muted" style="margin-top: 16px">화면을 누르면 닫힙니다</p>
       </div>
     </div>
   </div>

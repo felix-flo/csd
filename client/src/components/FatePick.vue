@@ -32,7 +32,7 @@ async function submit() {
     const code = e instanceof ApiError ? e.code : ''
     // 이미 골랐으면(다른 탭 등) 서버 값을 다시 받도록 부모에 맡긴다
     if (code === 'already_chosen') emit('chosen', fate)
-    else error.value = e instanceof ApiError && e.detail ? e.detail : '제출하지 못했어요. 다시 시도하세요.'
+    else error.value = e instanceof ApiError && e.detail ? e.detail : '제출하지 못했습니다. 다시 시도하세요.'
   } finally {
     busy.value = false
     picked.value = null
@@ -51,13 +51,13 @@ async function submit() {
           <span class="label">{{ c.label }}</span>
         </button>
       </div>
-      <p class="hint">선택은 되돌릴 수 없어요</p>
+      <p class="hint">선택은 되돌릴 수 없습니다</p>
       <p v-if="error" class="error">{{ error }}</p>
     </div>
     <ModalDialog
       :open="!!picked"
-      :title="`${picked ? FATE_LABELS[picked] : ''} 카드를 선택했어요`"
-      message="지금 선택을 제출할까요? 선택은 되돌릴 수 없어요."
+      :title="`${picked ? FATE_LABELS[picked] : ''} 카드를 선택했습니다`"
+      message="지금 선택을 제출할까요? 선택은 되돌릴 수 없습니다."
       confirm-label="예"
       cancel-label="아니오"
       :busy="busy"

@@ -2,10 +2,14 @@
 import { onMounted } from 'vue'
 import { useAuthStore } from './stores/auth'
 import { audioReady, unlockAudio } from './lib/chime'
-import ToastHost from './components/ToastHost.vue'
+import FullNotice from './components/FullNotice.vue'
+import Crest from './components/Crest.vue'
+import { useGameStore } from './stores/game'
+import ConfirmHost from './components/ConfirmHost.vue'
 import VersionBanner from './components/VersionBanner.vue'
 
 const auth = useAuthStore()
+const game = useGameStore()
 onMounted(() => {
   auth.bootstrap()
   // 알림음: 브라우저 자동재생 정책 때문에 첫 클릭/키 입력 때 AudioContext 를 깨워 둔다
@@ -26,30 +30,10 @@ onMounted(() => {
   <template v-else>
     <VersionBanner />
     <RouterView />
-    <ToastHost />
+    <ConfirmHost />
   </template>
-  <!-- 탈락 통보: 5초 보여준 뒤 로그아웃 (auth.eliminate) -->
-  <div v-if="auth.eliminated" class="eliminated" role="alertdialog" aria-live="assertive">
-    <p class="title">탈락되었어요</p>
-  </div>
+  <!-- 탈락 통보: 확인을 누르면 로그아웃 -->
+  <FullNotice v-if="auth.eliminated" center title="탈락" :message="game.state?.day ? `${game.state.day}라운드에서 탈락했습니다` : undefined" action="확인" @close="auth.leaveEliminated()">
+    <Crest :size="110" />
+  </FullNotice>
 </template>
-
-<style scoped>
-.eliminated {
-  position: fixed;
-  inset: 0;
-  z-index: 2000;
-  display: grid;
-  place-items: center;
-  padding: 16px;
-  background: rgba(25, 31, 40, 0.92);
-}
-.eliminated .title {
-  margin: 0;
-  color: #fff;
-  font-family: var(--font-display);
-  font-weight: 800;
-  font-size: clamp(2rem, 9vw, 4rem);
-  text-align: center;
-}
-</style>

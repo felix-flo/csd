@@ -7,7 +7,7 @@ import Icon from './Icon.vue'
  * 마지막 라운드에는 관리자가 정한 단계에서만 요청할 수 있고, 발행량은 공개되지 않는다 (docs/100 D4).
  */
 import { computed, ref } from 'vue'
-import { ISSUE_STATUS_LABELS, PHASE_LABELS, RESOURCE_LABELS, type TeamIssueView } from '../../../shared/game'
+import { ISSUE_STATUS_LABELS, RESOURCE_LABELS, type TeamIssueView } from '../../../shared/game'
 import { RESOURCE_BY_KEY } from '../lib/resources'
 import { api, ApiError } from '../lib/api'
 import { useGameStore } from '../stores/game'
@@ -25,13 +25,12 @@ const valid = computed(() => Number.isInteger(amount.value) && amount.value! >= 
 const canRequest = computed(() => props.isLeader && props.issue.open && !props.issue.issuedToday && props.issue.remaining > 0)
 const hint = computed(() => {
   // 마지막 라운드 허용 단계 안내는 위 배너가 보여 준다
-  if (!props.issue.open) return props.issue.lastRoundPhases ? '' : '게임이 진행 중일 때 발행을 요청할 수 있어요.'
-  if (props.issue.issuedToday) return '이번 라운드 발행을 마쳤어요. 발행은 라운드당 1회예요.'
-  if (props.issue.remaining <= 0) return '이번 라운드에는 더 발행할 수 없어요.'
-  return props.isLeader ? '' : '리더가 발행할 수 있어요.'
+  if (!props.issue.open) return props.issue.lastRound ? '' : '게임이 진행 중일 때 발행을 요청할 수 있습니다.'
+  if (props.issue.issuedToday) return '이번 라운드 발행을 마쳤습니다. 발행은 라운드당 1회입니다.'
+  if (props.issue.remaining <= 0) return '이번 라운드에는 더 발행할 수 없습니다.'
+  return props.isLeader ? '' : '리더가 발행할 수 있습니다.'
 })
-const lastPhases = computed(() => (props.issue.lastRoundPhases ?? []).map((p) => PHASE_LABELS[p]).join(', '))
-const carryNote = computed(() => (props.issue.kind === 'gold' ? '안 쓴 만큼 다음 라운드로 이월돼요.' : '라운드마다 새로 정해지며 이월되지 않아요.'))
+const carryNote = computed(() => (props.issue.kind === 'gold' ? '안 쓴 만큼 다음 라운드로 이월됩니다.' : '라운드마다 새로 정해지며 이월되지 않습니다.'))
 
 async function submit() {
   if (!valid.value) return
@@ -59,11 +58,11 @@ async function submit() {
       <span class="muted">· {{ carryNote }}</span>
     </p>
 
-    <p v-if="issue.lastRoundPhases" class="warn-note">
-      <Icon name="lock" /> 마지막 라운드: <strong>{{ lastPhases }}</strong> 단계에서만 발행할 수 있어요. 이번 발행량은 공개되지 않아요.
+    <p v-if="issue.lastRound" class="warn-note">
+      <Icon name="lock" /> 마지막 라운드: <strong>마지막 발행</strong> 단계에서만 발행할 수 있습니다. 이번 발행량은 공개되지 않습니다.
     </p>
 
-    <p v-if="canRequest" class="muted once">발행은 라운드당 1회이며 누르는 즉시 팀 재화에 더해져요.</p>
+    <p v-if="canRequest" class="muted once">발행은 라운드당 1회이며 누르는 즉시 팀 재화에 더해집니다.</p>
     <form v-if="canRequest" class="row" @submit.prevent="valid && (confirmOpen = true)">
       <input v-model.number="amount" type="number" min="1" :max="issue.remaining" :placeholder="`1 ~ ${issue.remaining}`" style="width: 8em" />
       <span>개</span>
@@ -85,7 +84,7 @@ async function submit() {
     <ModalDialog
       :open="confirmOpen"
       :title="`${label}을 발행할까요?`"
-      :message="`${label} ${amount ?? 0}개가 즉시 팀 재화에 더해져요.\n발행한 뒤에는 되돌릴 수 없고, 이번 라운드에는 더 발행할 수 없어요.`"
+      :message="`${label} ${amount ?? 0}개가 즉시 팀 재화에 더해집니다.\n발행한 뒤에는 되돌릴 수 없고, 이번 라운드에는 더 발행할 수 없습니다.`"
       confirm-label="발행"
       cancel-label="닫기"
       :busy="busy"

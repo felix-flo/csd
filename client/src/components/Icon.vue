@@ -7,7 +7,7 @@
 export type IconName =
   | 'gem' | 'gold' | 'life' | 'credit'
   | 'timer' | 'council' | 'aid' | 'war' | 'scroll' | 'vote' | 'migration' | 'lock'
-  | 'bell' | 'bell-off' | 'mute' | 'spy' | 'angel' | 'devil' | 'flask' | 'warning' | 'refresh' | 'megaphone' | 'film' | 'trophy' | 'close'
+  | 'bell' | 'bell-off' | 'mute' | 'spy' | 'angel' | 'devil' | 'flask' | 'warning' | 'refresh' | 'megaphone' | 'film' | 'trophy' | 'close' | 'book' | 'logout'
 
 const PATHS: Record<IconName, string> = {
   gem: 'M7 3h10l4 6-9 12L3 9zM3 9h18M10 3 8 9l4 12M14 3l2 6-4 12',
@@ -35,6 +35,8 @@ const PATHS: Record<IconName, string> = {
   film: 'M3 9h18v12H3zM3 9l2-5h16l-2 5M8 4l2 5M13 4l2 5',
   trophy: 'M8 4h8v5a4 4 0 0 1-8 0zM8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8 21h8M9 17h6v4',
   close: 'M6 6l12 12M18 6 6 18',
+  book: 'M12 7c-2-1.8-5-2.2-9-2v14c4-.2 7 .2 9 2 2-1.8 5-2.2 9-2V5c-4-.2-7 .2-9 2zM12 7v14',
+  logout: 'M10 4H5v16h5M15 8l4 4-4 4M19 12H9',
 }
 
 const props = defineProps<{ name: IconName; label?: string }>()

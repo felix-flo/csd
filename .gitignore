@@ -16,6 +16,8 @@ data/*
 !data/media/
 data/media/*
 !data/media/*.mp4
+!data/media/*.mp3
+!data/media/*.m4a
 data-local/
 *.sqlite
 *.sqlite-wal

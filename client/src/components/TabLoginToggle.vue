@@ -33,7 +33,7 @@ async function toggle(e: Event) {
   <label class="row tab-login" :class="{ on }" style="gap: 6px">
     <input type="checkbox" :checked="on" :disabled="busy" @change="toggle" />
     <Icon name="flask" /> 테스트 모드 (탭 로그인)
-    <span class="muted">— 리프레시 토큰을 쓰지 않아 탭마다 따로 로그인해요. 실제 진행 전에 끄세요</span>
+    <span class="muted">— 리프레시 토큰을 쓰지 않아 탭마다 따로 로그인합니다. 실제 진행 전에 끄세요</span>
     <span v-if="error" class="error">{{ error }}</span>
   </label>
 </template>

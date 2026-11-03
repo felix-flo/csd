@@ -11,7 +11,7 @@ export interface TeamDef {
 
 export const DEFAULT_TEAMS: readonly TeamDef[] = [
   { code: 'white', name: '화이트 팀', color: '#ffffff' },
-  { code: 'yellow', name: '옐로우 팀', color: '#f5c518' },
+  { code: 'yellow', name: '골드 팀', color: '#f5b800' },
   { code: 'blue', name: '블루 팀', color: '#006bff' },
   { code: 'red', name: '레드 팀', color: '#e5484d' },
 ] as const
@@ -24,7 +24,7 @@ export interface PaletteColor {
 /** 팀 추가·수정 시 선택할 수 있는 색. 흰 배경에서 서로 구분되는 10색 */
 export const TEAM_PALETTE: readonly PaletteColor[] = [
   { name: '화이트', hex: '#ffffff' },
-  { name: '옐로우', hex: '#f5c518' },
+  { name: '골드', hex: '#f5b800' },
   { name: '블루', hex: '#006bff' },
   { name: '레드', hex: '#e5484d' },
   { name: '그린', hex: '#2e9e5b' },

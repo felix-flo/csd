@@ -9,25 +9,34 @@ import Icon from '../components/Icon.vue'
  * 제목: 시작 전에는 "스위칭데이"만. 게임 제목은 서버가 시작 후에만 보내고(state.title), 시작 순간 열려 있던 화면은 리졸브 효과로 공개한다.
  *       시작 후 새로 열거나 새로고침하면 효과 없이 바로 제목.
  * 오프닝 영상: 서버 data/media/intro.mp4 가 있으면 시작 순간 전체 화면으로 먼저 틀고, 끝난 뒤 제목 리졸브로 이어진다 (IntroVideo).
- *       재생 전 대기 카운트다운(기본 10초, URL ?intro=초 · ?intro=wait 는 클릭까지 대기)으로 관리자가 이 창으로 넘어올 시간을 준다.
- *       소리는 이 탭에서 한 번 클릭이 있어야 나므로 시작 전에 "영상 준비" 안내를 보여 준다 (대기 화면 클릭도 같은 효과).
+ *       관리자가 세팅 완료를 누르면 검은 화면에 "게임 진행" 버튼이 뜨고, 이 버튼을 눌러야 재생한다 (이 클릭이 소리 허용 조건도 겸한다).
  * 가시성 (docs/104): 이 화면이 떠 있는 동안 html[data-screen='present'] 를 켜서 루트 글자 크기 20px·진한 회색·뚜렷한 선을 쓴다 (style.css).
  *       멀리서 읽을 글자는 최소 1.3rem(26px), 핵심 숫자는 2rem 이상.
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import TopBar from '../components/TopBar.vue'
-import EventFeed from '../components/EventFeed.vue'
+import GamePhaseBar from '../components/GamePhaseBar.vue'
+import { teamInk } from '../lib/teamColor'
 import AccessQr from '../components/AccessQr.vue'
 import ResourceRow from '../components/ResourceRow.vue'
-import ResultsBoard from '../components/ResultsBoard.vue'
+import FinalStage from '../components/FinalStage.vue'
 import TeamMark from '../components/TeamMark.vue'
 import ResolveText from '../components/ResolveText.vue'
+import Crest from '../components/Crest.vue'
+import BrandLogo from '../components/BrandLogo.vue'
+import WarCall from '../components/WarCall.vue'
+import OpeningDeck from '../components/OpeningDeck.vue'
+import PhaseSlide from '../components/PhaseSlide.vue'
+import FullNotice from '../components/FullNotice.vue'
+import { useNoticeStore } from '../stores/notices'
+import { usePhaseTimer } from '../lib/phaseTimer'
+import { fadeVolume } from '../lib/fade'
 import IntroVideo from '../components/IntroVideo.vue'
 import { useRoute } from 'vue-router'
 import { useGameStore } from '../stores/game'
 import { useTeamsStore } from '../stores/teams'
 import { api } from '../lib/api'
-import { isBeforeStart, PHASE_LABELS, RESOURCE_LABELS, WAR_COST_KINDS, WAR_STATUS_LABELS, type IntroResponse, type RosterTeam, type WarCost } from '../../../shared/game'
+import { isBeforeStart, phaseLabel, RESOURCE_LABELS, WAR_COST_KINDS, warStage, warWinner, type IntroResponse, type Phase, type RosterTeam, type WarCost } from '../../../shared/game'
 
 const game = useGameStore()
 onMounted(() => void game.load())
@@ -38,39 +47,67 @@ const PRE_TITLE = '스위칭데이'
 const title = computed(() => (s.value ? s.value.title ?? PRE_TITLE : ''))
 /** 시작 순간(시작 전 → 진행) 실시간으로 받았을 때만 올린다 → ResolveText 재생 */
 const reveal = ref(0)
+/** 영상이 끝나 로고를 보여도 되는지. 새로고침으로 들어오면 바로 로고 */
+const filmDone = ref(true)
+/** 전체 화면 알림: 단계 공지·리더 공개·전쟁 종료·그 밖의 알림. 화면을 눌러야 다음으로 넘어간다 */
+const notices = useNoticeStore()
+const overlay = computed(() => notices.queue[0] ?? null)
+const noticeLines = computed(() => (overlay.value?.type === 'notice' ? overlay.value.message.split('\n') : []))
+// 단계 공지는 1라운드에만. 그 뒤로는 현황판만 보여 준다
+watch(() => (s.value?.status === 'running' && !s.value.opening ? `${s.value.day}:${s.value.phase}` : null), (now, before) => {
+  if (!now || before === undefined || !s.value?.phase) return
+  notices.clearStage()
+  // 전쟁 결과로 넘어간 리더 협의는 전쟁 종료 화면이 공지를 대신한다
+  const afterWar = s.value.phase === 'council' && !!s.value.war?.today
+  if (s.value.day === 1 && !afterWar) notices.enqueue({ type: 'phase', phase: s.value.phase })
+})
+// 단계 공지와 AUTO_CLOSE 공지(이주 시작·수락, 마지막 라운드, 탈락자)는 10초 뒤 저절로 사라져 현황판을 보여 준다
+let slideTimer: ReturnType<typeof setTimeout> | null = null
+watch(overlay, (o) => {
+  if (slideTimer) clearTimeout(slideTimer)
+  slideTimer = o?.type === 'phase' || (o?.type === 'notice' && o.auto) ? setTimeout(() => notices.next(), 10_000) : null
+})
+watch(() => s.value?.status === 'running' && s.value.phase === 'leader' && !s.value.opening && s.value.leadersDone, (done, was) => {
+  if (done && was === false) void loadRoster().then(() => notices.enqueue({ type: 'leaders' }))
+})
 const revealing = ref(false)
 /** 오프닝 영상 (있을 때만). 시작 순간 영상 → 끝나면 제목 리졸브 */
 const intro = ref<string | null>(null)
 const introPlay = ref(0)
-/** 재생 전 대기 시간(초). URL ?intro=20 · ?intro=0 (바로) · ?intro=wait (클릭까지). 기본 10 */
+/** 재생 전 대기. 기본은 "게임 진행" 버튼을 누를 때까지. URL ?intro=20 은 20초 뒤 재생, ?intro=0 은 바로 재생 */
 const route = useRoute()
 const introDelay = computed<number | 'wait'>(() => {
   const q = route.query.intro
-  if (q === 'wait') return 'wait'
   const n = Number(q)
-  return q != null && Number.isFinite(n) && n >= 0 ? n : 10
+  return q != null && q !== 'wait' && Number.isFinite(n) && n >= 0 ? n : 'wait'
 })
-/** 이 탭에서 사용자 입력이 있었는지 — 없으면 영상 소리가 막히므로 안내를 보여 준다 */
-const armed = ref(false)
-function arm() { armed.value = true }
 onMounted(async () => {
   document.documentElement.dataset.screen = 'present'
-  window.addEventListener('pointerdown', arm, { once: true })
-  window.addEventListener('keydown', arm, { once: true })
   try { intro.value = (await api.get<IntroResponse>('/api/game/intro')).url } catch { /* 없음으로 둔다 */ }
 })
 onBeforeUnmount(() => {
+  music.pause()
   delete document.documentElement.dataset.screen
-  window.removeEventListener('pointerdown', arm)
-  window.removeEventListener('keydown', arm)
+})
+/** 영상이 끝난 뒤 로고 화면에서 반복 재생하고, 관리자가 다음으로 넘기면 멈춘다 */
+const music = new Audio('/media/intro_music.mp3')
+music.loop = true
+watch(() => s.value?.opening, (step) => {
+  if (step === 'film') return
+  music.pause()
+  music.currentTime = 0
 })
 function startReveal() {
+  if (s.value?.opening === 'film') {
+    music.volume = 0
+    void music.play().then(() => fadeVolume(music, 1, 4000)).catch(() => { /* 파일이 없거나 소리가 막히면 음악 없이 진행 */ })
+  }
   revealing.value = true
   reveal.value++
 }
 watch(() => s.value?.status, (now, before) => {
   if (before && isBeforeStart(before) && now && !isBeforeStart(now)) {
-    if (intro.value) introPlay.value++
+    if (intro.value) { filmDone.value = false; introPlay.value++ }
     else startReveal()
   }
 })
@@ -87,6 +124,32 @@ async function loadRoster() {
 }
 watch(s, loadRoster, { immediate: true })
 const alive = (t: RosterTeam) => t.members.filter((m) => !m.eliminated).length
+/** 1라운드 리더가 정해지기 전에는 리더를 따로 보여 주지 않는다 */
+const leaderShown = computed(() => !(s.value?.status === 'running' && s.value.day === 1 && s.value.phase === 'leader' && !s.value.leadersDone))
+const leaderOf = (t: RosterTeam) => (leaderShown.value ? t.members.find((m) => m.isLeader) : undefined)
+const othersOf = (t: RosterTeam) => t.members.filter((m) => m !== leaderOf(t))
+const stageTitle = computed(() => {
+  const st = s.value
+  if (!st?.phase) return ''
+  const war = warStage(st)
+  if (war) return war === 'war' ? '전쟁 중' : '전쟁 종료'
+  return st.phase === 'trade' ? '거래 시간' : phaseLabel(st.phase, st.day)
+})
+/** 휴대폰과 같은 한 줄 안내 */
+const stageGuide = computed(() => {
+  const st = s.value
+  if (!st?.phase) return ''
+  if (warStage(st)) return '이번 라운드 거래는 종료되었습니다'
+  const guides: Record<Phase, string> = {
+    leader: st.day > 1 ? '재신임할지 교체할지 정해 진행자에게 알려 주세요' : '팀에서 리더 1명을 정해 진행자에게 알려 주세요',
+    production: '진행요원과의 게임 결과에 따라 재화가 지급됩니다',
+    trade: '거래는 진행자에게 가서 진행합니다',
+    council: '각 팀의 리더는 앞으로 나와 안건을 진행해주세요',
+    last_issue: '화이트와 골드는 지금 마지막으로 발행할 수 있습니다',
+    life: '리더가 살릴 인원 수를 정하고 있습니다',
+  }
+  return guides[st.phase]
+})
 
 // ---- 현황판: 골드 발행 누적 · 전쟁 (docs/100 D5) ----
 const teams = useTeamsStore()
@@ -94,34 +157,19 @@ const nameOf = (id: number) => teams.byId(id)?.name ?? `#${id}`
 const isLastRound = computed(() => !!s.value && s.value.status === 'running' && s.value.day >= (s.value.totalDays ?? 0))
 const final = computed(() => (s.value?.status === 'final' || s.value?.status === 'ended' ? s.value.final : null))
 /** 마지막 라운드 발행은 최종장 결과 발표 전까지 비공개 */
-const lastHidden = computed(() => isLastRound.value || (!!final.value && !final.value.lastIssue))
-const costText = (c: WarCost) => WAR_COST_KINDS.filter((k) => c[k] > 0).map((k) => `${RESOURCE_LABELS[k]} ${c[k]}`).join(', ') || '없음 (무료)'
+const costText = (c: WarCost) => WAR_COST_KINDS.filter((k) => c[k] > 0).map((k) => `${RESOURCE_LABELS[k]} ${c[k]}개`).join(', ') || '없음 (무료)'
 /** 전쟁 줄: 선포 전 비용 → 전쟁 중 → 오늘 결과 */
 const warLine = computed(() => {
   const w = s.value?.war
   if (!w || s.value?.status !== 'running') return null
-  const pair = w.today ? `${nameOf(w.today.attacker)} → ${nameOf(w.today.defender)}` : ''
-  if (w.today?.status === 'declared') return { text: `전쟁 중: ${pair}`, hot: true }
-  if (w.today) return { text: `이번 라운드 전쟁: ${pair} · ${WAR_STATUS_LABELS[w.today.status]}`, hot: false }
-  if (!w.allowed) return { text: '이번 라운드 전쟁 금지 (리더 협의)', hot: false }
-  return { text: w.cost ? `이번 라운드 선포 비용: ${costText(w.cost)}` : '이번 라운드 선포 비용 미정', hot: false }
+  const short = (id: number) => nameOf(id).replace(/ 팀$/, '')
+  const pair = w.today ? `${short(w.today.attacker)} → ${short(w.today.defender)}` : ''
+  if (w.today?.status === 'declared') return { label: '전쟁 중', value: pair, hot: true }
+  if (w.today) return { label: '이번 라운드 전쟁', value: `${pair} · ${short(warWinner(w.today))} 승리`, hot: false }
+  if (!w.allowed) return { label: '이번 라운드 전쟁', value: '금지', hot: false }
+  return { label: '전쟁 선포 비용', value: w.cost ? costText(w.cost) : '미정', hot: false }
 })
-// ---- 단계 타이머 (docs/103 §14): 거래 15분 · 리더 협의 5분. 서버 시각으로 보정한 카운트다운 ----
-const nowTick = ref(Date.now())
-let tickHandle: ReturnType<typeof setInterval> | null = null
-onMounted(() => { tickHandle = setInterval(() => (nowTick.value = Date.now()), 500) })
-onBeforeUnmount(() => { if (tickHandle) clearInterval(tickHandle) })
-/** 서버 시각 − 내 시계 (상태를 받을 때마다 갱신) */
-const clockOffset = ref(0)
-watch(() => s.value?.timer?.serverNow, (now) => { if (now) clockOffset.value = new Date(now).getTime() - Date.now() }, { immediate: true })
-const timer = computed(() => {
-  const t = s.value?.timer
-  if (!t || s.value?.status !== 'running') return null
-  const left = Math.max(0, Math.round((new Date(t.endsAt).getTime() - (nowTick.value + clockOffset.value)) / 1000))
-  const mm = String(Math.floor(left / 60)).padStart(2, '0')
-  const ss = String(left % 60).padStart(2, '0')
-  return { label: PHASE_LABELS[t.phase], text: `${mm}:${ss}`, left, over: left === 0, warn: left > 0 && left <= 60, ratio: left / t.seconds }
-})
+const timer = usePhaseTimer()
 
 /** 리더 협의 단계 안건 (docs/103 §12): 원조 · 다음 라운드 전쟁 허용/제재 · (마지막 라운드) 라이프 투표권 */
 const council = computed(() => {
@@ -129,14 +177,23 @@ const council = computed(() => {
   const next = s.value.war?.nextAllowed
   return {
     warText: isLastRound.value ? null : next == null ? '협의 중' : next ? '허용' : '제재 (전쟁 금지)',
-    lifeVote: isLastRound.value ? (s.value.lifeVote == null ? '협의 중' : s.value.lifeVote ? '통과' : '부결') : null,
+    lifeVote: isLastRound.value ? (s.value.lifeVote ? '기본으로 반영 · 리더 3명이 반대하면 미반영' : '미반영 (리더 3명 반대)') : null,
   }
 })
 </script>
 
 <template>
-  <div class="page present">
-    <IntroVideo :src="intro" :play="introPlay" :delay="introDelay" @done="startReveal" />
+  <div class="page present" :class="{ pre: !s || isBeforeStart(s.status), revealing }">
+    <IntroVideo :src="intro" :play="introPlay" :delay="introDelay" @done="filmDone = true; startReveal()" />
+    <WarCall large />
+    <OpeningDeck v-if="s?.opening" :step="s.opening" :film-done="filmDone" :totals="s.initialTotals" />
+    <template v-else-if="overlay && s && overlay.type !== 'phase'">
+      <PhaseSlide v-if="overlay.type === 'leaders'" kind="leaders" :day="s.day" :roster="roster" @close="notices.next()" />
+      <FullNotice v-else kicker="공지" :title="noticeLines[0] ?? ''" :message="noticeLines.slice(1).join('\n')" @close="notices.next()" />
+    </template>
+    <Transition name="slide-out">
+      <PhaseSlide v-if="overlay?.type === 'phase' && s && !s.opening" :key="overlay.phase" :kind="overlay.phase" :day="s.day" :roster="roster" @close="notices.next()" />
+    </Transition>
     <!-- 1줄: 제목 + 단계 표시줄 (TopBar 가 topbar·phase-bar 를 형제로 내므로 flex 로 한 줄에 놓는다) -->
     <div class="head">
       <TopBar :title="title" large>
@@ -147,16 +204,9 @@ const council = computed(() => {
         </template>
       </TopBar>
     </div>
-    <ResultsBoard v-if="final" :final="final" :results="s?.results ?? null" large />
-    <div v-if="final && final.step === 'vote' && !final.closed" class="card done-banner">
-      <Icon name="vote" /> 최종 투표 중 · <span class="mono">{{ final.votes.done }} / {{ final.votes.eligible }}</span>명
-      <span v-if="s?.lifeVote" class="muted sub">라이프 투표권 사용 가능</span>
-    </div>
-    <div v-if="s?.status === 'running' && (s.phase === 'leader' && s.leadersDone || s.phase === 'life' && s.livesDone)" class="card done-banner">
-      {{ s.phase === 'leader' ? '모든팀의 리더 선출이 완료되었어요.' : '모든 팀의 라이프가 제출되었어요.' }}
-    </div>
+    <FinalStage v-if="final" :final="final" :results="s?.results ?? null" :life-vote="!!s?.lifeVote" />
 
-    <!-- 시작 전: 입장 현황(또는 초기 재화) 크게 + 접속 QR 크게 -->
+    <!-- 시작 전: 입장 현황 + 접속 QR. 게임 내용(재화 등)은 오프닝 전에 보여 주지 않는다 -->
     <div v-if="!s || isBeforeStart(s.status)" class="present-grid">
       <div v-if="s?.status === 'ready' && s.lobby" class="card span2">
         <h2>팀 입장 현황</h2>
@@ -166,17 +216,7 @@ const council = computed(() => {
             <span class="mono">{{ t.count }} / {{ t.capacity }}</span>
           </div>
         </div>
-        <p class="muted note">QR 로 접속해 PIN 으로 로그인한 뒤 이름을 입력하고 팀을 고르세요.</p>
-        <p v-if="intro" class="intro-note" :class="{ ok: armed }">
-          <Icon name="film" /> 게임 시작 때 오프닝 영상을 틀어요{{ introDelay === 'wait' ? ' (클릭할 때까지 대기)' : introDelay ? ` (${introDelay}초 대기 후)` : '' }}.
-          <template v-if="armed">소리 재생 준비됨.</template>
-          <template v-else>소리를 내려면 이 화면을 한 번 클릭해 두세요. <button class="secondary" style="padding: 4px 12px; font-size: 0.9rem" @click="arm">영상 준비</button></template>
-        </p>
-      </div>
-      <div v-else class="card span2">
-        <h2>초기 재화 <span class="muted">모든 팀 합계</span></h2>
-        <ResourceRow large show-label :amounts="s?.initialTotals" />
-        <p class="muted note">게임 시작 시점의 전체 재화예요. 이후 변동은 공개하지 않아요.</p>
+        <p class="muted note">QR 로 접속해 PIN 으로 로그인한 뒤 닉네임을 입력하고 팀을 고르세요.</p>
       </div>
       <div class="card">
         <h2>접속 주소</h2>
@@ -184,57 +224,53 @@ const council = computed(() => {
       </div>
     </div>
 
-    <!-- 시작 후 (docs/105): 2줄 타이머+안건, 3줄 팀 현황(남는 높이 차지), 4줄 작은 정보들. 알림 기록은 최근 3건만 -->
+    <!-- 시작 후: 현황판. 지금 라운드·단계·남은 시간 + 네 팀 카드. 리더 협의는 안건 -->
     <template v-else>
-      <div v-if="timer || council" class="row2">
-        <div v-if="timer" class="card timer" :class="{ over: timer.over, warn: timer.warn }">
-          <span class="t-label"><Icon name="timer" /> {{ timer.label }} 남은 시간</span>
-          <span class="t-time mono">{{ timer.over ? '종료' : timer.text }}</span>
-          <div class="t-bar"><div class="t-fill" :style="{ width: `${timer.ratio * 100}%` }" /></div>
+      <div v-if="s?.status === 'running'" class="board-head">
+        <div>
+          <p class="round mono">{{ s.day }}라운드 / {{ s.totalDays }}</p>
+          <h1>{{ stageTitle }}</h1>
         </div>
-        <div v-if="council" class="card council">
-          <h2><Icon name="council" /> 리더 협의 안건 <span class="muted">결과는 진행자에게 알려 주세요</span></h2>
-          <ul>
-            <li><Icon name="aid" /> <strong>원조</strong> <span class="muted">대가 없는 재화 양도 · 라운드당 1건 · 리더 4명 중 3명 찬성</span></li>
-            <li v-if="council.warText"><Icon name="war" /> <strong>다음 라운드 전쟁 허용 / 제재</strong> <span class="muted">제재면 다음 라운드 선포 불가</span> → <strong class="result">{{ council.warText }}</strong></li>
-            <li v-if="council.lifeVote"><Icon name="scroll" /> <strong>남은 라이프를 최종 투표권으로 인정할까요?</strong> → <strong class="result">{{ council.lifeVote }}</strong></li>
-          </ul>
-        </div>
-      </div>
-      <div v-if="roster.length" class="card roster-card">
-        <h2>팀 현황</h2>
-        <div class="roster">
-          <div v-for="t in roster" :key="t.teamId" class="roster-team" :style="{ '--team': t.color }">
-            <div class="roster-head">
-              <span class="name"><TeamMark :color="t.color" size="lg" />{{ t.name }}</span>
-              <span class="mono count">{{ alive(t) }} / {{ t.members.length }}</span>
-            </div>
-            <ul>
-              <li v-for="(m, i) in t.members" :key="i" :class="{ out: m.eliminated }">
-                {{ m.name }} <span v-if="m.isLeader" class="badge on">리더</span><span v-if="m.eliminated" class="muted"> 탈락</span>
-              </li>
-              <li v-if="t.members.length === 0" class="muted">팀원 없음</li>
-            </ul>
+        <div class="head-side">
+          <p class="guide">{{ stageGuide }}</p>
+          <div v-if="timer" class="clock" :class="{ warn: timer.warn || timer.over }">
+            <p class="mono">{{ timer.over ? '종료' : timer.text }}</p>
+            <div class="meter"><i :style="{ width: `${timer.ratio * 100}%` }" /></div>
           </div>
         </div>
       </div>
-      <div class="row4">
-        <div class="card board">
-          <h2>현황판</h2>
-          <p class="gold"><Icon name="gold" /> 골드 발행 누적 <strong class="mono">{{ s.goldIssued ?? 0 }}</strong>개</p>
-          <p v-if="lastHidden" class="muted small">마지막 라운드 발행은 최종장 결과 발표 때 공개</p>
-          <p v-if="warLine" class="war" :class="{ hot: warLine.hot }"><Icon name="war" /> {{ warLine.text }}</p>
+      <div v-if="s?.status === 'running'" class="board-steps"><GamePhaseBar large /></div>
+      <template v-if="council">
+        <div class="agenda">
+          <section class="card"><h2><Icon name="aid" /> 원조</h2><p>대가 없는 재화 양도. 라운드당 1번</p></section>
+          <section v-if="council.warText" class="card"><h2><Icon name="war" /> 다음 라운드 전쟁</h2><p>{{ council.warText }}</p></section>
+          <section v-if="council.lifeVote" class="card"><h2><Icon name="scroll" /> 라이프 투표권</h2><p>{{ council.lifeVote }}</p></section>
         </div>
-        <div class="card initial">
-          <h2>초기 재화 <span class="muted">모든 팀 합계 · 이후 변동 비공개</span></h2>
-          <ResourceRow show-label :amounts="s.initialTotals" />
-        </div>
-        <div class="card qr-small">
-          <h2>접속 주소</h2>
-          <AccessQr />
-        </div>
-        <EventFeed plain :limit="3" class="feed-card" />
+      </template>
+      <div v-else-if="roster.length" class="team-cards" :class="{ lit: s?.status === 'running' && s.phase === 'life' && s.livesDone }">
+        <section v-for="t in roster" :key="t.teamId" class="card team-card" :style="{ '--team': teamInk(t.color) ?? 'var(--ink)' }">
+          <header>
+            <Crest :team="teams.byId(t.teamId)?.code" :size="44" />
+            <span class="name">{{ t.name.replace(/ 팀$/, '') }}</span>
+            <span class="count mono">{{ alive(t) }} / {{ t.members.length }}</span>
+          </header>
+          <p v-if="leaderOf(t)" class="leader">{{ leaderOf(t)?.name }} <span class="muted">리더</span></p>
+          <ul>
+            <li v-for="(m, i) in othersOf(t)" :key="i" :class="{ out: m.eliminated }"><span>{{ m.name }}</span></li>
+          </ul>
+        </section>
       </div>
+      <div class="stats">
+        <section class="card">
+          <p class="label"><Icon name="gold" /> 골드 발행 현황</p>
+          <p class="value">{{ (s?.initialTotals.gold ?? 0) + (s?.goldIssued ?? 0) }}개</p>
+        </section>
+        <section v-if="warLine" class="card" :class="{ hot: warLine.hot }">
+          <p class="label"><Icon name="war" /> {{ warLine.label }}</p>
+          <p class="value">{{ warLine.value }}</p>
+        </section>
+      </div>
+      <div class="brand-foot"><Crest all :size="30" /><BrandLogo :height="34" /></div>
     </template>
   </div>
 </template>
@@ -244,19 +280,80 @@ const council = computed(() => {
  * 빔 투사용 배치 (docs/105). 루트 20px 이므로 1rem = 20px.
  * 세로를 아끼는 순서: 제목+단계 한 줄 → 타이머+안건 한 줄 → 팀 현황(남는 높이) → 작은 정보 한 줄. 1080p·720p 모두 스크롤 없이.
  */
-.present { max-width: none; min-height: 100vh; display: flex; flex-direction: column; gap: 10px; padding: 10px 18px 12px; }
+.present { position: relative; max-width: none; min-height: 100vh; display: flex; flex-direction: column; gap: 12px; padding: 22px 36px 60px; }
 .present :deep(.card) { margin-bottom: 0; padding: 12px 18px; }
 .note { margin: 12px 0 0; font-size: 1.1rem; }
 /* 1줄: 제목(왼쪽) + 단계 표시줄(오른쪽). 전쟁 줄은 한 줄 전체 */
 .head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 20px; }
+/* 시작 전: 제목만 크게. 시작 후: 단계 이름이 제목, 게임 이름은 아래 로고로 */
+.present.pre .head :deep(.topbar h1) { font-size: 6rem; }
+.present.pre .head :deep(.phase-bar) { display: none; }
+.present.pre { justify-content: center; gap: 28px; padding: 0 6vw; }
+.present.pre .present-grid { grid-template-columns: 1fr auto; gap: 40px; align-items: stretch; }
+.present.pre .present-grid .span2 { grid-column: auto; }
+.present.pre .card { box-shadow: none; background: none; padding: 0 !important; }
+.present.pre .card h2 { display: none; }
+.present.pre .lobby { grid-template-columns: repeat(4, 1fr); }
+.present.pre .lobby-team { background: var(--surface); padding: 28px 16px; box-shadow: 0 0 0 1px var(--line-soft); }
+.present.pre .note { font-size: 1.4rem; font-weight: 600; margin-top: 24px; }
+.present.pre .card:last-child { background: var(--surface); padding: 20px !important; border-radius: 16px; }
+.present:not(.pre):not(.revealing) .head :deep(.top-text) { display: none; }
+.present:not(.pre) .head :deep(.phase-bar) { display: none; }
+.brand-foot { position: absolute; right: 3.6vw; bottom: 16px; display: flex; align-items: center; gap: 10px; }
 .head :deep(.topbar) { flex: 1 1 480px; margin: 0; padding: 0; align-items: center; }
-.head :deep(.topbar h1) { font-size: 2rem; }
-.head :deep(.topbar .row) { gap: 6px; }
-.head :deep(.topbar button), .head :deep(.topbar .badge) { font-size: 0.7rem; padding: 3px 8px; }
-.head :deep(.phase-bar) { flex: 0 1 auto; margin: 0; padding: 6px 16px 0; }
-.head :deep(.phase-bar .now strong) { font-size: 1.8rem; }
-.head :deep(.phase-bar .day) { font-size: 1.1rem; }
-.head :deep(.war-bar) { flex-basis: 100%; margin: 0; }
+.head :deep(.topbar h1) { font-size: 2.4rem; }
+/* 알림·룰북·나가기는 어느 화면이든 왼쪽 아래. 공지·오프닝 화면 위, 영상과 전쟁 화면 아래 */
+.head :deep(.topbar .row) { position: fixed; left: 18px; bottom: 14px; z-index: 1550; gap: 2px; color: var(--muted); }
+.head :deep(.topbar .tool) { width: 40px; min-height: 40px; font-size: 22px; color: inherit; }
+.head :deep(.phase-bar) { flex: 1 1 100%; margin: 0; padding: 0; background: none; box-shadow: none; }
+.head :deep(.phase-bar .steps) { background: #e7e4da; padding: 5px; border-radius: 12px; }
+.head :deep(.phase-bar .steps li) { border-radius: 8px; }
+.head :deep(.phase-bar .now) { flex-direction: column; gap: 4px; padding-right: 460px; }
+.head :deep(.phase-bar .day) { font-size: 1.3rem; font-weight: 600; }
+/* 단계 공지가 사라질 때 */
+.slide-out-leave-active { transition: opacity 1.4s ease; }
+.slide-out-leave-to { opacity: 0; }
+/* 현황판 */
+.present:not(.pre) { height: 100vh; min-height: 0; overflow: hidden; gap: 2.4vh; padding: 3.6vh 3.6vw 7.6vh; }
+.board-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 32px; }
+.board-head .round { margin: 0; font-size: 2.6vh; font-weight: 600; color: var(--muted); }
+.board-head h1 { margin: 2vh 0 0; font-size: 10.6vh; line-height: 1.1; }
+.head-side { display: flex; flex-direction: column; align-items: flex-end; gap: 1.6vh; text-align: right; }
+.guide { margin: 0; font-size: 2.6vh; font-weight: 600; color: var(--ink-2); }
+.clock { text-align: right; }
+.clock p { margin: 0; font-size: 10.6vh; font-weight: 600; line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
+.clock.warn p { color: var(--red); }
+.meter { width: 22vw; height: 4px; margin: 1.3vh 0 0 auto; border-radius: 2px; background: #d9d6cc; overflow: hidden; }
+.meter i { display: block; height: 100%; margin-left: auto; background: var(--ink); transition: width 0.5s linear; }
+.clock.warn .meter i { background: var(--red); }
+.board-steps :deep(.phase-bar) { margin: 0; padding: 0; background: none; box-shadow: none; }
+.board-steps :deep(.now) { display: none; }
+.board-steps :deep(.steps) { background: #e7e4da; padding: 5px; border-radius: 12px; }
+.board-steps :deep(.steps li) { font-size: 2.2vh; padding: 1.1vh 14px; border-radius: 8px; }
+.team-cards { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.25vw; }
+.present :deep(.card.team-card) { padding: 2.6vh 1.5vw; border-radius: var(--radius-card); }
+.team-card header { display: flex; align-items: center; gap: 0.7vw; }
+.team-card .name { font-size: 3vh; font-weight: 700; color: var(--team); }
+.team-card .count { margin-left: auto; font-size: 2.4vh; font-weight: 600; color: var(--muted); }
+.team-card .leader { margin: 2vh 0 0; font-size: 3.2vh; font-weight: 700; }
+.team-card .leader .muted { font-size: 1.9vh; font-weight: 500; }
+.team-card ul { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8vh 0.5vw; list-style: none; margin: 1.4vh 0 0; padding: 0; font-size: 2.6vh; font-weight: 500; }
+.team-card li { position: relative; overflow: hidden; padding: 1.1vh 0.7vw; border-radius: var(--radius); background: #f7f6f2; color: var(--ink); text-align: center; transition: background 1.2s ease, color 1.2s ease; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.team-card li.out { background: #e6e4de; color: #a8a6a0; }
+/* 라이프 제출이 끝나면 생존자 칸이 오른쪽 아래부터 파랗게 차오른다 */
+.lit .team-card li:not(.out)::before { content: ''; position: absolute; inset: 0; background: linear-gradient(to top left, #c6d9ef 0, transparent 70%); animation: fill-up 1.8s ease-out both; }
+.team-card li span { position: relative; }
+@keyframes fill-up { from { opacity: 0; transform: translate(40%, 40%) scale(1.4); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .lit .team-card li:not(.out)::before { animation: none; } }
+.agenda { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 1.25vw; align-content: start; margin-top: 1vh; }
+.present :deep(.agenda .card) { padding: 3vh 2vw; border-radius: var(--radius-card); }
+.agenda h2 { margin: 0 0 1vh; font-size: 3.4vh; }
+.agenda p { margin: 0; font-size: 2.6vh; color: var(--ink-2); }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25vw; }
+.present :deep(.stats .card) { display: flex; align-items: center; justify-content: space-between; gap: 2vw; padding: 1.6vh 1.5vw; border-radius: var(--radius-card); }
+.stats .label { margin: 0; font-size: 2.6vh; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+.stats .value { margin: 0; font-size: 4.2vh; font-weight: 700; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stats .hot .label, .stats .hot .value { color: var(--red); }
 /* 시작 전 */
 .present-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: start; }
 .present-grid .span2 { grid-column: span 2; }
@@ -264,94 +361,8 @@ const council = computed(() => {
 .lobby { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
 .lobby-team { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 16px; border: 0; border-radius: 12px; font-size: 1.6rem; background: var(--bg-soft); }
 .lobby-team.full { opacity: 0.4; }
-.lobby-team .letter { font-family: var(--font-display); font-weight: 800; font-size: 4rem; line-height: 1; color: var(--blue); }
-.intro-note { margin: 12px 0 0; font-size: 1.1rem; color: var(--blue); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.intro-note.ok { color: var(--muted); }
+.lobby-team .letter { font-family: var(--font-display); font-weight: 400; font-size: 4.6rem; line-height: 1; color: var(--ink); }
 .subtitle { transition: opacity 0.8s ease; }
 .subtitle.hidden { opacity: 0; transition: none; }
-/* 2줄: 타이머(1/3) + 안건(2/3). 하나만 있으면 전체 폭 */
-.row2 { display: grid; grid-template-columns: minmax(360px, 1fr) 2fr; gap: 10px; }
-.row2 > :only-child { grid-column: 1 / -1; }
-.timer { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; position: relative; overflow: hidden; }
-.timer .t-label { font-size: 1.4rem; color: var(--muted); }
-/* 타이머 숫자: 굵은 파랑 (docs/108) */
-.timer .t-time { font-family: var(--font-display); font-weight: 800; font-size: 3.6rem; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; color: var(--blue); }
-.timer.warn .t-time { color: var(--red); }
-.timer.over { border-left-color: var(--red); background: var(--red-bg); }
-.timer.over .t-time { color: var(--red); font-size: 2.8rem; }
-.t-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: var(--bg-soft); }
-.t-fill { height: 100%; background: var(--blue); transition: width 0.5s linear; }
-.timer.warn .t-fill { background: var(--red); }
-.council { }
-.council h2 { font-size: 1.3rem; margin-bottom: 6px; }
-.council h2 .muted { font-size: 0.85rem; }
-.council ul { list-style: none; margin: 0; padding: 0; font-size: 1.4rem; line-height: 1.4; }
-.council li { padding: 4px 0; }
-.council li .muted { font-size: 1rem; }
-.council .result { color: var(--green); }
-/* 3줄: 팀 현황 — 남는 높이를 차지한다 */
-.roster-card { flex: 1 0 auto; }
-.roster { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-@media (max-width: 1000px) { .roster { grid-template-columns: repeat(2, 1fr); } }
-.roster-team { border: 0; border-top: 5px solid var(--team, var(--line)); border-radius: 12px; padding: 10px 14px; background: var(--bg-soft); }
-.roster-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 6px; }
-.roster-head .name { font-family: var(--font-display); font-weight: 700; font-size: 1.6rem; letter-spacing: -0.01em; }
-.roster-head .count { font-size: 1.3rem; }
-.roster-team ul { list-style: none; margin: 0; padding: 0; font-size: 1.3rem; }
-.roster-team li { padding: 3px 0; border-top: 1px solid var(--line); }
-.roster-team li.out { color: var(--muted); text-decoration: line-through; }
-/* 4줄: 현황판 · 초기 재화 · QR(작게) · 최근 알림 3건 */
-.row4 { display: grid; grid-template-columns: auto auto auto 1fr; gap: 10px; align-items: stretch; }
-.row4 h2 { font-size: 1.1rem; margin-bottom: 6px; }
-.row4 h2 .muted { font-size: 0.75rem; }
-.board .gold { margin: 0; font-size: 1.2rem; }
-.board .gold strong { font-weight: 800; font-size: 1.8rem; color: var(--res-gold-fg); }
-.board .small { margin: 2px 0 0; font-size: 0.85rem; }
-.board .war { margin: 6px 0 0; font-size: 1.2rem; }
-.board .war.hot { color: var(--red); font-weight: 700; font-size: 1.5rem; }
-.initial :deep(.res-row) { gap: 6px; }
-.qr-small :deep(.qr) { flex-direction: row; text-align: left; gap: 10px; }
-.qr-small :deep(.qr-box) { width: 96px; padding: 3px; }
-.qr-small :deep(.qr-url) { font-size: 0.9rem; }
-.qr-small :deep(.qr .muted) { display: none; }
-.feed-card { min-width: 0; }
-.feed-card :deep(h2) { font-size: 1.1rem; }
-.feed-card :deep(button.small) { font-size: 0.7rem; padding: 2px 8px; }
-/* 한 건을 한 줄로: 범위 뱃지 · 시각 · 메시지(넘치면 …) */
-.feed-card :deep(.feed li) { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; min-width: 0; }
-.feed-card :deep(.feed .msg) { margin: 0; flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* 720p 급 (폭 1400 이하): 제목·단계를 한 줄에 맞추고 글자를 한 단계 줄인다. 4줄은 현황판 + 초기 재화만 (QR·알림 기록은 숨김) */
-@media (max-width: 1400px) {
-  .present { gap: 8px; padding: 8px 14px 10px; }
-  .present :deep(.card) { padding: 10px 16px; }
-  .head :deep(.topbar h1) { font-size: 1.6rem; }
-  .head :deep(.phase-bar .now strong) { font-size: 1.4rem; }
-  .head :deep(.phase-bar .day .muted) { display: none; }
-  .head :deep(.phase-bar .steps li) { font-size: 0.8rem; padding: 2px 10px; }
-  .row2 { gap: 8px; }
-  .timer .t-time { font-size: 2.8rem; }
-  .timer .t-label { font-size: 1.1rem; }
-  .council h2 { font-size: 1.1rem; margin-bottom: 2px; }
-  .council ul { font-size: 1.15rem; }
-  .council li { padding: 2px 0; }
-  .council li .muted { font-size: 0.85rem; }
-  .roster-card h2 { font-size: 1.2rem; margin-bottom: 6px; }
-  .roster { gap: 8px; }
-  .roster-team { padding: 6px 12px; }
-  .roster-head { margin-bottom: 2px; }
-  .roster-head .name { font-size: 1.35rem; }
-  .roster-head .count { font-size: 1rem; }
-  .roster-team ul { font-size: 1.05rem; }
-  .roster-team li { padding: 1px 0; }
-  .row4 { grid-template-columns: auto 1fr; gap: 8px; }
-  .row4 .qr-small, .row4 .feed-card { display: none; }
-  .row4 h2 { font-size: 1rem; margin-bottom: 4px; }
-  .board .gold { font-size: 1rem; }
-  .board .gold strong { font-size: 1.4rem; }
-  .board .war { font-size: 1rem; margin-top: 2px; }
-  .board .war.hot { font-size: 1.2rem; }
-}
-.done-banner .sub { font-size: 1.3rem; margin-left: 8px; }
-.done-banner { font-family: var(--font-display); font-weight: 700; font-size: 2rem; line-height: 1.2; background: var(--green-bg); color: #028450; }
 </style>
 

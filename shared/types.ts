@@ -109,7 +109,7 @@ export type EventType = 'notice' | 'system' | 'document.updated' | 'game' | 'tra
  * - phase.timeout      : 거래·리더 협의 단계 타이머 종료 (scope=all, 소리 있음. docs/103 §14)
  * - war.allowed        : 다음 라운드 전쟁 허용/제재 (리더 협의 결과, scope=all)
  * - war.declared       : 전쟁 시작 = 리더 선포 즉시 (scope=all, 소리 있음). payload.war = 강조 팝업
- * - war.resolved       : 전쟁 결과 — 승리팀 이름·무승부·취소 (scope=all)
+ * - war.resolved       : 전쟁 결과 — 승리팀 이름 (scope=all)
  * - war.spoils         : 승리팀이 빼앗은 재화 (scope=group 승리팀만)
  * - war.lost           : 패배 알림 (scope=group 패배팀, 수량 없음)
  * 최종장 (docs/100 N2)

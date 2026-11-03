@@ -1,36 +1,38 @@
 <script setup lang="ts">
 import Icon from '../components/Icon.vue'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch, onBeforeUnmount } from 'vue'
 import TopBar from '../components/TopBar.vue'
-import EventFeed from '../components/EventFeed.vue'
+import WarCall from '../components/WarCall.vue'
+import NoticeBar from '../components/NoticeBar.vue'
 import NameSetup from '../components/NameSetup.vue'
-import ResourceRow from '../components/ResourceRow.vue'
-import LeaderSelect from '../components/LeaderSelect.vue'
-import TradePanel from '../components/TradePanel.vue'
+import TeamStock from '../components/TeamStock.vue'
+import TeamRoster from '../components/TeamRoster.vue'
 import LifeSubmit from '../components/LifeSubmit.vue'
 import ResultsBoard from '../components/ResultsBoard.vue'
 import ReadyLobby from '../components/ReadyLobby.vue'
 import IssuePanel from '../components/IssuePanel.vue'
 import WarPanel from '../components/WarPanel.vue'
+import GameDock from '../components/GameDock.vue'
 import FinalVotePanel from '../components/FinalVotePanel.vue'
 import MigrationPanel from '../components/MigrationPanel.vue'
 import SpyCard from '../components/SpyCard.vue'
-import IntroOverlay from '../components/IntroOverlay.vue'
-import introUrl from '../assets/intro_image.webp'
+import OpeningPhone from '../components/OpeningPhone.vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useRealtimeStore } from '../stores/realtime'
 import { useGameStore } from '../stores/game'
 import { api } from '../lib/api'
 import type { GroupInfo, PublicUser } from '../../../shared/types'
-import { isBeforeStart } from '../../../shared/game'
+import { isBeforeStart, isLifeExempt } from '../../../shared/game'
 
 const auth = useAuthStore()
+const router = useRouter()
 const rt = useRealtimeStore()
 const game = useGameStore()
 const group = ref<GroupInfo | null>(null)
 const members = ref<PublicUser[]>([])
 const s = computed(() => game.state)
-// 시작 전(설정·준비)에는 게임 화면 대신 준비 화면. 실제 팀 이름도 보이지 않는다. 상태를 모르면(로딩 중) 준비 화면으로 둔다
+// 시작 전(설정·준비)에는 게임 화면 대신 입장 화면처럼 따로 뜨는 준비 화면. 위쪽 막대·알림도 없고 실제 팀 이름도 보이지 않는다. 상태를 모르면(로딩 중) 준비 화면으로 둔다
 const beforeStart = computed(() => !s.value || isBeforeStart(s.value.status))
 
 async function load() {
@@ -45,6 +47,12 @@ onMounted(() => {
   void load()
   void game.load()
 })
+// 내 팀 색 배경 (style.css body[data-team]). 시작 전에는 팀을 드러내지 않는다
+watch([beforeStart, () => group.value?.code], ([before, code]) => {
+  if (!before && code) document.body.dataset.team = code
+  else delete document.body.dataset.team
+}, { immediate: true })
+onBeforeUnmount(() => { delete document.body.dataset.team })
 // 팀 이동·탈락·복귀·리더 선출 알림, 팀 이름·색 변경이 오면 팀원 목록을 다시 받는다 (재로그인 불필요)
 watch(() => [rt.groupVersion, auth.user?.groupId], load)
 // 내 팀이 바뀌면 팀 게임 정보도 다시
@@ -55,45 +63,50 @@ watch(beforeStart, (v) => {
   if (!v) void load()
 })
 
-// 시작 인트로: 대기 화면에서 시작(시작 전 → 진행)을 실시간으로 받았을 때만. 시작 후 로그인·새로고침이면 띄우지 않는다.
-// 시작 순간 모두가 한꺼번에 받지 않도록 대기 화면에서 미리 받아 둔다
-const intro = ref(false)
-watch(() => s.value?.status, (now, before) => {
-  if (before && isBeforeStart(before) && now && !isBeforeStart(now)) intro.value = true
-})
-watch(beforeStart, (v) => {
-  if (v) new Image().src = introUrl
-}, { immediate: true })
-const phase = computed(() => (s.value?.status === 'running' ? s.value.phase : null))
+const phase = computed(() => (s.value?.status === 'running' && !s.value.opening ? s.value.phase : null))
 const isLeader = computed(() => !!auth.user?.isLeader)
 /**
  * 지금 할 일 (docs/108, 앱인토스 "한 화면 한 과제"): 단계·역할에 따라 제목 한 줄 + 설명 한 줄. 주요 동작은 각 패널의 하단 고정 CTA.
  * 설명(desc)은 해요체·능동형·긍정문으로 (앱인토스 UX 라이팅).
  */
-const task = computed<{ kicker: string; title: string; desc?: string } | null>(() => {
+/** 1라운드 리더가 정해지기 전. 시작할 때는 리더가 없다 */
+const leaderPending = computed(() => phase.value === 'leader' && s.value?.day === 1 && game.team?.election?.status !== 'done')
+const leaderTask = computed(() => {
+  if (leaderPending.value) return { title: '우리 팀 리더를 정해 주세요', desc: '팀원들과 협의해 리더 1명을 정하고 진행자에게 알려 주세요.' }
+  const leader = members.value.find((m) => m.isLeader)
+  if (game.team?.election?.status === 'done' && leader) return { title: `이번 라운드 리더는 ${leader.name}입니다` }
+  return { title: '리더 재신임을 논의해 주세요', desc: '재신임할지 교체할지 정해 진행자에게 알려 주세요.' }
+})
+const task = computed<{ kicker?: string; title: string; desc?: string } | null>(() => {
   const st = s.value
   if (!st) return null
   const round = st.status === 'running' ? `${st.day}라운드` : ''
   if (st.status === 'final' || st.status === 'ended') {
     const f = st.final
-    if (st.status === 'final' && f?.step === 'vote' && !f.closed) return { kicker: '최종장 · 최종 투표', title: '상금 화폐에 투표해 주세요', desc: '보석과 골드 중 하나를 고르면 돼요. 한 번 내면 바꿀 수 없어요.' }
-    if (st.status === 'ended') return { kicker: '게임 끝', title: '수고하셨어요', desc: '결과는 아래에서 볼 수 있어요.' }
-    return { kicker: '최종장', title: '결과 발표를 기다려 주세요', desc: '진행자가 다음 단계로 넘기면 화면이 바뀌어요.' }
+    if (st.status === 'final' && f?.step === 'vote' && !f.closed) return { kicker: '최종장 · 최종 투표', title: '상금 화폐에 투표해 주세요', desc: '보석과 골드 중 하나를 고르면 됩니다. 한 번 내면 바꿀 수 없습니다.' }
+    if (st.status === 'ended') return { kicker: '게임 끝', title: '수고하셨습니다', desc: '결과는 아래에서 볼 수 있습니다.' }
+    if (st.status === 'final' && f?.step === 'vote') return { kicker: '최종장', title: '결과 발표를 기다려 주세요', desc: '진행자가 다음 단계로 넘기면 화면이 바뀝니다.' }
+    return { kicker: '최종장', title: '최종 결과입니다' }
   }
-  if (st.status !== 'running') return null
+  if (st.status !== 'running' || st.opening) return null
   const L = isLeader.value
   switch (st.phase) {
-    case 'leader': return { kicker: `${round} · 리더 선출`, title: '팀 리더를 정해 진행자에게 알려 주세요', desc: '진행자가 리더를 지정하면 알림이 와요.' }
-    case 'production': return { kicker: `${round} · 생산게임`, title: '생산게임에 참여해 주세요', desc: '결과에 따라 진행자가 팀 재화를 넣어 줘요.' }
-    case 'trade': return L
-      ? { kicker: `${round} · 거래`, title: '다른 팀과 거래하거나 전쟁을 선포할 수 있어요', desc: '거래는 협의한 내용을 진행자에게 알리면 진행자가 바로 체결해요.' }
-      : { kicker: `${round} · 거래`, title: '리더가 거래를 진행하는 중이에요', desc: '팀 재화와 알림을 확인해 주세요.' }
+    case 'leader': return leaderTask.value
+    case 'production': return { kicker: `${round} · 생산게임`, title: '생산게임에 참여해 주세요', desc: '진행요원과의 게임 결과에 따라\n재화가 지급됩니다.' }
+    case 'trade': return { title: L ? '거래는 진행자에게 가서 진행합니다' : '거래 시간입니다' }
     case 'council': return L
-      ? { kicker: `${round} · 리더 협의`, title: '리더 협의에 참여해 주세요', desc: '안건은 대가 없는 원조(게임 전체 라운드당 1회, 리더 4명 중 3명 찬성)와 다음 라운드 전쟁 허용/제재예요. 결과는 진행자가 입력해요.' }
-      : { kicker: `${round} · 리더 협의`, title: '리더 협의 결과를 기다려 주세요', desc: '결과가 정해지면 알림이 와요.' }
-    case 'life': return L
-      ? { kicker: `${round} · 라이프 제출`, title: '살릴 인원을 정해 제출해 주세요', desc: '리더 외 생존자는 무작위로 정해져요.' }
-      : { kicker: `${round} · 라이프 제출`, title: '리더가 라이프를 제출하는 중이에요', desc: '결과가 나오면 알림이 와요.' }
+      ? { kicker: `${round} · 리더 협의`, title: '리더 협의에 참여해 주세요', desc: '안건은 대가 없는 원조(라운드마다 전체 1번, 리더 4명 중 3명 찬성)와 다음 라운드 전쟁 허용/제재입니다. 결과는 진행자가 입력합니다.' }
+      : { kicker: `${round} · 리더 협의`, title: '리더 협의 결과를 기다려 주세요', desc: '결과가 정해지면 알림이 옵니다.' }
+    case 'last_issue': return L && game.team?.issue
+      ? { title: '마지막 발행을 진행해 주세요', desc: '이번 발행량은 최종장 결과 때 공개됩니다.' }
+      : { title: '마지막 발행 중입니다', desc: '화이트와 골드가 발행하고 있습니다. 발행량은 최종장 결과 때 공개됩니다.' }
+    case 'life': {
+      const sub = game.team?.lifeSubmission
+      if (sub?.revealed) return { title: '라이프 제출이 끝났습니다' }
+      if (sub) return { title: '라이프를 제출했습니다', desc: '모든 팀이 제출하면 결과를 발표합니다.' }
+      if (isLifeExempt(members.value.length, game.team?.resources.life ?? 0)) return { title: '이번 라운드는 제출하지 않습니다', desc: '팀원이 1명이고 라이프가 없어 탈락 없이 넘어갑니다.' }
+      return { title: L ? '살릴 인원 수를 정해 주세요' : '리더가 라이프를 제출하고 있습니다' }
+    }
   }
   return null
 })
@@ -114,36 +127,39 @@ const final = computed(() => (s.value?.status === 'final' || s.value?.status ===
 
 <template>
   <div class="page">
-    <IntroOverlay v-if="intro" @done="intro = false" />
-    <SpyCard v-if="spyIntro && !intro && game.team?.spy" :spy="game.team.spy" intro @close="spyIntro = false" />
-    <TopBar :title="beforeStart ? 'CSD' : group?.name ?? '팀'" :color="beforeStart ? null : group?.color" />
+    <WarCall />
+    <SpyCard v-if="spyIntro && s?.opening !== 'film' && game.team?.spy" :spy="game.team.spy" intro @close="spyIntro = false" />
+    <template v-if="auth.user?.nameSet && !beforeStart">
+      <TopBar :title="group?.name ?? '팀'" :color="group?.color" :team="group?.code" />
+      <NoticeBar class="pin" @open="(n) => router.push(n.link ?? '/notices')" />
+    </template>
     <NameSetup v-if="auth.user && !auth.user.nameSet" />
     <ReadyLobby v-else-if="beforeStart" />
+    <OpeningPhone
+      v-else-if="s?.opening"
+      :step="s.opening"
+      :code="group?.code"
+      :team="group?.name"
+      :resources="game.team?.resources"
+      :members="members"
+    />
     <template v-else>
     <div v-if="task" class="task">
-      <p class="label">{{ task.kicker }}</p>
+      <p v-if="task.kicker" class="label">{{ task.kicker }}</p>
       <h1 class="task-title">{{ task.title }}</h1>
       <p v-if="task.desc" class="task-desc">{{ task.desc }}</p>
     </div>
-    <ResultsBoard v-if="final" :final="final" :results="s?.results ?? null" />
+    <ResultsBoard v-if="final" :final="final" :results="s?.results ?? null" :my-team-id="group?.id" />
     <FinalVotePanel
       v-if="final && final.step === 'vote' && s?.status === 'final' && game.team"
       :final="final"
-      :life-vote="!!s.lifeVote"
-      :team-lives="game.team.resources.life"
+      :granted="game.team.lifeGrant"
       :my-vote="game.team.myFinalVote"
-      :is-leader="isLeader"
     />
-    <div class="card">
-      <h2>팀 재화</h2>
-      <ResourceRow show-label :amounts="game.team?.resources" />
-      <p class="muted" style="margin: 10px 0 0">우리 팀만 볼 수 있어요.</p>
-    </div>
+    <TeamStock :resources="game.team?.resources" />
 
-    <LeaderSelect v-if="phase === 'leader'" :members="members" :election="game.team?.election ?? null" />
-    <TradePanel v-else-if="phase === 'trade' && group && game.team" />
     <LifeSubmit
-      v-else-if="phase === 'life' && group && game.team"
+      v-if="phase === 'life' && group && game.team"
       :members="members"
       :lives="game.team.resources.life"
       :is-leader="isLeader"
@@ -153,18 +169,10 @@ const final = computed(() => (s.value?.status === 'final' || s.value?.status ===
     <!-- 마지막 라운드 필수 안건 (docs/100 N2) -->
     <div v-else-if="phase === 'council' && isLastRound" class="card">
       <p style="margin: 0">
-        <Icon name="scroll" /> <strong>필수 안건: 남은 라이프를 최종 투표권으로 인정할까요?</strong>
-        <span class="muted">— 부결이면 최종 투표는 리더만 1표. 통과하면 팀 라이프 1개로 1표 (1인 1장): 리더는 1표 더, 팀원은 이것으로 투표.
-          {{ s?.lifeVote == null ? '' : s.lifeVote ? '결과: 통과' : '결과: 부결' }}</span>
+        <Icon name="scroll" /> <strong>필수 안건: 라이프 투표권</strong>
+        <span class="muted">— 기본으로 반영됩니다. 리더 3명이 반대하면 반영하지 않습니다.{{ s?.lifeVote === false ? ' 결과: 미반영' : '' }}</span>
       </p>
     </div>
-    <!-- 전쟁: 거래 활동 단계에서 선포. 진행 중이면 다른 단계에서도 상황 표시 -->
-    <WarPanel
-      v-if="group && game.team && (phase === 'trade' || s?.war?.active)"
-      :my-team-id="group.id"
-      :is-leader="isLeader"
-      :resources="game.team.resources"
-    />
     <!-- 이주 (docs/100 N3): 이주 시작 라운드부터 -->
     <MigrationPanel
       v-if="s?.status === 'running' && group && game.team?.migration"
@@ -176,23 +184,19 @@ const final = computed(() => (s.value?.status === 'final' || s.value?.status ===
     <!-- 화이트팀 보석 / 옐로우팀 골드 발행 (그 팀만) -->
     <IssuePanel v-if="s?.status === 'running' && game.team?.issue" :issue="game.team.issue" :is-leader="isLeader" />
 
-    <div class="card">
-      <h2>팀원</h2>
-      <ul class="feed">
-        <li v-for="m in members" :key="m.id">
-          {{ m.name }} <span v-if="m.isLeader" class="badge">리더</span>
-        </li>
-      </ul>
-    </div>
-    <EventFeed collapsible plain />
+    <TeamRoster :members="members" :hide-leader="leaderPending" />
     </template>
+    <GameDock v-if="auth.user?.nameSet && !beforeStart">
+      <WarPanel v-if="group && game.team && phase === 'trade'" :my-team-id="group.id" :is-leader="isLeader" :resources="game.team.resources" />
+    </GameDock>
   </div>
 </template>
 
 <style scoped>
+.pin { position: sticky; top: 8px; z-index: 10; margin-bottom: 12px; }
 /* 지금 할 일 (TDS Top): 카드 밖, 보조 13px → 제목 22px bold → 설명 15px grey700. 위아래 여백 24px */
 .task { padding: 8px 4px 20px; }
 .task .label { margin: 0 0 6px; }
-.task-title { font-size: 1.45rem; line-height: 1.35; margin: 0 0 6px; }
-.task-desc { margin: 0; color: var(--ink-2); }
+.task-title { font-size: 1.9rem; line-height: 1.2; letter-spacing: -0.04em; margin: 0 0 8px; }
+.task-desc { margin: 0; color: var(--ink-2); white-space: pre-line; }
 </style>
