@@ -30,15 +30,20 @@ async function toggle(e: Event) {
 </script>
 
 <template>
-  <label class="row tab-login" :class="{ on }" style="gap: 6px">
+  <label class="tab-login" :class="{ on }">
+    <span class="txt">
+      <strong><Icon name="flask" /> 테스트 모드 (탭 로그인)</strong>
+      <span class="muted">탭마다 따로 로그인합니다. 실제 진행 전에 끄세요.</span>
+      <span v-if="error" class="error">{{ error }}</span>
+    </span>
     <input type="checkbox" :checked="on" :disabled="busy" @change="toggle" />
-    <Icon name="flask" /> 테스트 모드 (탭 로그인)
-    <span class="muted">— 리프레시 토큰을 쓰지 않아 탭마다 따로 로그인합니다. 실제 진행 전에 끄세요</span>
-    <span v-if="error" class="error">{{ error }}</span>
   </label>
 </template>
 
 <style scoped>
-.tab-login.on { color: var(--amber, #b7791f); font-weight: 600; }
-.tab-login.on .muted { font-weight: 400; }
+.tab-login { display: flex; align-items: center; gap: 12px; width: 100%; cursor: pointer; }
+.tab-login .txt { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.tab-login .txt .muted { font-size: 0.85rem; }
+.tab-login input { flex: none; width: 20px; height: 20px; }
+.tab-login.on strong { color: var(--amber, #b7791f); }
 </style>

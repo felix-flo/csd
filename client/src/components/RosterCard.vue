@@ -97,56 +97,62 @@ async function removeTeam(g: GroupInfo) {
   <div class="card">
     <h2>팀 · 진행자 구성</h2>
     <p class="muted">
-      팀 이름을 클릭하면 이름과 색을 바꿀 수 있습니다. 팀별 최대 인원은 "게임 설정" 카드에서 정하고, 참가자는 게임 준비 상태에서 직접 팀을 고릅니다.
-      진행자는 <strong>늘리기만</strong> 할 수 있고, 게임 리셋 때 삭제되므로 게임마다 다시 만듭니다.
+      팀 이름을 누르면 이름과 색을 바꿀 수 있습니다. 팀별 최대 인원은 "게임 설정"에서 정하고, 참가자는 게임 준비 상태에서 직접 팀을 고릅니다.
     </p>
 
-    <table class="teams">
-      <thead>
-        <tr><th>팀</th><th>현재 참가자</th><th></th></tr>
-      </thead>
-      <tbody>
-        <tr v-for="g in groups" :key="g.id">
-          <td>
-            <template v-if="editingId === g.id">
-              <span class="row">
-                <input v-model="editName" maxlength="20" style="width: 9em" @keyup.enter="saveEdit(g)" @keyup.esc="editingId = null" />
-                <TeamPalette v-model="editColor" />
-                <button class="small" :disabled="busy" @click="saveEdit(g)">저장</button>
-                <button class="secondary small" type="button" @click="editingId = null">취소</button>
-              </span>
-            </template>
-            <template v-else>
-              <TeamMark :color="g.color" />
-              <a href="#" @click.prevent="startEdit(g)">{{ g.name }}</a>
-            </template>
-          </td>
-          <td class="muted">{{ activeOf(g.id) }}명</td>
-          <td>
-            <button class="secondary small" :disabled="busy || countOf(g.id) > 0" :title="countOf(g.id) > 0 ? '소속 참가자가 있는 팀은 삭제할 수 없습니다' : ''" @click="removeTeam(g)">삭제</button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-
-    <form class="row" style="margin-top: 10px" @submit.prevent="addTeam">
-      <input v-model="newName" placeholder="새 팀 이름" maxlength="20" style="width: 9em" required />
+    <h3>팀 <span class="muted">{{ groups.length }}개</span></h3>
+    <ul class="teams">
+      <li v-for="g in groups" :key="g.id" :class="{ editing: editingId === g.id }">
+        <template v-if="editingId === g.id">
+          <input v-model="editName" maxlength="20" class="name-input" @keyup.enter="saveEdit(g)" @keyup.esc="editingId = null" />
+          <TeamPalette v-model="editColor" />
+          <span class="acts">
+            <button class="small" :disabled="busy" @click="saveEdit(g)">저장</button>
+            <button class="secondary small" type="button" @click="editingId = null">취소</button>
+          </span>
+        </template>
+        <template v-else>
+          <a href="#" class="name" @click.prevent="startEdit(g)"><TeamMark :color="g.color" />{{ g.name }}</a>
+          <span class="muted count">참가자 {{ activeOf(g.id) }}명</span>
+          <span class="acts">
+            <button class="link" type="button" @click="startEdit(g)">수정</button>
+            <button class="link" :disabled="busy || countOf(g.id) > 0" :title="countOf(g.id) > 0 ? '소속 참가자가 있는 팀은 삭제할 수 없습니다' : ''" @click="removeTeam(g)">삭제</button>
+          </span>
+        </template>
+      </li>
+    </ul>
+    <form class="add" @submit.prevent="addTeam">
+      <input v-model="newName" placeholder="새 팀 이름" maxlength="20" class="name-input" required />
       <TeamPalette v-model="newColor" />
-      <button type="submit" class="secondary" :disabled="busy">팀 추가</button>
+      <button type="submit" class="secondary small" :disabled="busy">팀 추가</button>
     </form>
 
-    <form class="row" style="margin-top: 14px" @submit.prevent="apply">
-      <label>진행자 <input v-model.number="staff" type="number" :min="currentStaff" max="20" style="width: 5em" /></label>
-      <button type="submit" :disabled="busy">진행자 추가</button>
-      <span class="muted">진행자 {{ currentStaff }}명 · {{ status }}</span>
+    <h3>진행자 <span class="muted">지금 {{ currentStaff }}명</span></h3>
+    <p class="muted">늘리기만 할 수 있고, 게임 리셋 때 삭제되므로 게임마다 다시 만듭니다. 만든 진행자의 PIN 은 "계정 관리"에 있습니다.</p>
+    <form class="add" @submit.prevent="apply">
+      <label class="num">진행자 <input v-model.number="staff" type="number" :min="currentStaff" max="20" />명으로</label>
+      <button type="submit" class="small" :disabled="busy">진행자 추가</button>
     </form>
+    <p v-if="status" class="muted">{{ status }}</p>
   </div>
 </template>
 
 <style scoped>
-.teams { border-collapse: collapse; font-size: 0.95rem; }
-.teams th, .teams td { text-align: left; padding: 6px 10px 6px 0; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
-.teams th { color: var(--muted); font-weight: 500; font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.08em; }
-.teams a { color: inherit; text-decoration: underline dotted; }
+h3 { font-size: 0.95rem; margin: 16px 0 6px; font-weight: 700; }
+h3 .muted { font-weight: 400; font-size: 0.85rem; }
+.teams { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line-soft); }
+.teams li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-height: 44px; padding: 6px 2px; border-bottom: 1px solid var(--line-soft); }
+.teams li.editing { background: var(--bg-soft); padding: 8px; }
+.name { display: inline-flex; align-items: center; gap: 2px; color: inherit; font-weight: 600; text-decoration: none; }
+.name:hover { text-decoration: underline dotted; }
+.count { font-size: 0.9rem; }
+.acts { display: inline-flex; gap: 4px; margin-left: auto; }
+.add { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.name-input { flex: 1 1 8em; min-width: 7em; max-width: 14em; }
+.num { display: inline-flex; align-items: center; gap: 6px; }
+.num input { width: 4.5em; }
 button.small { padding: 4px 10px; font-size: 0.85rem; }
+button.link { min-height: 0; padding: 2px 6px; background: none; color: var(--ink-2); font-size: 0.88rem; text-decoration: underline; text-underline-offset: 2px; }
+button.link:hover { color: var(--ink); background: none; }
+button.link:disabled { color: var(--muted); text-decoration: none; }
 </style>

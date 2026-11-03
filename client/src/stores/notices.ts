@@ -76,6 +76,8 @@ export const useNoticeStore = defineStore('notices', {
     latest: null as Notice | null,
     queue: [] as Overlay[],
     presenter: false,
+    /** 관리자: 남에게 간 개인 알림(라이프 투표권 당첨 등)은 상태판 알림 줄에 띄우지 않는다 */
+    admin: false,
     /** 역할상 알림음 대상인지 (presenter, member) */
     sound: false,
     /** 기기별 소리 끄기 (localStorage) */
@@ -85,9 +87,11 @@ export const useNoticeStore = defineStore('notices', {
   actions: {
     configure(role: string | undefined) {
       this.presenter = role === 'presenter'
+      this.admin = role === 'admin'
       this.sound = role === 'presenter' || role === 'member'
     },
     show(ev: GameEvent) {
+      if (this.admin && ev.scope === 'user') return
       this.latest = toNotice(ev)
       if (this.presenter) this.toOverlay(ev)
       if (ev.payload.kind === 'war.declared') this.siren()
@@ -96,6 +100,7 @@ export const useNoticeStore = defineStore('notices', {
     },
     /** 새로고침 뒤 지난 알림 복원. 소리·전체 화면 없이 고정 자리만 채운다 */
     restore(ev: GameEvent) {
+      if (this.admin && ev.scope === 'user') return
       if (!this.latest) this.latest = toNotice(ev)
     },
     toOverlay(ev: GameEvent) {

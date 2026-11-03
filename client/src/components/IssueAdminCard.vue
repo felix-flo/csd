@@ -30,7 +30,7 @@ const remainingText = (kind: 'gem' | 'gold') => {
 <template>
   <div v-if="visible && issues" class="card">
     <h2>보석 · 골드 발행</h2>
-    <p class="muted">
+    <p v-if="status === 'running'" class="muted">
       이번 라운드 남은 발행 가능량 — <Icon name="gem" /> 보석 <strong>{{ remainingText('gem') }}</strong> (라운드마다 한도, 이월 없음) ·
       <Icon name="gold" /> 골드 <strong>{{ remainingText('gold') }}</strong> (안 쓴 만큼 이월).
       리더가 요청하면 <strong>즉시 발행</strong>됩니다 (팀마다 라운드당 1회, 진행자 수락 없음).

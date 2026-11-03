@@ -145,113 +145,114 @@ function copyList() {
   <div class="card">
     <h2>계정 관리</h2>
     <p class="muted">
-      이름을 클릭하면 수정할 수 있습니다. PIN 은 참가자에게 배부할 때만 표시하세요.
-      탈락 처리된 참가자는 로그인할 수 없고 팀 재화·알림을 받지 못합니다. 팀을 바꾸면 재로그인 없이 바로 반영됩니다.
+      이름을 누르면 수정합니다. PIN 은 참가자에게 배부할 때만 여세요.
+      탈락 처리하면 로그인할 수 없고 팀 재화·알림을 받지 못합니다. 팀 이동은 재로그인 없이 바로 반영됩니다.
     </p>
 
-    <div class="row" style="margin-bottom: 12px">
-      <button class="secondary" @click="toggleAllPins">{{ showPins ? '전체 PIN 숨기기' : '전체 PIN 보기' }}</button>
-      <button class="secondary" @click="copyList">이름/PIN 목록 복사</button>
-      <button :disabled="busy" class="secondary" @click="setActive(members.map((u) => u.id), true)">참가자 전체 복귀</button>
-      <button :disabled="busy" class="secondary" @click="setActive(members.map((u) => u.id), false, '참가자 전체')">참가자 전체 탈락</button>
+    <div class="tools">
+      <button class="secondary small" @click="toggleAllPins">{{ showPins ? '전체 PIN 숨기기' : '전체 PIN 보기' }}</button>
+      <button class="secondary small" @click="copyList">이름/PIN 복사</button>
+      <button :disabled="busy" class="secondary small" @click="setActive(members.map((u) => u.id), true)">전체 복귀</button>
+      <button :disabled="busy" class="secondary small danger" @click="setActive(members.map((u) => u.id), false, '참가자 전체')">전체 탈락</button>
     </div>
-    <p class="muted" style="min-height: 1.2em">{{ status }}</p>
+    <p class="muted status">{{ status }}</p>
 
-    <table class="users">
-      <thead>
-        <tr><th>#</th><th>이름</th><th>역할 / 팀</th><th>PIN</th><th>상태</th><th></th></tr>
-      </thead>
-      <tbody>
-        <tr v-for="u in staff" :key="u.id">
-          <td class="muted">{{ u.id }}</td>
-          <td>
+    <section class="sec">
+      <header class="sec-head"><strong>진행 계정</strong></header>
+      <ul class="list">
+        <li v-for="u in staff" :key="u.id" class="u">
+          <div class="l1">
             <template v-if="editingId === u.id">
-              <input v-model="editName" maxlength="20" style="width: 9em" @keyup.enter="saveName(u)" @keyup.esc="editingId = null" />
+              <input v-model="editName" maxlength="20" class="name-input" @keyup.enter="saveName(u)" @keyup.esc="editingId = null" />
               <button class="small" :disabled="busy" @click="saveName(u)">저장</button>
             </template>
-            <a v-else href="#" @click.prevent="startEdit(u)">{{ u.name }}</a>
-          </td>
-          <td>{{ u.role }} <span v-if="u.isFixed" class="badge" title="리셋해도 남는 고정 계정">고정</span><span v-else-if="u.role === 'admin'" class="muted" title="게임 리셋 때 삭제됩니다">· 리셋 시 삭제</span></td>
-          <td class="pin">
-            <span class="mono">{{ pinShown(u.id) ? u.pin : '••••' }}</span>
-            <button v-if="!showPins" class="secondary small pin-btn" type="button" @click="togglePin(u.id)">{{ openPins.has(u.id) ? 'PIN 숨기기' : 'PIN 보기' }}</button>
-          </td>
-          <td><span class="badge on">활성</span></td>
-          <td><button v-if="canResetPin(u)" :disabled="busy" class="secondary small" @click="resetPin(u)">PIN 리셋</button></td>
-        </tr>
-      </tbody>
-      <tbody v-for="{ key, team, title, list, collapsible } in sections" :key="key">
-        <tr class="group-head">
-          <td colspan="4">
-            <button v-if="collapsible" class="toggle" type="button" @click="expanded[key] = !expanded[key]">{{ expanded[key] ? '▾' : '▸' }}</button>
-            <span v-if="team && beforeStart" class="mono letter" title="참가자에게 보이는 이름">{{ letterOf(team.id) }}</span>
-            <TeamMark v-if="team" :color="team.color" />
-            <strong>{{ title }}</strong>
-            <span class="muted">{{ list.filter((u) => u.active).length }}명<template v-if="key !== 'none'"> 참가 중</template><template v-if="list.some((u) => !u.active)"> · {{ key === 'test' && excludeTests ? '제외' : '탈락' }} {{ list.filter((u) => !u.active).length }}명</template></span>
-            <span v-if="key === 'none' && beforeStart" class="muted"> · PIN 상태는 "참가자 PIN" 카드</span>
-            <span v-if="key === 'test'" class="muted"> · 팀·리더가 미리 정해진 개발용 계정<template v-if="excludeTests"> · 게임 설정에서 제외됨</template></span>
-            <span v-if="team && beforeStart && list.length === 0" class="muted"> · 아직 팀을 고른 참가자가 없습니다</span>
-          </td>
-          <td colspan="2" class="row" style="justify-content: flex-end">
-            <button :disabled="busy" class="secondary small" @click="setActive(list.map((u) => u.id), true)">전체 복귀</button>
-            <button :disabled="busy" class="secondary small" @click="setActive(list.map((u) => u.id), false, title)">전체 탈락</button>
-          </td>
-        </tr>
-        <tr v-for="u in isOpen({ key, team, title, list, collapsible }) ? list : []" :key="u.id" :class="{ inactive: !u.active }">
-          <td class="muted">{{ u.id }}</td>
-          <td>
+            <a v-else href="#" class="name" @click.prevent="startEdit(u)">{{ u.name }}</a>
+            <span class="badge">{{ u.role }}</span>
+            <span v-if="u.isFixed" class="badge" title="리셋해도 남는 고정 계정">고정</span>
+            <span v-else-if="u.role === 'admin'" class="muted" title="게임 리셋 때 삭제됩니다">리셋 시 삭제</span>
+          </div>
+          <div class="l2">
+            <span class="pin mono">{{ pinShown(u.id) ? u.pin : '••••' }}</span>
+            <button v-if="!showPins" class="link" type="button" @click="togglePin(u.id)">{{ openPins.has(u.id) ? '숨기기' : 'PIN 보기' }}</button>
+            <span class="sp" />
+            <button v-if="canResetPin(u)" :disabled="busy" class="secondary small" @click="resetPin(u)">PIN 리셋</button>
+          </div>
+        </li>
+      </ul>
+    </section>
+
+    <section v-for="sec in sections" :key="sec.key" class="sec">
+      <header class="sec-head">
+        <button v-if="sec.collapsible" class="toggle" type="button" @click="expanded[sec.key] = !expanded[sec.key]">{{ expanded[sec.key] ? '▾' : '▸' }}</button>
+        <span v-if="sec.team && beforeStart" class="mono letter" title="참가자에게 보이는 이름">{{ letterOf(sec.team.id) }}</span>
+        <TeamMark v-if="sec.team" :color="sec.team.color" />
+        <strong>{{ sec.title }}</strong>
+        <span class="muted">{{ sec.list.filter((u) => u.active).length }}명<template v-if="sec.list.some((u) => !u.active)"> · {{ sec.key === 'test' && excludeTests ? '제외' : '탈락' }} {{ sec.list.filter((u) => !u.active).length }}</template></span>
+        <span class="sp" />
+        <button v-if="sec.list.length" :disabled="busy" class="link" @click="setActive(sec.list.map((u) => u.id), true)">전체 복귀</button>
+        <button v-if="sec.list.length" :disabled="busy" class="link danger" @click="setActive(sec.list.map((u) => u.id), false, sec.title)">전체 탈락</button>
+      </header>
+      <p v-if="sec.key === 'none' && beforeStart" class="muted note">PIN 상태는 "참가자 PIN" 카드에서 봅니다.</p>
+      <p v-if="sec.key === 'test'" class="muted note">팀·리더가 미리 정해진 개발용 계정<template v-if="excludeTests"> · 게임 설정에서 제외됨</template></p>
+      <p v-if="sec.team && beforeStart && sec.list.length === 0" class="muted note">아직 팀을 고른 참가자가 없습니다.</p>
+      <ul v-if="isOpen(sec)" class="list">
+        <li v-for="u in sec.list" :key="u.id" class="u" :class="{ inactive: !u.active }">
+          <div class="l1">
             <template v-if="editingId === u.id">
-              <input v-model="editName" maxlength="20" style="width: 9em" @keyup.enter="saveName(u)" @keyup.esc="editingId = null" />
+              <input v-model="editName" maxlength="20" class="name-input" @keyup.enter="saveName(u)" @keyup.esc="editingId = null" />
               <button class="small" :disabled="busy" @click="saveName(u)">저장</button>
             </template>
             <template v-else>
-              <a href="#" @click.prevent="startEdit(u)">{{ u.name }}</a>
+              <a href="#" class="name" @click.prevent="startEdit(u)">{{ u.name }}</a>
               <span v-if="u.isLeader" class="badge">리더</span>
               <span v-if="u.isTest" class="badge role" title="시드 테스트 계정. 게임 설정에서 포함 여부를 정합니다">테스트</span>
               <span v-if="!u.nameSet" class="badge warn">이름 미입력</span>
             </template>
-          </td>
-          <td>
+            <span class="sp" />
+            <span v-if="u.isTest && excludeTests && !u.active" class="badge" title="게임 설정에서 테스트 계정 포함을 꺼 두었습니다">제외</span>
+            <span v-else class="badge" :class="u.active ? 'on' : 'off'">{{ u.active ? '참가 중' : '탈락' }}</span>
+          </div>
+          <div class="l2">
             <select :value="u.groupId ?? ''" :disabled="busy" class="team-select" title="팀 이동" @change="moveTeam(u, $event)">
               <option v-if="u.groupId == null" value="" disabled>팀 없음</option>
               <option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}</option>
             </select>
-          </td>
-          <td class="pin">
-            <span class="mono">{{ pinShown(u.id) ? u.pin : '••••' }}</span>
-            <button v-if="!showPins" class="secondary small pin-btn" type="button" @click="togglePin(u.id)">{{ openPins.has(u.id) ? 'PIN 숨기기' : 'PIN 보기' }}</button>
-          </td>
-          <td>
-            <span v-if="u.isTest && excludeTests && !u.active" class="badge" title="게임 설정에서 테스트 계정 포함을 꺼 두었습니다">제외</span>
-            <span v-else class="badge" :class="u.active ? 'on' : 'off'">{{ u.active ? '참가 중' : '탈락' }}</span>
-          </td>
-          <td class="row">
-            <button v-if="u.active && u.groupId != null && !u.isLeader" :disabled="busy" class="secondary small" @click="makeLeader(u)">리더 지정</button>
-            <button :disabled="busy" class="secondary small" @click="resetPin(u)">PIN 리셋</button>
-            <button :disabled="busy" class="secondary small" :class="{ danger: u.active }" @click="setActive([u.id], !u.active)">
-              {{ u.active ? '탈락 처리' : '복귀' }}
-            </button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+            <span class="pin mono">{{ pinShown(u.id) ? u.pin : '••••' }}</span>
+            <button v-if="!showPins" class="link" type="button" @click="togglePin(u.id)">{{ openPins.has(u.id) ? '숨기기' : 'PIN 보기' }}</button>
+            <span class="acts">
+              <button v-if="u.active && u.groupId != null && !u.isLeader" :disabled="busy" class="link" @click="makeLeader(u)">리더 지정</button>
+              <button :disabled="busy" class="link" @click="resetPin(u)">PIN 리셋</button>
+              <button :disabled="busy" class="link" :class="{ danger: u.active }" @click="setActive([u.id], !u.active)">{{ u.active ? '탈락 처리' : '복귀' }}</button>
+            </span>
+          </div>
+        </li>
+      </ul>
+    </section>
   </div>
 </template>
 
 <style scoped>
-.pin-btn { margin-left: 6px; padding: 2px 8px; font-size: 0.78rem; letter-spacing: normal; font-family: inherit; }
-.pin { white-space: nowrap; }
-.users { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
-.users th, .users td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
-.users th { color: var(--muted); font-weight: 500; font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.08em; }
-.users tr.group-head td { background: var(--bg-soft); padding-top: 10px; }
-.users tr.group-head strong { margin-right: 6px; }
-.users tr.inactive td { opacity: 0.55; }
-.users a { color: inherit; text-decoration: underline dotted; }
-.pin { font-family: var(--font-mono); letter-spacing: 0.15em; }
-.team-select { padding: 3px 6px; font-size: 0.85rem; }
+.tools { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 0; }
+.status { min-height: 1.2em; margin: 6px 0; }
+.sec { margin-top: 10px; }
+.sec-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 8px 10px; border-radius: var(--radius); background: var(--bg-soft); }
+.note { margin: 4px 10px 0; font-size: 0.85rem; }
+.list { list-style: none; margin: 0; padding: 0; }
+.u { padding: 8px 10px; border-bottom: 1px solid var(--line-soft); }
+.u.inactive { opacity: 0.55; }
+.l1, .l2 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.l2 { margin-top: 4px; font-size: 0.88rem; }
+.sp { flex: 1; }
+.acts { display: inline-flex; flex-wrap: nowrap; gap: 0 4px; margin-left: auto; }
+.name { color: inherit; font-weight: 600; text-decoration: underline dotted; }
+.name-input { width: 9em; }
+.pin { letter-spacing: 0.15em; }
+.team-select { font-size: 0.88rem; }
 .letter { display: inline-block; min-width: 1.4em; font-weight: 600; }
-.toggle { padding: 0 6px; margin-right: 4px; background: none; border: none; color: var(--ink); font-size: 0.9rem; cursor: pointer; }
+.toggle { padding: 0 6px; background: none; border: none; color: var(--ink); font-size: 0.9rem; cursor: pointer; min-height: 0; }
 button.small { padding: 4px 10px; font-size: 0.85rem; }
-button.small.danger { background: var(--surface); color: var(--red); border-color: var(--line); }
+button.link { min-height: 0; padding: 2px 4px; background: none; color: var(--ink-2); font-size: 0.85rem; text-decoration: underline; text-underline-offset: 2px; }
+button.link:hover { color: var(--ink); background: none; }
+button.danger.link, button.small.danger { color: var(--red); }
+button.small.danger { background: var(--surface); border-color: var(--line); }
 </style>

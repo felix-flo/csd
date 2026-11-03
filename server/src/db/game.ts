@@ -21,7 +21,7 @@ import { clearTrades } from './trades.js'
 import { allLivesDone, clearLifeSubmissions } from './life.js'
 import { cancelPendingIssues, clearIssues, publicGoldIssued } from './issuance.js'
 import { clearCouncilActions } from './council.js'
-import { clearWars, getActiveWar, getPublicWar, getWarCost, getWarOfDay, setWarCost } from './war.js'
+import { clearWars, getActiveWar, getPublicWar, getWarCost, getWarOfDay, getWarRule, isWarSanctionOff, setWarCost } from './war.js'
 import { clearFinalVotes, drawLifeGrants, getFinalState, isResultRevealed } from './final.js'
 import { clearMigrations, pendingMigrations } from './migration.js'
 import { clearSpy, prepareSpiesForStart } from './spy.js'
@@ -118,6 +118,7 @@ export function getGameState(): GameState {
     initialTotals: sumResources([...initial].filter(([id]) => teamIds.has(id)).map(([, r]) => r)),
     results: g.results ? (JSON.parse(g.results) as GameResults) : null,
     lifeVote: g.life_vote_passed !== 0, // 기본은 반영. 리더 3명이 반대하면 관리자가 미반영(0)으로 입력
+    lifeVoteSet: g.life_vote_passed != null,
     final: getFinalState(),
     lobby: g.status === 'ready' ? getLobby() : null,
     title: isBeforeStart(g.status) ? null : GAME_TITLE,
@@ -399,6 +400,10 @@ export function advance(expect: { day: number; phase: Phase }): AdvanceResult {
     requireNoWar()
     const result: AdvanceResult = { day: g.day, phase: g.phase! }
     if (g.phase === 'leader' && !allElectionsDone(g.day)) throw new GameError('leaders_pending', '모든 팀의 리더를 지정해야 넘어갈 수 있습니다')
+    // 리더 협의: 다음 라운드 전쟁 제재 안건이 있으면(제재 금지가 꺼져 있고 마지막 라운드가 아니면) 결과를 확정해야 넘어간다
+    if (g.phase === 'council' && g.day < (g.total_days ?? 0) && !isWarSanctionOff() && getWarRule(g.day + 1) == null) {
+      throw new GameError('war_rule_pending', `${g.day + 1}라운드 전쟁 제재(허용/금지)를 확정해야 넘어갈 수 있습니다`)
+    }
     const phases = phasesOf(g.day, g.total_days)
     const idx = phases.indexOf(g.phase!)
     if (idx < phases.length - 1) {

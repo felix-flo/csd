@@ -82,7 +82,7 @@ function copyPins() {
 <style scoped>
 .summary { align-items: center; gap: 6px; }
 .spacer { flex: 1; }
-.pins { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 6px; margin-top: 10px; }
+.pins { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 6px; margin-top: 10px; }
 .pin {
   display: grid;
   grid-template-columns: 1.8em auto 1fr;
@@ -101,6 +101,7 @@ function copyPins() {
 .no { font-size: 0.75rem; }
 .code { font-size: 1.05rem; letter-spacing: 0.15em; }
 .state { text-align: right; font-size: 0.85rem; }
-.name { grid-column: 2 / 4; font-size: 0.85rem; min-height: 1em; }
+.name { grid-column: 2 / 4; font-size: 0.85rem; }
+.name:empty { display: none; }
 button.small { padding: 4px 10px; font-size: 0.85rem; }
 </style>
