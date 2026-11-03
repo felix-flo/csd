@@ -9,6 +9,9 @@
  * 한도 (일차 = 턴): 대기 중·수락된 수량이 요청한 일차의 한도를 차지한다.
  * - 보석: 매 일차 gem_issue_limit 까지 (이월 없음)
  * - 골드: 매 일차 gold_issue_limit 씩 쌓임 → n일차 한도 = limit × n − 지금까지 사용량
+ *   단 마지막 라운드는 쌓인 한도가 많아도 limit × LAST_ROUND_GOLD_ROUNDS 까지 (몰아서 발행해 남이 가진 골드 가치를 한 번에 떨어뜨리지 않게)
+ * - 마지막 라운드 보석: 한도와 별개로 지금까지 풀린 보석(처음 모든 팀이 가진 양 + 앞 라운드 발행)의 절반(내림)까지
+ *   (발행을 아껴 두었다가 마지막에 몰아 찍어 몫을 키우지 않게)
  *
  * 동시성:
  * - 팀당 대기 요청 1건은 idx_issue_one_pending (partial unique index) 이 보장한다. 리더가 두 번 눌러도 하나만 들어간다.
@@ -18,7 +21,7 @@
  */
 import { db } from './index.js'
 import { findGroupById, listGroups } from './users.js'
-import { applyDeltas } from './resources.js'
+import { applyDeltas, getAllResources } from './resources.js'
 import { GameError } from './gameError.js'
 import { ISSUE_TEAM_CODE, issueKindOfTeam, issueRemaining, PHASE_LABELS, RESOURCE_LABELS } from '../../../shared/game.js'
 import type { IssueKind, IssueRequestView, IssueStatus, Phase, TeamIssueView } from '../../../shared/game.js'
@@ -83,16 +86,33 @@ export function getLimit(kind: IssueKind): number {
   return kind === 'gem' ? g.gem_issue_limit : g.gold_issue_limit
 }
 
+/** 마지막 라운드 골드 발행 상한 = 라운드 한도 몇 번치인지 (기본 한도 200 → 400) */
+const LAST_ROUND_GOLD_ROUNDS = 2
+
 /** 남은 발행 가능량 (현재 일차 기준) */
 export function remainingFor(teamId: number, kind: IssueKind): number {
-  const day = getGameRow().day
+  const g = getGameRow()
+  const day = g.day
   const used = db
     .prepare(
       `SELECT COALESCE(SUM(CASE WHEN day = ? THEN amount END), 0) AS today, COALESCE(SUM(amount), 0) AS total
        FROM issue_requests WHERE group_id = ? AND kind = ? AND status IN ('pending', 'approved')`,
     )
     .get(day, teamId, kind) as { today: number; total: number }
-  return issueRemaining(kind, getLimit(kind), day, used)
+  const left = issueRemaining(kind, getLimit(kind), day, used)
+  if (!isLastRound(g)) return left
+  const lastCap = kind === 'gold' ? g.gold_issue_limit * LAST_ROUND_GOLD_ROUNDS : Math.floor(gemSoFar(day) / 2)
+  return Math.max(0, Math.min(left, lastCap - used.today))
+}
+
+/** 이 라운드 전까지 풀린 보석 = 처음 모든 팀이 가진 보석 + 앞 라운드까지 수락된 발행 */
+function gemSoFar(day: number): number {
+  const teamIds = new Set(listGroups().map((t) => t.id))
+  const initial = [...getAllResources().initial].filter(([id]) => teamIds.has(id)).reduce((n, [, r]) => n + r.gem, 0)
+  const issued = db
+    .prepare(`SELECT COALESCE(SUM(amount), 0) AS n FROM issue_requests WHERE kind = 'gem' AND status = 'approved' AND day < ?`)
+    .get(day) as { n: number }
+  return initial + issued.n
 }
 
 /** 이 라운드에 수락된 발행이 있는지 (라운드당 1회) */
