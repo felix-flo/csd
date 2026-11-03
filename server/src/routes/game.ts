@@ -683,7 +683,7 @@ gameRouter.post('/admin/war/sanction-off', requireRole('admin'), handle(z.object
 const warResultSchema = z.object({ result: z.enum(['attacker', 'defender']) })
 
 /**
- * 관리자 결과 지정 (오프라인 게임 결과). 패배팀 재화 4종의 절반(내림)을 승리팀이 가져간다.
+ * 관리자 결과 지정 (오프라인 게임 결과). 패배팀 재화의 절반(내림)을 승리팀이 가져간다 (골드는 빼고).
  * 결과(승리팀 이름)는 전체에, 오간 수량은 승리팀·패배팀(+진행자)에게만 (docs/100 D6-a).
  * 전쟁 종료 화면에서 재화가 넘어가고, 관리자가 다음 단계를 누르면 단계 공지 없이 리더 협의로 넘어간다 (docs/103 §4)
  */

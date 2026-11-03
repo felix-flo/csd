@@ -273,7 +273,7 @@ const modalText = computed(() => {
       const lose = r === 'attacker' ? d : a
       return {
         title: `${win} 승리로 정할까요?`,
-        message: `${a} → ${d}\n${lose}의 모든 재화(보석·골드·라이프·크레딧) 절반(내림)을 ${josa(win, '이/가')} 가져갑니다.\n결과는 전체에 알리고, 오간 수량은 두 팀에게만 보입니다. 되돌릴 수 없습니다.`,
+        message: `${a} → ${d}\n${lose}의 보석·라이프·크레딧 절반(내림)을 ${josa(win, '이/가')} 가져갑니다. 골드는 그대로입니다.\n결과는 전체에 알리고, 오간 수량은 두 팀에게만 보입니다. 되돌릴 수 없습니다.`,
       }
     }
     default:

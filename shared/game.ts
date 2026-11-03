@@ -284,10 +284,13 @@ export interface WarView {
   decidedAt: string | null
 }
 
-/** 패배팀 재화의 절반(내림)을 빼앗는다 */
+/** 전쟁으로 뺏기지 않는 재화. 골드는 안전 자산이라 진 팀도 그대로 지킨다 */
+export const WAR_SAFE_KINDS: readonly ResourceKind[] = ['gold']
+
+/** 패배팀 재화의 절반(내림)을 빼앗는다. 골드(WAR_SAFE_KINDS)는 빼고 */
 export function warSpoils(loser: Resources): Resources {
   const out = emptyResources()
-  for (const k of RESOURCE_KINDS) out[k] = Math.floor(loser[k] / 2)
+  for (const k of RESOURCE_KINDS) out[k] = WAR_SAFE_KINDS.includes(k) ? 0 : Math.floor(loser[k] / 2)
   return out
 }
 
