@@ -11,7 +11,7 @@
  * - 최종장 (docs/100 N2): /admin/final/close · tiebreak · next · recompute, 참가자 POST /final/vote
  * - 참가자(준비 상태): POST /game/join 팀 선택. 시작 전에는 팀 게임 정보를 주지 않는다
  * - 보석·골드 발행 (docs/97): 화이트·골드 리더 POST /issue/request → 즉시 발행 (docs/103 §9)
- * - 전쟁 (docs/99, docs/103 §4·§12): 리더 POST /war/declare → 즉시 시작, 관리자 POST /admin/war/cost (다음 날 비용) · /admin/war/allow (다음 라운드 허용/제재) · /admin/war/:id/resolve
+ * - 전쟁 (docs/99, docs/103 §4·§12): 리더 POST /war/declare → 즉시 시작, 관리자 POST /admin/war/cost (다음 날 비용) · /admin/war/allow (다음 라운드 허용/제재) · /admin/war/sanction-off (전쟁 제재 금지 on/off) · /admin/war/:id/resolve
  * 상태 변화는 events 에 기록 후 Socket.IO 로 알린다. 클라이언트는 game/trade 이벤트를 받으면 상태를 다시 조회한다.
  */
 import fs from 'node:fs'
@@ -41,7 +41,7 @@ import {
   advanceFinal, castFinalVote, closeFinalVotes, finalVoteProgress, getMyFinalVote, hasLifeGrant, recomputeResults, setLifeVote, setTiebreak,
 } from '../db/final.js'
 import { listAids, recordAid } from '../db/council.js'
-import { declareWar, describeCost, getWarCost, getWarOfDay, getWarRule, isWarAllowed, resolveWar, setWarCost, setWarRule } from '../db/war.js'
+import { declareWar, describeCost, getWarCost, getWarOfDay, getWarRule, isWarAllowed, isWarSanctionOff, resolveWar, setWarCost, setWarRule, setWarSanctionOff } from '../db/war.js'
 import { db } from '../db/index.js'
 import { schedulePhaseTimer } from '../phaseTimer.js'
 import { insertEvent } from '../db/events.js'
@@ -208,6 +208,7 @@ function adminView(): AdminGameView {
       nextCost: g.status === 'running' ? getWarCost(g.day + 1) : null,
       todayAllowed: g.status === 'running' ? isWarAllowed(g.day) : true,
       nextAllowed: g.status === 'running' ? getWarRule(g.day + 1) : null,
+      sanctionOff: isWarSanctionOff(),
     },
     finalVotes: g.status === 'final' || g.status === 'ended' ? finalVoteProgress() : [],
     migrations: getAdminMigrations(),
@@ -621,16 +622,32 @@ gameRouter.post('/admin/war/cost', requireRole('admin'), handle(warCostSchema, (
   res.json(adminView())
 }))
 
-/** 다음 라운드 전쟁 허용/제재 (리더 협의 결과, docs/103 §12). 리더 협의 단계에서 입력. 입력이 없으면 허용 */
+/** 다음 라운드 전쟁 허용/제재 (리더 협의 결과, docs/103 §12). 리더 협의 단계에서 입력. 입력이 없으면 허용.
+ * 리더 3명 이상이 제재에 찬성하면(오프라인) 금지를 건다. 전쟁 제재 금지가 켜져 있으면 입력할 수 없다 */
 gameRouter.post('/admin/war/allow', requireRole('admin'), handle(z.object({ allowed: z.boolean() }), (req, res, body) => {
   const g = requireRunning()
   if (g.phase !== 'council') throw new GameError('wrong_phase', '다음 라운드 전쟁 허용/제재는 리더 협의 단계에서 입력합니다')
   if (g.day >= (g.total_days ?? 0)) throw new GameError('last_day', '마지막 라운드에는 다음 라운드가 없습니다')
+  if (isWarSanctionOff()) throw new GameError('sanction_off', '전쟁 제재 금지가 켜져 있어 이번 협의에는 전쟁 제재 안건이 없습니다')
   setWarRule(g.day + 1, body.allowed)
   const msg = body.allowed
     ? `리더 협의 결과: ${g.day + 1}라운드 전쟁 허용`
     : `리더 협의 결과: ${g.day + 1}라운드 전쟁 제재 (전쟁 선포 불가)`
   emit('game', 'all', null, 'war.allowed', msg, req.auth!.sub, { day: g.day + 1, allowed: body.allowed })
+  res.json(adminView())
+}))
+
+/**
+ * 전쟁 제재 금지 on/off (2026-11-03). 켜면 리더 협의 안건에서 전쟁 제재가 빠진다 (전쟁은 항상 허용).
+ * 리더 협의 단계 전에 정한다 (준비 상태 또는 진행 중 리더 협의가 아닌 단계). 이미 걸린 다음 라운드 금지는 바꾸지 않는다
+ */
+gameRouter.post('/admin/war/sanction-off', requireRole('admin'), handle(z.object({ on: z.boolean() }), (req, res, body) => {
+  const g = getGameRow()
+  if (g.status !== 'ready' && g.status !== 'running') throw new GameError('wrong_status', '준비 또는 진행 중에만 바꿀 수 있습니다')
+  if (g.status === 'running' && g.phase === 'council') throw new GameError('wrong_phase', '전쟁 제재 금지는 리더 협의 단계 전에 정합니다')
+  setWarSanctionOff(body.on)
+  // 프레젠테이션·참가자 화면의 협의 안건 표시를 바로 갱신 (기록 없는 신호. 받은 화면은 게임 상태를 다시 조회)
+  signalLobby()
   res.json(adminView())
 }))
 

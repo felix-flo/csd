@@ -15,6 +15,7 @@ import Icon from './Icon.vue'
  * - 거래 단계 (docs/103 §10): 오프라인 협의 내용을 여기서 입력해 "거래 진행" → 확인 팝업(예/아니오) 뒤 바로 체결 (2026-11-02 리더 수락 삭제).
  * - 전쟁 (docs/103 §4): 리더 선포 즉시 시작. 여기서는 결과만 지정하고, 다음 단계로 리더 협의로 넘긴다된다.
  * - 리더 협의 (docs/103 §11·§12): 원조는 팀 재화 카드에서, 다음 라운드 전쟁 허용/제재는 여기서 입력.
+ *   전쟁은 기본 허용, 리더 3명 이상이 제재 찬성 시 금지. 협의 전에 "전쟁 제재 금지" 를 켜면 안건에서 빠진다 (2026-11-03).
  */
 import { computed, reactive, ref, watch } from 'vue'
 import type { AdminUser, GroupInfo } from '../../../shared/types'
@@ -76,6 +77,10 @@ const warBlocker = computed(() => (warActive.value ? '전쟁 결과를 먼저 �
 /** 다음 라운드 전쟁 허용/제재 (리더 협의 단계, docs/103 §12) */
 function setWarAllowed(allowed: boolean) {
   return run(`${(s.value?.day ?? 0) + 1}라운드 전쟁 ${allowed ? '허용' : '제재'}`, () => api.post('/api/admin/war/allow', { allowed }))
+}
+/** 전쟁 제재 금지 on/off (리더 협의 단계 전에). 켜면 협의 안건에서 전쟁 제재가 빠진다 */
+function setSanctionOff(on: boolean) {
+  return run(`전쟁 제재 금지 ${on ? 'ON' : 'OFF'}`, () => api.post('/api/admin/war/sanction-off', { on }))
 }
 const costText = (c: WarCost | null | undefined) =>
   !c ? '미정' : WAR_COST_KINDS.filter((k) => c[k] > 0).map((k) => `${RESOURCE_LABELS[k]} ${c[k]}`).join(', ') || '없음 (무료)'
@@ -524,22 +529,33 @@ const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(t
       <span v-else class="blocker">아직 정하지 않음 — 정해야 다음 라운드로 넘어갑니다</span>
     </div>
 
+    <!-- 전쟁 제재 금지 on/off: 리더 협의 단계 전에 정한다. 켜면 협의 안건에서 전쟁 제재가 빠진다 -->
+    <div v-if="round && !isLastDay" class="row war-cost">
+      <span><Icon name="war" /> 전쟁 제재 금지</span>
+      <button class="small" :class="{ secondary: !view.war.sanctionOff }" :disabled="busy || round === 'council'" @click="setSanctionOff(true)">ON · 안건 제외</button>
+      <button class="small" :class="{ secondary: view.war.sanctionOff }" :disabled="busy || round === 'council'" @click="setSanctionOff(false)">OFF · 안건 포함</button>
+      <span class="muted">
+        <template v-if="round === 'council'">리더 협의 중에는 바꿀 수 없습니다 · </template>
+        {{ view.war.sanctionOff ? '리더 협의 안건에 전쟁 제재가 없습니다 (전쟁은 항상 가능)' : '리더 3명 이상이 제재에 찬성하면 다음 라운드 전쟁 금지를 걸 수 있습니다' }}
+      </span>
+    </div>
+
     <!-- 리더간 협의 -->
     <template v-if="round === 'council'">
       <h3><Icon name="council" /> 리더 협의</h3>
       <p class="muted" style="margin: 0">
         <Icon name="aid" /> 대가 없는 원조는 아래 "팀 재화" 카드의 원조 입력으로 처리합니다 (라운드마다 전체 1번{{ view.aidsToday.length ? ' · 이번 라운드 처리됨' : '' }}. 리더 4명 중 3명 찬성).
       </p>
-      <div v-if="!isLastDay" class="life-vote" :class="{ missing: view.war.nextAllowed == null }" style="margin-top: 8px">
-        <div><strong><Icon name="war" /> {{ s.day + 1 }}라운드 전쟁 허용 / 제재</strong></div>
-        <div class="muted">제재면 다음 라운드에는 어느 팀도 전쟁을 선포할 수 없습니다. 입력하지 않으면 허용입니다.</div>
+      <div v-if="!isLastDay && !view.war.sanctionOff" class="life-vote" style="margin-top: 8px">
+        <div><strong><Icon name="war" /> {{ s.day + 1 }}라운드 전쟁 제재</strong></div>
+        <div class="muted">기본은 허용입니다. 리더 3명 이상이 제재에 찬성하면(오프라인 투표) "전쟁 금지"를 누르세요. 다음 라운드에는 어느 팀도 전쟁을 선포할 수 없습니다.</div>
         <div class="row" style="margin-top: 6px">
-          <button :class="{ secondary: view.war.nextAllowed !== true }" :disabled="busy" @click="setWarAllowed(true)">허용</button>
-          <button :class="{ secondary: view.war.nextAllowed !== false }" :disabled="busy" @click="setWarAllowed(false)">제재 (전쟁 금지)</button>
-          <span v-if="view.war.nextAllowed == null" class="muted">아직 입력하지 않음 (허용으로 진행)</span>
-          <span v-else class="muted">입력됨: <strong>{{ view.war.nextAllowed ? '허용' : '제재' }}</strong> (전체 공지됨)</span>
+          <button :class="{ secondary: view.war.nextAllowed === false }" :disabled="busy" @click="setWarAllowed(true)">허용 (기본)</button>
+          <button :class="{ secondary: view.war.nextAllowed !== false }" :disabled="busy" @click="setWarAllowed(false)">제재 3표 이상 · 전쟁 금지</button>
+          <span class="muted">지금: <strong>{{ view.war.nextAllowed === false ? '전쟁 금지' : '허용' }}</strong><template v-if="view.war.nextAllowed != null"> (전체 공지됨)</template></span>
         </div>
       </div>
+      <p v-else-if="!isLastDay" class="muted" style="margin: 6px 0 0"><Icon name="war" /> 전쟁 제재 금지가 켜져 있어 이번 협의에는 전쟁 제재 안건이 없습니다 ({{ s.day + 1 }}라운드 전쟁 가능).</p>
     </template>
     <div v-if="lifeVoteOpen" class="life-vote">
       <div><strong><Icon name="scroll" /> 필수 안건: 라이프 투표권</strong></div>

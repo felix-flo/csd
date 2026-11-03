@@ -234,6 +234,8 @@ export interface PublicWarState {
   allowed: boolean
   /** 다음 라운드 전쟁 허용/제재 (리더 협의 단계에 관리자가 입력. null = 아직 입력 안 함 → 허용). 프레젠테이션 협의 안건 표시용 */
   nextAllowed: boolean | null
+  /** 전쟁 제재 금지 (관리자 on/off). true 면 리더 협의 안건에 전쟁 제재가 없다 (전쟁은 항상 허용) */
+  sanctionOff: boolean
   /** 오늘 전쟁 기록 (현황판 공개용, docs/100 D5). 전리품은 넣지 않는다 */
   today: { attacker: number; defender: number; status: WarStatus } | null
 }
@@ -610,6 +612,8 @@ export interface AdminGameView {
     todayAllowed: boolean
     /** 다음 라운드 전쟁 허용/제재. null = 아직 입력 안 함 (→ 허용) */
     nextAllowed: boolean | null
+    /** 전쟁 제재 금지 (켜면 리더 협의 안건에서 전쟁 제재 제외) */
+    sanctionOff: boolean
   }
   /** 최종 투표 팀별 진행 (최종장). 득표는 state.final.tally (마감 뒤) */
   finalVotes: { teamId: number; done: number; eligible: number }[]

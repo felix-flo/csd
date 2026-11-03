@@ -171,12 +171,12 @@ const warLine = computed(() => {
 })
 const timer = usePhaseTimer()
 
-/** 리더 협의 단계 안건 (docs/103 §12): 원조 · 다음 라운드 전쟁 허용/제재 · (마지막 라운드) 라이프 투표권 */
+/** 리더 협의 단계 안건 (docs/103 §12): 원조 · 다음 라운드 전쟁 제재(전쟁 제재 금지가 켜져 있으면 없음) · (마지막 라운드) 라이프 투표권 */
 const council = computed(() => {
   if (s.value?.status !== 'running' || s.value.phase !== 'council') return null
   const next = s.value.war?.nextAllowed
   return {
-    warText: isLastRound.value ? null : next == null ? '협의 중' : next ? '허용' : '제재 (전쟁 금지)',
+    warText: isLastRound.value || s.value.war?.sanctionOff ? null : next === false ? '제재 (전쟁 금지)' : '기본 허용 · 리더 3명 이상 제재 찬성 시 금지',
     lifeVote: isLastRound.value ? (s.value.lifeVote ? '기본으로 반영 · 리더 3명이 반대하면 미반영' : '미반영 (리더 3명 반대)') : null,
   }
 })
@@ -243,7 +243,7 @@ const council = computed(() => {
       <template v-if="council">
         <div class="agenda">
           <section class="card"><h2><Icon name="aid" /> 원조</h2><p>대가 없는 재화 양도. 라운드당 1번</p></section>
-          <section v-if="council.warText" class="card"><h2><Icon name="war" /> 다음 라운드 전쟁</h2><p>{{ council.warText }}</p></section>
+          <section v-if="council.warText" class="card"><h2><Icon name="war" /> 다음 라운드 전쟁 제재</h2><p>{{ council.warText }}</p></section>
           <section v-if="council.lifeVote" class="card"><h2><Icon name="scroll" /> 라이프 투표권</h2><p>{{ council.lifeVote }}</p></section>
         </div>
       </template>

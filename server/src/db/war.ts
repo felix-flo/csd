@@ -9,6 +9,8 @@
  * - 진행 중 전쟁 1건: idx_wars_one_active. 있으면 단계 넘기기·게임 종료도 막는다 (game.ts)
  * - 선포 비용은 일차마다: 1일차는 게임 설정, 이후는 관리자가 전날 끝나기 전에 입력해야 다음 날로 넘어간다
  * - 허용/제재 (docs/103 §12): 리더 협의에서 다음 라운드 전쟁을 금지하면 war_rules(day, allowed=0). 행이 없으면 허용
+ *   전쟁은 기본으로 항상 허용. 리더 3명 이상이 제재에 찬성하면(오프라인) 관리자가 금지를 건다.
+ *   관리자가 "전쟁 제재 금지"(game.war_sanction_off)를 켜면 안건에서 빠지고 금지를 걸 수 없다 (2026-11-03)
  * 결과 지정은 `UPDATE … WHERE id = ? AND status = 'declared'` 로 한 번만 반영된다 (관리자 2명 동시 클릭)
  */
 import { db } from './index.js'
@@ -70,6 +72,15 @@ export function getWarRule(day: number): boolean | null {
   return r ? r.allowed === 1 : null
 }
 
+/** 전쟁 제재 금지 (켜면 리더 협의 안건에서 전쟁 제재가 빠진다) */
+export function isWarSanctionOff(): boolean {
+  return (db.prepare('SELECT war_sanction_off AS v FROM game WHERE id = 1').get() as { v: number } | undefined)?.v === 1
+}
+
+export function setWarSanctionOff(on: boolean) {
+  db.prepare(`UPDATE game SET war_sanction_off = ?, updated_at = datetime('now') WHERE id = 1`).run(on ? 1 : 0)
+}
+
 export function setWarRule(day: number, allowed: boolean) {
   db.prepare('INSERT INTO war_rules (day, allowed) VALUES (?, ?) ON CONFLICT(day) DO UPDATE SET allowed = excluded.allowed').run(day, allowed ? 1 : 0)
 }
@@ -96,6 +107,7 @@ export function getPublicWar(day: number, running: boolean): PublicWarState {
     cost: running ? getWarCost(day) : null,
     allowed: running ? isWarAllowed(day) : true,
     nextAllowed: running ? getWarRule(day + 1) : null,
+    sanctionOff: isWarSanctionOff(),
     today: today ? { attacker: today.attacker, defender: today.defender, status: today.status } : null,
   }
 }

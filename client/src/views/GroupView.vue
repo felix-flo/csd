@@ -95,7 +95,9 @@ const task = computed<{ kicker?: string; title: string; desc?: string } | null>(
     case 'production': return { kicker: `${round} · 생산게임`, title: '생산게임에 참여해 주세요', desc: '진행요원과의 게임 결과에 따라\n재화가 지급됩니다.' }
     case 'trade': return { title: L ? '거래는 진행자에게 가서 진행합니다' : '거래 시간입니다' }
     case 'council': return L
-      ? { kicker: `${round} · 리더 협의`, title: '리더 협의에 참여해 주세요', desc: '안건은 대가 없는 원조(라운드마다 전체 1번, 리더 4명 중 3명 찬성)와 다음 라운드 전쟁 허용/제재입니다. 결과는 진행자가 입력합니다.' }
+      ? { kicker: `${round} · 리더 협의`, title: '리더 협의에 참여해 주세요', desc: st.war?.sanctionOff || isLastRound.value
+        ? '안건은 대가 없는 원조(라운드마다 전체 1번, 리더 4명 중 3명 찬성)입니다. 결과는 진행자가 입력합니다.'
+        : '안건은 대가 없는 원조(라운드마다 전체 1번, 리더 4명 중 3명 찬성)와 다음 라운드 전쟁 제재(리더 3명 이상 찬성 시 금지)입니다. 결과는 진행자가 입력합니다.' }
       : { kicker: `${round} · 리더 협의`, title: '리더 협의 결과를 기다려 주세요', desc: '결과가 정해지면 알림이 옵니다.' }
     case 'last_issue': return L && game.team?.issue
       ? { title: '마지막 발행을 진행해 주세요', desc: '이번 발행량은 최종장 결과 때 공개됩니다.' }

@@ -57,6 +57,8 @@ interface GameRow {
   /** 이주가 열리는 라운드 (docs/100 N3) */
   migration_start_day: number
   opening_step: OpeningStep | null
+  /** 전쟁 제재 금지 (1 = 리더 협의 안건에서 전쟁 제재 제외). 리셋 때 0 */
+  war_sanction_off: number
 }
 
 /** 최종장 열을 비운다 (게임 시작·리셋) */
@@ -507,7 +509,7 @@ export function resetGame(clearSettings = false): ResetResult {
     createSeedUsers(TEST_USERS)
     if (clearSettings) applyDefaultSettings()
     resetAmountsToInitial()
-    updateGame(`status = 'setup', opening_step = NULL, total_days = ${DEFAULT_TOTAL_DAYS}, day = 0, phase = NULL, aid_used = 0,
+    updateGame(`status = 'setup', opening_step = NULL, total_days = ${DEFAULT_TOTAL_DAYS}, day = 0, phase = NULL, aid_used = 0, war_sanction_off = 0,
                 results = NULL, started_at = NULL, ended_at = NULL, ${CLEAR_FINAL}`)
     applyTestAccounts(getGameRow().include_test === 1)
     return {
