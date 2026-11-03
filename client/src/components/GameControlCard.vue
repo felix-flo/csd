@@ -14,7 +14,8 @@ import Icon from './Icon.vue'
  * - 리더 선출 단계: 팀이 오프라인 협의 결과를 알려 오면 여기서 팀별로 리더를 지정한다 (docs/100 §7-6, 투표 없음). 팀원 1명은 자동.
  * - 거래 단계 (docs/103 §10): 오프라인 협의 내용을 여기서 입력해 "거래 진행" → 확인 팝업(예/아니오) 뒤 바로 체결 (2026-11-02 리더 수락 삭제).
  * - 전쟁 (docs/103 §4): 리더 선포 즉시 시작. 여기서는 결과만 지정하고, 다음 단계로 리더 협의로 넘긴다된다.
- * - 리더 협의 (docs/103 §11·§12): 원조는 팀 재화 카드에서, 다음 라운드 전쟁 허용/제재는 여기서 입력.
+ * - 화면 순서: 검은 상태창 → 지금 단계에서 할 일(이 카드의 stage). 생산게임 결과(ProductionForm)·원조(AidForm)도 여기서 입력한다.
+ * - 리더 협의 (docs/103 §11·§12): 다음 라운드 전쟁 비용 → 원조 → 다음 라운드 전쟁 허용/제재.
  *   전쟁은 기본 허용, 리더 3명 이상이 제재 찬성 시 금지. 협의 전에 "전쟁 제재 금지" 를 켜면 안건에서 빠진다 (2026-11-03).
  */
 import { computed, reactive, ref, watch } from 'vue'
@@ -22,10 +23,11 @@ import type { AdminUser, GroupInfo } from '../../../shared/types'
 import {
   FINAL_STEP_LABELS, MIGRATION_CANCEL_LABELS, PHASE_LABELS, phaseLabel, phasesOf, RESOURCE_KINDS, RESOURCE_LABELS, WAR_COST_KINDS, warWinner, emptyResources, isLifeExempt, josa, teamLetter,
   type AdminGameView, type Phase, type Resources, type WarCost, type WarResult,
-  OPENING_LABELS, OPENING_STEPS,
+  OPENING_LABELS, OPENING_STEPS, ISSUE_TEAM_CODE,
 } from '../../../shared/game'
 import { useRouter } from 'vue-router'
 import { api } from '../lib/api'
+import { askConfirm } from '../lib/confirm'
 import { useGameStore } from '../stores/game'
 import { useAuthStore } from '../stores/auth'
 import { teamInk } from '../lib/teamColor'
@@ -36,6 +38,8 @@ import GamePhaseBar from './GamePhaseBar.vue'
 import NoticeBar from './NoticeBar.vue'
 import TabLoginToggle from './TabLoginToggle.vue'
 import FinalControl from './FinalControl.vue'
+import ProductionForm from './ProductionForm.vue'
+import AidForm from './AidForm.vue'
 import ResultsBoard from './ResultsBoard.vue'
 
 const props = defineProps<{ users: AdminUser[]; groups: GroupInfo[]; menu: string }>()
@@ -66,7 +70,8 @@ const lifePending = computed(() =>
 const endBlocker = computed(() => {
   if (!isLastDay.value || canEnd.value) return ''
   if (warBlocker.value) return warBlocker.value
-  if (s.value?.phase !== 'life') return '마지막 라운드 라이프 제출 단계에서 모든 팀이 제출하면 종료할 수 있습니다'
+  // 라이프 제출 전 단계에서는 빨간 경고를 띄우지 않는다 (버튼만 비활성. 이유는 버튼 툴팁으로)
+  if (s.value?.phase !== 'life') return ''
   return `라이프 미제출: ${lifePending.value.join(', ')} — 모든 팀이 제출하면 종료할 수 있습니다`
 })
 // ---- 전쟁 (docs/99) ----
@@ -75,8 +80,13 @@ const warToday = computed(() => view.value?.war.today ?? null)
 const warActive = computed(() => warToday.value?.status === 'declared')
 const warBlocker = computed(() => (warActive.value ? '전쟁 결과를 먼저 정하세요' : ''))
 /** 다음 라운드 전쟁 허용/제재 (리더 협의 단계, docs/103 §12) */
-function setWarAllowed(allowed: boolean) {
-  return run(`${(s.value?.day ?? 0) + 1}라운드 전쟁 ${allowed ? '허용' : '제재'}`, () => api.post('/api/admin/war/allow', { allowed }))
+async function setWarAllowed(allowed: boolean) {
+  const day = (s.value?.day ?? 0) + 1
+  // 누르면 바로 전체에 공지되므로 확인을 한 번 받는다. 이미 공지한 값과 같으면 아무것도 하지 않는다
+  if (view.value?.war.nextAllowed === allowed) return
+  const what = allowed ? `${day}라운드 전쟁 허용` : `${day}라운드 전쟁 제재 (전쟁 선포 불가)`
+  if (!(await askConfirm(`리더 협의 결과를 "${what}"으로 확정할까요?\n바로 전체에 공지됩니다.`))) return
+  return run(what, () => api.post('/api/admin/war/allow', { allowed }))
 }
 /** 전쟁 제재 금지 on/off (리더 협의 단계 전에). 켜면 협의 안건에서 전쟁 제재가 빠진다 */
 function setSanctionOff(on: boolean) {
@@ -111,6 +121,8 @@ function saveSpies() {
   return run('테러리스트 지정 저장', () => api.put('/api/admin/spies', { userIds: spyPick.value }))
 }
 const won = (n: number) => `${n.toLocaleString('ko-KR')}원`
+/** 보석·골드 발행 팀 (code 기준) */
+const issuerId = (k: 'gem' | 'gold') => props.groups.find((g) => g.code === ISSUE_TEAM_CODE[k])?.id
 
 // ---- 이주 (docs/100 N3) ----
 const migrationOpenFrom = computed(() => view.value?.settings.migrationStartDay ?? 4)
@@ -121,8 +133,11 @@ function cancelMigration(id: number) {
 
 // ---- 마지막 라운드 필수 안건: 남은 라이프를 최종 투표권으로 (docs/100 N2) ----
 const lifeVoteOpen = computed(() => s.value?.status === 'running' && isLastDay.value && s.value.phase === 'council')
-function setLifeVote(passed: boolean) {
-  return run(`라이프 투표권 ${passed ? '반영' : '미반영'}`, () => api.post('/api/admin/game/life-vote', { passed }))
+async function setLifeVote(passed: boolean) {
+  if (s.value?.lifeVoteSet && !!s.value.lifeVote === passed) return
+  const what = `라이프 투표권 ${passed ? '반영' : '미반영 (리더 3명 반대)'}`
+  if (!(await askConfirm(`리더 협의 결과를 "${what}"으로 확정할까요?\n바로 전체에 공지됩니다.`))) return
+  return run(what, () => api.post('/api/admin/game/life-vote', { passed }))
 }
 
 /** 다음 단계/다음 날 버튼을 막는 이유 */
@@ -130,6 +145,7 @@ const advanceBlocker = computed(() => {
   if (warBlocker.value) return warBlocker.value
   if (s.value?.phase === 'leader' && !s.value.leadersDone) return s.value.day > 1 ? '모든 팀의 재신임 결과를 입력해야 다음 단계로 넘어갈 수 있습니다' : '모든 팀의 리더를 지정해야 다음 단계로 넘어갈 수 있습니다'
   if (s.value?.phase === 'life' && !nextPhase.value && !s.value.livesDone) return '모든 팀이 라이프를 제출해야 다음 라운드로 넘어갈 수 있습니다'
+  if (s.value?.phase === 'council' && !isLastDay.value && !view.value?.war.sanctionOff && view.value?.war.nextAllowed == null) return `${(s.value?.day ?? 0) + 1}라운드 전쟁 제재(허용/금지)를 확정해야 다음 단계로 넘어갈 수 있습니다`
   if (s.value?.phase === 'council' && view.value?.migrations.pending.length) return '처리하지 않은 이주 신청이 있습니다. 받는 팀 리더가 처리하거나 아래 "이주"에서 취소해야 라이프 제출로 넘어갈 수 있습니다'
   if (!nextPhase.value && !isLastDay.value && !view.value?.war.nextCost) return `${(s.value?.day ?? 0) + 1}라운드 전쟁 선포 비용을 현재 단계 관리에서 정해야 다음 라운드로 넘어갈 수 있습니다`
   return ''
@@ -152,7 +168,7 @@ const facts = computed(() => {
 /** 맨 위 상태창에 띄울, 다음으로 넘어가지 못하는 이유 */
 const headNote = computed(() => {
   if (!s.value || !view.value) return ''
-  if (s.value.status === 'ready') return [spyBlocker.value, view.value.settings.warCost ? '' : '"게임 설정" 메뉴에서 1라운드 전쟁 선포 비용을 저장하세요'].filter(Boolean).join(' · ')
+  if (s.value.status === 'ready') return [spyBlocker.value, view.value.settings.warCost ? '' : '아래 게임 설정에서 1라운드 전쟁 선포 비용을 저장하세요'].filter(Boolean).join(' · ')
   if (!round.value) return ''
   return [nextPhase.value || !isLastDay.value ? advanceBlocker.value : '', endBlocker.value].filter(Boolean).join(' · ')
 })
@@ -237,7 +253,7 @@ const modalText = computed(() => {
         ? `\n테러리스트 ${sp.selected.length}명: ${sp.selected.map(nameOf).join(', ')} (시작하면 본인에게만 무음으로 알립니다)`
         : '\n\n악마를 고른 후보가 없어 테러리스트 없이 시작합니다.'
       const fateWarn = sp?.counts.none ? `\n운명의 카드를 고르지 않은 ${sp.counts.none}명은 천사로 처리됩니다.` : ''
-      const tab = view.value?.settings.tabLogin ? '\n\n테스트 모드(탭 로그인)가 켜져 있습니다. 참가자가 새 탭을 열 때마다 다시 로그인해야 합니다. 실제 진행이면 "게임 설정"에서 끄세요.' : ''
+      const tab = view.value?.settings.tabLogin ? '\n\n테스트 모드(탭 로그인)가 켜져 있습니다. 참가자가 새 탭을 열 때마다 다시 로그인해야 합니다. 실제 진행이면 게임 설정의 테스트 칸에서 끄세요.' : ''
       return { title: '세팅을 완료할까요?', message: `총 ${st.totalDays}라운드. 완료하면 프레젠테이션에 "게임 진행" 버튼이 뜨고, 참가자 화면은 "앞 화면을 봐 주세요" 로 바뀝니다.${warn}${fateWarn}${spyWarn}${tab}` }
     }
     case 'revert':
@@ -288,6 +304,7 @@ function onConfirm() {
 // ---- 준비: 팀별 입장 현황 ----
 const letterOfTeam = (teamId: number) => teamLetter(props.groups.findIndex((g) => g.id === teamId))
 const lobbyOf = (teamId: number) => s.value?.lobby?.find((l) => l.teamId === teamId)
+const lobbyTotal = computed(() => (s.value?.lobby ?? []).reduce((a, l) => ({ count: a.count + l.count, capacity: a.capacity + l.capacity }), { count: 0, capacity: 0 }))
 const membersOf = (teamId: number) => props.users.filter((u) => u.role === 'member' && u.active && u.groupId === teamId)
 const leaderOf = (teamId: number) => membersOf(teamId).find((u) => u.isLeader)
 
@@ -346,7 +363,8 @@ const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(t
 
 <template>
   <template v-if="view && s">
-  <!-- 어느 메뉴에서든 항상 보이는 부분: 지금 단계 + 다음 동작 + 넘어가지 못하는 이유 -->
+  <!-- 어느 메뉴에서든 항상 보이는 부분: 지금 단계 + 다음 동작 + 넘어가지 못하는 이유. 진행판 맨 위 줄(#admin-head)로 보낸다 -->
+  <Teleport defer to="#admin-head">
   <div class="ctrl">
     <div class="card ctrl-head">
       <div class="where">
@@ -363,80 +381,85 @@ const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(t
         <template v-else-if="s.status === 'running'">
           <button v-if="nextPhase" class="lg" :disabled="busy || !!advanceBlocker" @click="modal = 'next'">다음 단계: {{ PHASE_LABELS[nextPhase] }} →</button>
           <button v-else-if="!isLastDay" class="lg" :disabled="busy || !!advanceBlocker" @click="modal = 'next'">다음 라운드로 ({{ s.day + 1 }}라운드) →</button>
-          <button v-if="isLastDay" class="lg danger" :disabled="busy || !canEnd" @click="modal = 'end'">게임 종료 (최종장 시작)</button>
+          <button v-if="isLastDay" class="lg" :disabled="busy || !canEnd" :title="canEnd ? '' : '마지막 라운드 라이프 제출 단계에서 모든 팀이 제출하면 시작할 수 있습니다'" @click="modal = 'end'">최종장 시작 →</button>
         </template>
       </div>
       <NoticeBar class="head-notice" @open="$emit('notices')" />
       <ul v-if="facts.length" class="facts">
         <li v-for="f in facts" :key="f.label">{{ f.label }} <strong class="mono">{{ f.value }}</strong></li>
       </ul>
-      <p v-if="headNote" class="note">{{ headNote }}</p>
-      <p v-if="status" class="note muted">{{ status }}</p>
+      <div v-if="headNote || status" class="notes">
+        <p v-if="headNote" class="note">{{ headNote }}</p>
+        <p v-if="status" class="note muted">{{ status }}</p>
+      </div>
     </div>
   </div>
+  </Teleport>
 
   <div v-if="resetDone" class="card reset-done">
     <strong>리셋 완료</strong> · 참가자 {{ resetDone.members }}명 · 진행자 {{ resetDone.staff }}명 · 알림 {{ resetDone.events }}건 삭제, 테스트 계정은 같은 PIN 으로 다시 생성.
     <br />
     <template v-if="resetDone.clearedSettings">게임 설정값(최대 인원·초기 재화 등)을 기본값으로 되돌렸습니다 (발행 한도도 기본값 250·200).</template>
-    <template v-else>게임 설정값(최대 인원·초기 재화)은 이전 값을 남겼습니다. "게임 설정" 메뉴에서 수정하세요.</template>
+    <template v-else>게임 설정값(최대 인원·초기 재화)은 이전 값을 남겼습니다. 진행판의 게임 설정에서 수정하세요.</template>
     <button class="secondary small" type="button" @click="resetDone = null">닫기</button>
   </div>
 
   <!-- 입장 현황 -->
-  <div v-if="s.status === 'ready'" class="card">
-      <h2>팀 입장 현황</h2>
-      <table class="tbl">
-        <thead><tr><th>팀</th><th>입장 / 최대</th></tr></thead>
-        <tbody>
-          <tr v-for="(g, i) in groups" :key="g.id">
-            <td><span class="mono letter">{{ teamLetter(i) }}</span> <TeamMark :color="g.color" />{{ g.name }}</td>
-            <td class="mono">{{ lobbyOf(g.id)?.count ?? 0 }} / {{ lobbyOf(g.id)?.capacity ?? 0 }}<span v-if="membersOf(g.id).some((u) => u.isTest)" class="muted"> + 테스트 {{ membersOf(g.id).filter((u) => u.isTest).length }}</span></td>
-          </tr>
-        </tbody>
-      </table>
-      <p class="muted" style="margin: 8px 0 0">
-        팀을 고르지 않은 참가자 {{ view.prep.unassigned }}명<template v-if="view.prep.unassigned"> · 시작하면 비활성 처리됩니다</template>.
-        리더는 시작 후 1라운드 리더 선출 단계에서 지정합니다.
-        팀 이동은 "계정 관리" 메뉴에서 할 수 있습니다.
-      </p>
-  </div>
+  <section v-if="s.status === 'ready'" class="card sec">
+    <div class="head-row">
+      <h3>팀 입장 현황</h3>
+      <p class="big-count mono"><strong>{{ lobbyTotal.count }}</strong> / {{ lobbyTotal.capacity }}명</p>
+    </div>
+    <ul class="lobby">
+      <li v-for="(g, i) in groups" :key="g.id" :class="{ full: (lobbyOf(g.id)?.count ?? 0) >= (lobbyOf(g.id)?.capacity ?? 0) && (lobbyOf(g.id)?.capacity ?? 0) > 0 }">
+        <p class="t"><span class="mono letter">{{ teamLetter(i) }}</span><TeamMark :color="g.color" />{{ g.name.replace(/ 팀$/, '') }}</p>
+        <p class="n mono"><strong>{{ lobbyOf(g.id)?.count ?? 0 }}</strong> / {{ lobbyOf(g.id)?.capacity ?? 0 }}</p>
+        <div class="mini-bar"><span :style="{ width: `${(lobbyOf(g.id)?.capacity ?? 0) ? Math.min(100, ((lobbyOf(g.id)?.count ?? 0) / (lobbyOf(g.id)?.capacity ?? 1)) * 100) : 0}%`, background: teamInk(g.color) ?? g.color }" /></div>
+        <p v-if="membersOf(g.id).some((u) => u.isTest)" class="s">테스트 계정 {{ membersOf(g.id).filter((u) => u.isTest).length }}명 포함</p>
+      </li>
+    </ul>
+    <p class="muted foot">
+      팀 안 고른 참가자 {{ view.prep.unassigned }}명<template v-if="view.prep.unassigned"> (시작하면 비활성)</template> · 팀 이동은 "계정 관리"에서
+    </p>
+  </section>
 
-  <!-- 운명의 카드 (docs/100 N4) -->
-  <div v-if="s.status === 'ready'" class="card">
-      <h2><Icon name="devil" /> 운명의 카드 · 테러리스트 지정</h2>
-      <p class="muted" style="margin: 0 0 6px">
-        팀을 고른 참가자는 천사/악마 중 하나를 고릅니다 (악마 = 테러리스트 후보).
-        <Icon name="angel" /> 천사 <strong>{{ view.spy.counts.sun }}</strong> · <Icon name="devil" /> 악마 <strong>{{ view.spy.counts.moon }}</strong> · 미선택 <strong>{{ view.spy.counts.none }}</strong>
-      </p>
-      <p v-if="!view.spy.candidates.length" class="muted" style="margin: 0">아직 악마를 고른 후보가 없습니다. 후보가 없으면 테러리스트 없이 시작합니다.</p>
-      <template v-else>
-        <table class="tbl">
-          <thead><tr><th>지정</th><th>팀</th><th>후보</th></tr></thead>
-          <tbody>
-            <tr v-for="c in view.spy.candidates" :key="c.userId">
-              <td><input v-model="spyPick" type="checkbox" :value="c.userId" :disabled="busy" /></td>
-              <td><span class="mono letter">{{ letterOfTeam(c.teamId) }}</span> <TeamMark :color="team(c.teamId)?.color ?? ''" />{{ team(c.teamId)?.name }}</td>
-              <td>{{ c.name }}<span v-if="c.isTest" class="muted"> (테스트)</span></td>
-            </tr>
-          </tbody>
-        </table>
-        <div class="row" style="margin-top: 8px">
-          <button class="small" :disabled="busy || !spyDirty" @click="saveSpies">테러리스트 지정 저장 ({{ spyPick.length }}명)</button>
-          <span v-if="view.spy.selected.length" class="muted">저장됨: {{ view.spy.selected.map(nameOf).join(', ') }}</span>
-          <span v-else class="blocker">아직 지정하지 않음</span>
-        </div>
-      </template>
-  </div>
+  <!-- 운명의 카드 (docs/100 N4): 악마를 고른 후보만 나열하고, 그중에서 테러리스트를 지정한다 -->
+  <section v-if="s.status === 'ready'" class="card sec">
+    <div class="head-row">
+      <h3><Icon name="devil" /> 테러리스트 지정</h3>
+      <span class="muted">운명의 카드 {{ view.spy.counts.sun + view.spy.counts.moon }} / {{ view.spy.counts.sun + view.spy.counts.moon + view.spy.counts.none }}명 고름</span>
+    </div>
+    <p class="muted">악마를 고른 후보 {{ view.spy.candidates.length }}명 중에서 지정하세요.</p>
+    <p v-if="!view.spy.candidates.length" class="muted">아직 악마를 고른 사람이 없습니다. 후보가 없으면 테러리스트 없이 시작합니다.</p>
+    <template v-else>
+      <ul class="cands">
+        <li v-for="c in view.spy.candidates" :key="c.userId">
+          <label :class="{ on: spyPick.includes(c.userId) }">
+            <input v-model="spyPick" type="checkbox" :value="c.userId" :disabled="busy" />
+            <span class="nm">{{ c.name }}<span v-if="c.isTest" class="muted"> (테스트)</span></span>
+            <span class="tm"><TeamMark :color="team(c.teamId)?.color ?? ''" />{{ team(c.teamId)?.name }}</span>
+          </label>
+        </li>
+      </ul>
+      <div class="row spy-act">
+        <button :disabled="busy || !spyDirty" @click="saveSpies">지정 저장 ({{ spyPick.length }}명)</button>
+        <span v-if="view.spy.selected.length" class="muted">저장됨: {{ view.spy.selected.map(nameOf).join(', ') }}</span>
+        <span v-else class="blocker">지정해야 시작할 수 있습니다</span>
+      </div>
+    </template>
+  </section>
 
-  <!-- 현재 단계: 지금 단계에서 할 일만 -->
-  <div v-if="s.status !== 'setup' && s.status !== 'ready'" class="card stage">
-    <ol v-if="s.opening" class="opening">
-      <li v-for="o in OPENING_STEPS" :key="o" :class="{ cur: o === s.opening }">{{ OPENING_LABELS[o] }}</li>
-    </ol>
+  <!-- 현재 단계: 지금 단계에서 할 일만. 한 가지 일 = 카드 하나. 꼭 해야 하는 일은 진한 테두리(stage).
+       순서: 관리자가 골라야 하는 카드(pick) → 입력 카드 → 참고 카드(info) -->
+  <template v-if="s.status !== 'setup' && s.status !== 'ready'">
+    <div v-if="s.opening" class="card stage sec">
+      <ol class="opening">
+        <li v-for="o in OPENING_STEPS" :key="o" :class="{ cur: o === s.opening }">{{ OPENING_LABELS[o] }}</li>
+      </ol>
+    </div>
 
     <!-- 리더 선출 -->
-    <template v-if="round === 'leader'">
+    <section v-if="round === 'leader'" class="card stage sec">
       <h3>{{ s.day > 1 ? '리더 재신임' : '리더 선정' }} <span v-if="s.leadersDone" class="badge on">모든 팀 완료</span></h3>
       <div class="muted">{{ s.day > 1 ? '논의 결과를 입력하세요. 재신임이면 고르지 않고 재신임을 누르세요.' : '팀이 협의한 리더를 알려 오면 팀별로 지정하세요.' }}</div>
       <table class="tbl">
@@ -448,127 +471,127 @@ const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(t
               <span v-else class="row">
                 <span v-if="t.election.status === 'done'" class="badge on">지정 완료</span>
                 <span v-else class="badge warn">대기</span>
-                <select v-model="leaderPick[t.teamId]">
+                <select v-model="leaderPick[t.teamId]" class="leader-select">
                   <option :value="undefined" disabled>{{ (s.day > 1 || t.election.status === 'done') && leaderOf(t.teamId) ? `현재: ${leaderOf(t.teamId)?.name}` : '리더 선택' }}</option>
                   <option v-for="u in membersOf(t.teamId)" :key="u.id" :value="u.id">{{ u.name }}{{ s.day > 1 && u.isLeader ? ' (현재 리더)' : '' }}</option>
                 </select>
-                <button class="small" :disabled="busy || (!leaderPick[t.teamId] && (s.day === 1 || !leaderOf(t.teamId))) || membersOf(t.teamId).length === 1" :title="leaderPick[t.teamId] ? '' : '고르지 않으면 현재 리더를 그대로 확정합니다'" @click="designate(t.teamId)">{{ s.day === 1 ? '리더 지정' : leaderPick[t.teamId] ? '교체' : '재신임' }}</button>
+                <button class="small" :disabled="busy || (!leaderPick[t.teamId] && (s.day === 1 || !leaderOf(t.teamId))) || membersOf(t.teamId).length === 1" :title="leaderPick[t.teamId] && leaderPick[t.teamId] !== leaderOf(t.teamId)?.id ? '' : '현재 리더를 그대로 확정합니다'" @click="designate(t.teamId)">{{ s.day === 1 ? '리더 지정' : leaderPick[t.teamId] && leaderPick[t.teamId] !== leaderOf(t.teamId)?.id ? '교체' : '재신임' }}</button>
               </span>
             </td>
           </tr>
         </tbody>
       </table>
-    </template>
+    </section>
 
     <!-- 생산 -->
-    <p v-if="round === 'production'" class="muted">
-      오프라인 미니게임 결과를 아래 "팀 재화" 카드에서 "생산" 으로 입력하세요. 팀 선택 칸이 고른 팀의 색으로 바뀌니 팀을 확인하고 적용하세요.
-    </p>
+    <section v-if="round === 'production'" class="card stage sec">
+      <h3><Icon name="trophy" /> 생산게임 결과 <span class="muted">팀마다 미니게임이 끝나면 입력 · 라운드마다 팀당 1번</span></h3>
+      <ProductionForm :groups="groups" />
+    </section>
 
-    <p v-if="round === 'last_issue'" class="muted">
-      화이트와 골드 리더가 휴대폰에서 마지막 발행을 합니다. 발행량은 최종장 결과 전까지 공개되지 않습니다.
-    </p>
+    <section v-if="round === 'last_issue'" class="card stage sec">
+      <h3><Icon name="lock" /> 마지막 발행</h3>
+      <p class="muted">화이트와 골드 리더가 휴대폰에서 마지막 발행을 합니다. 발행량은 최종장 결과 전까지 공개되지 않습니다.</p>
+      <ul class="issue-rows">
+        <li v-for="k in (['gem', 'gold'] as const)" :key="k">
+          <span class="who"><TeamMark :color="team(issuerId(k) ?? 0)?.color ?? ''" />{{ team(issuerId(k) ?? 0)?.name ?? (k === 'gem' ? '화이트 팀' : '골드 팀') }} · <Icon :name="k" /> {{ RESOURCE_LABELS[k] }}</span>
+          <span v-if="view.issues?.issuedToday[k]" class="badge on">발행함 · {{ view.issues?.lastRound?.[k] ?? 0 }}개</span>
+          <span v-else class="badge warn">아직 안 함</span>
+          <span class="muted">남은 한도 {{ view.issues?.remaining[k] ?? '-' }}개</span>
+        </li>
+      </ul>
+    </section>
 
     <!-- 거래 -->
-    <template v-if="round === 'trade'">
+    <section v-if="round === 'trade'" class="card sec" :class="warToday ? 'info' : 'stage'">
       <h3><Icon name="aid" /> 거래 <span class="muted">입력하면 바로 체결됩니다</span></h3>
       <div v-if="warToday" class="muted"><Icon name="war" /> 전쟁으로 이번 라운드 거래가 종료되었습니다.</div>
       <form v-else class="trade-form" @submit.prevent="!tradeProblem && (modal = 'trade')">
-        <div class="row">
-          <TeamPicker v-model="tradeForm.from" :teams="groups" :disabled-id="tradeForm.to" />
-          ↔
-          <TeamPicker v-model="tradeForm.to" :teams="groups" :disabled-id="tradeForm.from" />
-          <span class="muted"><Icon name="credit" /> 크레딧 1개 부담:</span>
-          <label v-for="id in [tradeForm.from, tradeForm.to]" :key="id ?? 0" class="row" style="gap: 4px">
-            <input v-model="tradeForm.creditPayer" type="radio" :value="id" :disabled="!id" /> {{ id ? team(id)?.name : '-' }}
-          </label>
+        <!-- 두 팀을 좌우로: 팀 고르기 → 그 팀이 주는 것 (보유량은 칸 아래) -->
+        <div class="trade-sides">
+          <template v-for="(side, i) in (['from', 'to'] as const)" :key="side">
+            <div v-if="i === 1" class="swap" aria-hidden="true">⇄</div>
+            <section class="side-box" :class="{ picked: !!tradeForm[side] }" :style="teamStyle(tradeForm[side])">
+              <p class="side-title">{{ side === 'from' ? '팀 A' : '팀 B' }}</p>
+              <TeamPicker v-model="tradeForm[side]" :teams="groups" :disabled-id="side === 'from' ? tradeForm.to : tradeForm.from" />
+              <p class="gives"><TeamMark v-if="tradeForm[side]" :color="team(tradeForm[side]!)?.color ?? ''" />{{ tradeForm[side] ? `${josa(team(tradeForm[side]!)?.name ?? '', '이/가')} 주는 것` : '주는 것' }}</p>
+              <div class="give-grid">
+                <label v-for="k in RESOURCE_KINDS" :key="k" class="give">
+                  <span class="k"><Icon :name="k" /> {{ RESOURCE_LABELS[k] }}</span>
+                  <input v-model.number="tradeForm[side === 'from' ? 'fromOffer' : 'toOffer'][k]" type="number" min="0" :title="`보유 ${teamRes(tradeForm[side])[k]}`" />
+                  <span class="have mono">{{ tradeForm[side] ? `보유 ${teamRes(tradeForm[side])[k]}` : '' }}</span>
+                </label>
+              </div>
+            </section>
+          </template>
         </div>
-        <div v-for="side in (['from', 'to'] as const)" :key="side" class="row offer-row" :style="teamStyle(tradeForm[side])">
-          <span class="who"><TeamMark :color="team(tradeForm[side] ?? 0)?.color ?? ''" />{{ tradeForm[side] ? josa(team(tradeForm[side]!)?.name ?? '', '이/가') : (side === 'from' ? '팀 A가' : '팀 B가') }} 줌</span>
-          <label v-for="k in RESOURCE_KINDS" :key="k" class="row" style="gap: 4px">
-            {{ RESOURCE_LABELS[k] }} <input v-model.number="tradeForm[side === 'from' ? 'fromOffer' : 'toOffer'][k]" type="number" min="0" style="width: 4.5em" :title="`보유 ${teamRes(tradeForm[side])[k]}`" />
-          </label>
-          <span class="muted">보유: {{ offerText(teamRes(tradeForm[side])) }}</span>
-        </div>
-        <div class="row">
-          <button type="submit" :disabled="busy || !!tradeProblem">거래 처리</button>
+        <div class="trade-foot">
+          <template v-if="tradeForm.from && tradeForm.to">
+            <span class="muted"><Icon name="credit" /> 수수료 1개</span>
+            <div class="seg" role="group">
+              <button v-for="id in [tradeForm.from, tradeForm.to]" :key="id" type="button" :aria-pressed="tradeForm.creditPayer === id" @click="tradeForm.creditPayer = id"><TeamMark :color="team(id)?.color ?? ''" />{{ team(id)?.name.replace(/ 팀$/, '') }} 부담</button>
+            </div>
+          </template>
+          <span class="sp" />
           <span v-if="tradeProblem" class="muted">{{ tradeProblem }}</span>
+          <button type="submit" :disabled="busy || !!tradeProblem">거래 처리</button>
         </div>
       </form>
-    </template>
+    </section>
 
-    <!-- 전쟁: 오늘 비용·진행 중 전쟁 결과 지정·다음 날 비용 -->
-    <template v-if="round === 'trade' || warActive">
-      <h3><Icon name="war" /> 전쟁</h3>
-      <p class="muted" style="margin-top: 0">
-        이번 라운드({{ s.day }}라운드)
-        <template v-if="!view.war.todayAllowed"><strong class="error">전쟁 금지</strong> (리더 협의 결과 · 선포 불가)</template>
-        <template v-else>선포 비용: <strong>{{ costText(view.war.todayCost) }}</strong> · 거래 단계에서 리더가 선포하면 즉시 시작 (라운드당 1회, 먼저 선포한 팀만). 낸 비용은 소멸합니다.</template>
-      </p>
+    <!-- 전쟁: 오늘 비용 · 진행 중 전쟁 결과 지정 -->
+    <section v-if="round === 'trade' || warActive" class="card sec" :class="warActive ? 'war-on pick' : 'info'">
+      <h3 v-if="warToday && warActive"><Icon name="war" /> 전쟁 중: {{ team(warToday.attacker)?.name }} → {{ team(warToday.defender)?.name }} <span class="muted">비용 {{ costText(warToday.cost) }}</span></h3>
+      <h3 v-else><Icon name="war" /> 전쟁</h3>
       <div v-if="warToday && warActive" class="war-active">
-        <div><strong><Icon name="war" /> 전쟁 중: {{ team(warToday.attacker)?.name }} → {{ team(warToday.defender)?.name }}</strong> <span class="muted">(비용 {{ costText(warToday.cost) }})</span></div>
-        <div class="muted">오프라인 게임 결과를 지정하세요. 결과를 넣으면 재화가 넘어가고, 다음 단계를 누르면 리더 협의로 넘어갑니다.</div>
-        <div class="row" style="margin-top: 6px">
-          <button class="danger" :disabled="busy" @click="askWar('attacker')">{{ team(warToday.attacker)?.name }} 승리</button>
-          <button class="danger" :disabled="busy" @click="askWar('defender')">{{ team(warToday.defender)?.name }} 승리</button>
+        <p class="muted">오프라인 게임 결과를 지정하세요. 결과를 넣으면 재화가 넘어가고, 다음 단계를 누르면 리더 협의로 넘어갑니다.</p>
+        <div class="row war-pick">
+          <button class="team-apply" :style="teamStyle(warToday.attacker)" :disabled="busy" @click="askWar('attacker')">{{ team(warToday.attacker)?.name }} 승리</button>
+          <button class="team-apply" :style="teamStyle(warToday.defender)" :disabled="busy" @click="askWar('defender')">{{ team(warToday.defender)?.name }} 승리</button>
         </div>
       </div>
       <p v-else-if="warToday">
         이번 라운드 전쟁: {{ team(warToday.attacker)?.name }} → {{ team(warToday.defender)?.name }} · <strong>{{ team(warWinner(warToday))?.name }} 승리</strong>
         <span v-if="warToday.spoils" class="muted"> · 전리품 {{ offerText(warToday.spoils) }}</span>
       </p>
-      <p v-else class="muted">이번 라운드에 선포된 전쟁 없음</p>
-    </template>
+      <p v-else-if="!view.war.todayAllowed" class="muted"><strong class="error">이번 라운드 전쟁 금지</strong> (리더 협의 결과)</p>
+      <p v-else class="muted">선포된 전쟁 없음 · 선포 비용 {{ costText(view.war.todayCost) }}</p>
+    </section>
 
-    <!-- 다음 라운드 전쟁 비용: 정해야 다음 라운드로 넘어간다 -->
-    <div v-if="!isLastDay && (round === 'council' || round === 'life')" class="row war-cost">
-      <span>{{ s.day + 1 }}라운드 선포 비용</span>
-      <label v-for="k in WAR_COST_KINDS" :key="k">{{ RESOURCE_LABELS[k] }} <input v-model.number="nextCost[k]" type="number" min="0" /></label>
-      <button class="secondary small" :disabled="busy" @click="saveNextCost">저장</button>
-      <span v-if="view.war.nextCost" class="muted">저장됨: {{ costText(view.war.nextCost) }}</span>
-      <span v-else class="blocker">아직 정하지 않음 — 정해야 다음 라운드로 넘어갑니다</span>
-    </div>
+    <!-- 리더 협의: 원조 -->
+    <section v-if="round === 'council'" class="card stage sec">
+      <h3><Icon name="aid" /> 대가 없는 원조 <span class="muted">라운드마다 전체 1번 · 리더 4명 중 3명 찬성</span></h3>
+      <AidForm :groups="groups" />
+    </section>
 
-    <!-- 전쟁 제재 금지 on/off: 리더 협의 단계 전에 정한다. 켜면 협의 안건에서 전쟁 제재가 빠진다. 라운드마다 OFF 로 돌아간다 -->
-    <div v-if="round && !isLastDay" class="row war-cost">
-      <span><Icon name="war" /> 전쟁 제재 금지</span>
-      <button class="small" :class="{ secondary: view.war.sanctionOff }" :disabled="busy || round === 'council'" @click="setSanctionOff(false)">OFF · 안건 포함 (기본)</button>
-      <button class="small" :class="{ secondary: !view.war.sanctionOff }" :disabled="busy || round === 'council'" @click="setSanctionOff(true)">ON · 안건 제외</button>
-      <span class="muted">
-        <template v-if="round === 'council'">리더 협의 중에는 바꿀 수 없습니다 · </template>
-        {{ view.war.sanctionOff ? '리더 협의 안건에 전쟁 제재가 없습니다 (전쟁은 항상 가능)' : '리더 3명 이상이 제재에 찬성하면 다음 라운드 전쟁 금지를 걸 수 있습니다' }}
-      </span>
-    </div>
+    <!-- 리더 협의: 마지막 라운드 필수 안건 -->
+    <section v-if="lifeVoteOpen" class="card stage sec pick">
+      <h3><Icon name="scroll" /> 필수 안건: 라이프 투표권</h3>
+      <p class="muted">기본으로 반영합니다 (팀마다 남은 라이프 수만큼 무작위로 뽑힌 사람이 최종 투표에서 1표 더, 1인 1장). 리더 3명이 반대하면 "미반영"을 누르세요.</p>
+      <div class="row decide">
+        <button type="button" class="secondary" :class="{ chosen: s.lifeVoteSet && s.lifeVote }" :disabled="busy" @click="setLifeVote(true)">반영으로 확정</button>
+        <button type="button" class="secondary" :class="{ chosen: s.lifeVoteSet && !s.lifeVote }" :disabled="busy" @click="setLifeVote(false)">미반영으로 확정 (반대 3표)</button>
+      </div>
+      <p class="muted">{{ s.lifeVoteSet ? `확정·공지됨: ${s.lifeVote ? '반영' : '미반영'}` : '아직 확정하지 않았습니다. 입력하지 않으면 반영입니다.' }}</p>
+    </section>
 
-    <!-- 리더간 협의 -->
-    <template v-if="round === 'council'">
-      <h3><Icon name="council" /> 리더 협의</h3>
-      <p class="muted" style="margin: 0">
-        <Icon name="aid" /> 대가 없는 원조는 아래 "팀 재화" 카드의 원조 입력으로 처리합니다 (라운드마다 전체 1번{{ view.aidsToday.length ? ' · 이번 라운드 처리됨' : '' }}. 리더 4명 중 3명 찬성).
-      </p>
-      <div v-if="!isLastDay && !view.war.sanctionOff" class="life-vote" style="margin-top: 8px">
-        <div><strong><Icon name="war" /> {{ s.day + 1 }}라운드 전쟁 제재</strong></div>
-        <div class="muted">기본은 허용입니다. 리더 3명 이상이 제재에 찬성하면(오프라인 투표) "전쟁 금지"를 누르세요. 다음 라운드에는 어느 팀도 전쟁을 선포할 수 없습니다.</div>
-        <div class="row" style="margin-top: 6px">
-          <button :class="{ secondary: view.war.nextAllowed === false }" :disabled="busy" @click="setWarAllowed(true)">허용 (기본)</button>
-          <button :class="{ secondary: view.war.nextAllowed !== false }" :disabled="busy" @click="setWarAllowed(false)">제재 3표 이상 · 전쟁 금지</button>
-          <span class="muted">지금: <strong>{{ view.war.nextAllowed === false ? '전쟁 금지' : '허용' }}</strong><template v-if="view.war.nextAllowed != null"> (전체 공지됨)</template></span>
+    <!-- 리더 협의: 다음 라운드 전쟁 제재 -->
+    <section v-if="round === 'council' && !isLastDay" class="card sec pick" :class="{ stage: !view.war.sanctionOff && view.war.nextAllowed == null }">
+      <h3><Icon name="war" /> {{ s.day + 1 }}라운드 전쟁 제재</h3>
+      <template v-if="!view.war.sanctionOff">
+        <p class="muted">리더 협의(오프라인 투표) 결과를 확정하세요. 리더 3명 이상이 제재에 찬성하면 "전쟁 금지", 아니면 "허용"입니다. 전쟁 금지면 다음 라운드에는 어느 팀도 전쟁을 선포할 수 없습니다.</p>
+        <!-- 협의 결과 확정 버튼 (누르면 확인 후 전체 공지). 위쪽 안건 포함/제외 선택과 헷갈리지 않게 따로 떨어진 버튼으로 -->
+        <div class="row decide">
+          <button type="button" class="secondary" :class="{ chosen: view.war.nextAllowed === true }" :disabled="busy" @click="setWarAllowed(true)">허용으로 확정</button>
+          <button type="button" class="secondary" :class="{ chosen: view.war.nextAllowed === false }" :disabled="busy" @click="setWarAllowed(false)">전쟁 금지로 확정 (제재 3표 이상)</button>
         </div>
-      </div>
-      <p v-else-if="!isLastDay" class="muted" style="margin: 6px 0 0"><Icon name="war" /> 전쟁 제재 금지가 켜져 있어 이번 협의에는 전쟁 제재 안건이 없습니다 ({{ s.day + 1 }}라운드 전쟁 가능).</p>
-    </template>
-    <div v-if="lifeVoteOpen" class="life-vote">
-      <div><strong><Icon name="scroll" /> 필수 안건: 라이프 투표권</strong></div>
-      <div class="muted">기본으로 반영합니다 (팀마다 남은 라이프 수만큼 무작위로 뽑힌 사람이 최종 투표에서 1표 더, 1인 1장). 리더 3명이 반대하면 "미반영"을 누르세요.</div>
-      <div class="row" style="margin-top: 6px">
-        <button :class="{ secondary: !s.lifeVote }" :disabled="busy" @click="setLifeVote(true)">반영 (기본)</button>
-        <button :class="{ secondary: s.lifeVote }" :disabled="busy" @click="setLifeVote(false)">반대 3표 · 미반영</button>
-        <span class="muted">지금: <strong>{{ s.lifeVote ? '반영' : '미반영' }}</strong></span>
-      </div>
-    </div>
+        <p class="muted">{{ view.war.nextAllowed == null ? '아직 확정하지 않았습니다. 둘 중 하나를 확정해야 다음 단계로 넘어갑니다.' : `확정·공지됨: ${view.war.nextAllowed ? '허용' : '전쟁 금지'}` }}</p>
+      </template>
+      <p v-else class="muted">이번 리더 협의에는 전쟁 제재 안건을 넣지 않았습니다 ({{ s.day + 1 }}라운드 전쟁 가능).</p>
+    </section>
 
     <!-- 라이프 제출 -->
-    <template v-if="round === 'life'">
+    <section v-if="round === 'life'" class="card stage sec">
       <h3>라이프 제출 <span v-if="s.livesDone" class="badge on">모든 팀 제출</span></h3>
       <table class="tbl">
         <tbody>
@@ -576,7 +599,7 @@ const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(t
             <td><TeamMark :color="team(t.teamId)?.color ?? ''" />{{ team(t.teamId)?.name }}</td>
             <td>
               <template v-if="t.lifeSubmission">
-                제출 · 생존 {{ t.lifeSubmission.saved.map((id) => t.lifeSubmission!.names[id] ?? nameOf(id)).join(', ') }}
+                <span class="badge on">제출</span> 생존 {{ t.lifeSubmission.saved.map((id) => t.lifeSubmission!.names[id] ?? nameOf(id)).join(', ') }}
                 <template v-if="t.lifeSubmission.livesUsed">(라이프 {{ t.lifeSubmission.livesUsed }})</template>
                 <template v-else>(라이프 0 · 1명 생존)</template>
                 <span v-if="t.lifeSubmission.selfEliminated" class="badge">리더 자진 탈락</span>
@@ -584,20 +607,43 @@ const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(t
               </template>
               <span v-else-if="t.activeMembers === 0" class="muted">활성 팀원 없음</span>
               <span v-else-if="isLifeExempt(t.activeMembers, t.resources.life)" class="muted">제출 불필요 · 팀원 1명 · 라이프 0 (자동 생존)</span>
-              <span v-else class="muted">미제출 (라이프 {{ t.resources.life }} · 팀원 {{ t.activeMembers }}명)</span>
+              <span v-else><span class="badge warn">미제출</span> <span class="muted">라이프 {{ t.resources.life }} · 팀원 {{ t.activeMembers }}명</span></span>
             </td>
           </tr>
         </tbody>
       </table>
-    </template>
+    </section>
+
+    <!-- 다음 라운드 전쟁 비용: 정해야 다음 라운드로 넘어간다 -->
+    <section v-if="!isLastDay && (round === 'council' || round === 'life')" class="card sec" :class="view.war.nextCost ? 'info' : 'stage pick'">
+      <h3><Icon name="war" /> {{ s.day + 1 }}라운드 전쟁 선포 비용 <span v-if="view.war.nextCost" class="badge on">저장됨</span></h3>
+      <div class="row war-cost">
+        <label v-for="k in WAR_COST_KINDS" :key="k" class="num"><Icon :name="k" /> {{ RESOURCE_LABELS[k] }} <input v-model.number="nextCost[k]" type="number" min="0" /></label>
+        <button class="secondary small" :disabled="busy" @click="saveNextCost">저장</button>
+        <span v-if="view.war.nextCost" class="muted">{{ costText(view.war.nextCost) }}</span>
+        <span v-else class="blocker">정해야 다음 라운드로 넘어갑니다</span>
+      </div>
+    </section>
+
+    <!-- 리더 협의에 전쟁 제재 안건 포함 여부: 리더 협의 전에 정한다. 라운드마다 "포함"으로 돌아간다 -->
+    <section v-if="(round === 'leader' || round === 'production' || round === 'trade') && !isLastDay" class="card sec pick">
+      <div class="row sanction-row">
+        <h3><Icon name="war" /> 리더 협의에 전쟁 제재 안건 포함 여부</h3>
+        <div class="seg" role="group">
+          <button type="button" :aria-pressed="!view.war.sanctionOff" :disabled="busy" @click="setSanctionOff(false)">포함 (기본)</button>
+          <button type="button" :aria-pressed="view.war.sanctionOff" :disabled="busy" @click="setSanctionOff(true)">안 함</button>
+        </div>
+      </div>
+      <p class="muted">{{ view.war.sanctionOff ? '이번 리더 협의에서는 전쟁 제재를 다루지 않습니다. 다음 라운드도 전쟁 가능.' : '이번 리더 협의에서 전쟁 제재를 다룹니다. 리더 3명 이상이 찬성하면 다음 라운드 전쟁을 금지합니다.' }} 리더 협의 전까지 바꿀 수 있고, 라운드마다 "포함"으로 돌아갑니다.</p>
+    </section>
 
     <!-- 최종장 (docs/100 N2) -->
-    <FinalControl v-if="s.status === 'final' && s.final" :groups="groups" />
-    <ResultsBoard v-else-if="s.status === 'ended' && s.final" :final="s.final" :results="s.results" />
+    <section v-if="s.status === 'final' && s.final" class="card stage sec"><FinalControl :groups="groups" /></section>
+    <section v-else-if="s.status === 'ended' && s.final" class="card sec"><ResultsBoard :final="s.final" :results="s.results" /></section>
+  </template>
 
-  </div>
-
-  <!-- 테러리스트 · 이주 -->
+  <!-- 테러리스트 · 이주: 진행판 오른쪽 참고 칸(#admin-side)으로 보낸다 -->
+  <Teleport defer to="#admin-side">
     <!-- 테러리스트 현황 (관리자만) -->
     <div v-if="(s.status === 'running' || s.status === 'final') && view.spy.spies.length" class="card late">
       <h2><Icon name="spy" /> 테러리스트 <span class="muted">관리자만 보입니다 · 시작 이후 탈락자 1명당 5천 원 (최대 5만 원)</span></h2>
@@ -617,16 +663,18 @@ const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(t
     <div v-if="s.status === 'running' && s.day >= migrationOpenFrom" class="card late">
       <h2><Icon name="migration" /> 이주 <span class="muted">{{ migrationOpenFrom }}라운드부터 · 라이프 제출 단계 제외</span></h2>
       <p v-if="!view.migrations.pending.length" class="muted" style="margin: 0">대기 중인 이주 신청 없음</p>
-      <table v-else class="tbl">
-        <tbody>
-          <tr v-for="m in view.migrations.pending" :key="m.id">
-            <td><strong>{{ m.userName }}</strong></td>
-            <td><TeamMark :color="team(m.fromTeamId)?.color ?? ''" />{{ team(m.fromTeamId)?.name }} → <TeamMark :color="team(m.toTeamId)?.color ?? ''" />{{ team(m.toTeamId)?.name }}</td>
-            <td class="muted">받는 팀 리더 수락 대기</td>
-            <td><button class="secondary small" :disabled="busy" @click="cancelMigration(m.id)">강제 취소</button></td>
-          </tr>
-        </tbody>
-      </table>
+      <ul v-else class="migr">
+        <li v-for="m in view.migrations.pending" :key="m.id">
+          <div class="m1">
+            <strong>{{ m.userName }}</strong>
+            <span class="path"><TeamMark :color="team(m.fromTeamId)?.color ?? ''" />{{ team(m.fromTeamId)?.name.replace(/ 팀$/, '') }} → <TeamMark :color="team(m.toTeamId)?.color ?? ''" />{{ team(m.toTeamId)?.name.replace(/ 팀$/, '') }}</span>
+          </div>
+          <div class="m2">
+            <span class="badge warn">받는 팀 리더 수락 대기</span>
+            <button class="secondary small" :disabled="busy" @click="cancelMigration(m.id)">강제 취소</button>
+          </div>
+        </li>
+      </ul>
       <details v-if="view.migrations.recent.length" style="margin-top: 6px">
         <summary class="muted">최근 처리 {{ view.migrations.recent.length }}건</summary>
         <ul class="feed">
@@ -639,19 +687,27 @@ const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(t
     </div>
 
 
-    <!-- 왼쪽 메뉴 화면으로 보낸다 -->
+  </Teleport>
+
+    <!-- 메뉴 화면(덮개)으로 보낸다 -->
   <Teleport defer to="#admin-left">
   <!-- 게임 관리 메뉴: 게임을 되돌리거나 지우는 동작은 여기에만 둔다 -->
-  <div v-show="menu === 'manage'" class="card">
+  <div v-show="menu === 'manage'" class="card manage">
     <h2>게임 관리</h2>
-    <!-- 시작 후에는 게임 설정 카드가 숨으므로 여기서 테스트 모드를 끌 수 있게 (docs/101) -->
-    <div v-if="s.status === 'running' || s.status === 'final' || s.status === 'ended'" class="row" style="margin-top: 8px">
-      <TabLoginToggle />
-    </div>
-    <div class="row" style="margin-top: 12px">
-      <button v-if="s.status === 'ready'" class="secondary" :disabled="busy" @click="modal = 'revert'">설정으로 되돌리기</button>
-      <button class="secondary" :disabled="busy" @click="clearSettings = false; modal = 'reset'">게임 리셋</button>
-    </div>
+    <ul class="settings">
+      <!-- 시작 후에는 게임 설정 카드가 숨으므로 여기서 테스트 모드를 끌 수 있게 (docs/101) -->
+      <li v-if="s.status === 'running' || s.status === 'final' || s.status === 'ended'">
+        <TabLoginToggle />
+      </li>
+      <li v-if="s.status === 'ready'">
+        <div class="txt"><strong>설정으로 되돌리기</strong><span class="muted">참가자가 팀을 고를 수 없게 됩니다. 이미 고른 팀과 PIN 은 남습니다.</span></div>
+        <button class="secondary small" :disabled="busy" @click="modal = 'revert'">되돌리기</button>
+      </li>
+      <li>
+        <div class="txt"><strong>게임 리셋</strong><span class="muted">참가자·진행자 계정과 모든 기록·알림을 지우고 설정 단계로 돌아갑니다. 되돌릴 수 없습니다.</span></div>
+        <button class="small danger" :disabled="busy" @click="clearSettings = false; modal = 'reset'">리셋</button>
+      </li>
+    </ul>
   </div>
   </Teleport>
 
@@ -661,7 +717,7 @@ const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(t
       :message="modalText.message"
       :confirm-label="modal === 'reset' ? '리셋' : modal === 'end' ? '최종장 시작' : modal === 'start' ? '세팅 완료' : modal === 'war' ? '결과 확정' : modal === 'trade' ? '거래 진행' : '확인'"
       cancel-label="닫기"
-      :danger="modal === 'reset' || modal === 'end' || modal === 'war'"
+      :danger="modal === 'reset'"
       :busy="busy"
       @confirm="onConfirm"
       @cancel="modal = null"
@@ -677,38 +733,66 @@ const teamStyle = (id: number | null) => (id && team(id) ? { '--team': teamInk(t
 <style scoped>
 h3 { font-size: 0.95rem; margin: 16px 0 6px; font-weight: 600; }
 .ctrl { position: sticky; top: 0; z-index: 20; margin-bottom: 12px; background: var(--bg); }
-.ctrl-head { display: grid; grid-template-columns: 1fr auto; gap: 12px 16px; align-items: center; margin-bottom: 0; padding: 18px 20px; background: #111113; color: #fff; box-shadow: 0 12px 28px -16px rgba(8, 8, 8, 0.5); }
+/*
+ * 상태판 (넓은 화면): 한 줄에 [라운드·단계 이름] [진행 순서 타임라인] [남은 시간] [다음 버튼],
+ * 아래 줄에 [최근 알림] [참가자 수], 넘어가지 못하는 이유는 맨 아래 빨간 줄.
+ * GamePhaseBar 의 칸들을 display: contents 로 풀어 이 격자에 직접 놓는다
+ */
+.ctrl-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    'day    steps  time acts'
+    'title  steps  time acts'
+    'notice notice facts facts'
+    'note   note   note note';
+  gap: 0 28px;
+  align-items: center;
+  margin-bottom: 0;
+  padding: 18px 22px 16px;
+  background: #111113;
+  color: #fff;
+  box-shadow: 0 12px 28px -16px rgba(8, 8, 8, 0.5);
+}
 .ctrl-head :deep(.muted) { color: #b0b4ba; }
-.where :deep(.now strong) { font-family: var(--font-display); font-weight: 400; font-size: 2.4rem; line-height: 1.12; letter-spacing: -0.065em; color: #fff; }
-.where :deep(.day) { flex-basis: 100%; color: #b0b4ba; }
-.where :deep(.time) { font-size: 2rem; color: #fff; }
+.where, .where :deep(.phase-bar), .where :deep(.now) { display: contents; }
+.where :deep(.day) { grid-area: day; align-self: end; font-size: 0.9rem; color: #b0b4ba; white-space: nowrap; }
+.where :deep(.now > .muted) { grid-area: day; align-self: end; font-size: 0.9rem; }
+.where :deep(.now strong), .where .label strong { grid-area: title; align-self: start; font-family: var(--font-display); font-weight: 400; font-size: 2.6rem; line-height: 1.1; letter-spacing: -0.065em; color: #fff; white-space: nowrap; }
+.where .label { display: contents; }
+.where .label .muted { grid-area: day; align-self: end; font-size: 0.9rem; }
+.where :deep(.time) { grid-area: time; justify-self: end; margin: 0; font-size: 2.4rem; font-weight: 600; color: #fff; }
 .where :deep(.time.warn) { color: #ff8a7a; }
-.where :deep(.steps) { background: rgba(255, 255, 255, 0.1); }
-.where :deep(.steps li), .where :deep(.steps li.past) { color: #8d9096; }
-.where :deep(.steps li.cur) { background: #fff; color: var(--ink); box-shadow: none; }
+.where :deep(.time.over) { font-size: 1rem; font-weight: 600; color: #b0b4ba; padding: 4px 12px; border-radius: 999px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25); }
+/* 진행 순서: 탭 대신 점과 선으로 잇는 타임라인 */
+.where :deep(.steps) { grid-area: steps; display: flex; align-items: center; width: auto; margin: 0; padding: 0; background: none; border-radius: 0; }
+.where :deep(.steps li) { display: flex; flex: 1 1 0; align-items: center; gap: 8px; min-width: 0; padding: 0; background: none; box-shadow: none; border: 0; color: #6f7278; font-size: 0.92rem; font-weight: 600; white-space: nowrap; }
+.where :deep(.steps li:last-child) { flex: none; }
+.where :deep(.steps li::before) { content: ''; flex: none; width: 10px; height: 10px; border-radius: 50%; box-shadow: inset 0 0 0 2px #4a4d53; }
+.where :deep(.steps li:not(:last-child)::after) { content: ''; flex: 1; min-width: 12px; height: 2px; margin-right: 8px; border-radius: 1px; background: #2f3136; }
+.where :deep(.steps li.past) { color: #9a9da3; }
+.where :deep(.steps li.past::before) { background: #9a9da3; box-shadow: none; }
+.where :deep(.steps li.past::after) { background: #6f7278; }
+.where :deep(.steps li.cur) { background: none; color: #fff; }
+.where :deep(.steps li.cur::before) { width: 12px; height: 12px; background: #fff; box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.16); }
+.acts { grid-area: acts; display: flex; gap: 8px; }
 .acts button:not(.danger):not(.secondary) { background: #fff; color: var(--ink); }
 .acts button:not(.danger):not(.secondary):hover { background: #e9e8e3; }
 .acts button.secondary { background: none; color: #fff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35); }
+.head-notice { grid-area: notice; margin-top: 14px; }
 .head-notice.notice-bar, .head-notice.notice-bar:hover { background: rgba(255, 255, 255, 0.08); color: #fff; box-shadow: none; }
 .head-notice :deep(.more), .head-notice .more { color: #b0b4ba; }
-.facts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0; padding: 8px 0 0; list-style: none; border-top: 1px solid rgba(255, 255, 255, 0.14); color: #b0b4ba; font-size: 0.93rem; }
+.facts { grid-area: facts; justify-self: end; display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 14px 0 0; padding: 0; list-style: none; color: #b0b4ba; font-size: 0.93rem; white-space: nowrap; }
 .facts strong { color: #fff; }
-.where { min-width: 0; }
-.where .label { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin: 0; }
-.where .label strong { color: #fff; font-family: var(--font-display); font-weight: 400; font-size: 2.4rem; line-height: 1.12; letter-spacing: -0.065em; }
-.where :deep(.phase-bar) { padding: 0; margin: 0; background: none; box-shadow: none; }
-.where :deep(.now) { gap: 2px 10px; padding-bottom: 0; }
-.where :deep(.steps) { margin-top: 8px; }
-.head-notice { grid-column: 1 / -1; }
-.acts { display: flex; gap: 8px; }
-/* 마지막 라운드는 버튼이 둘이라 세로로 쌓아 왼쪽 단계 표시 자리를 지킨다 */
+/* 마지막 라운드는 버튼이 둘이라 세로로 쌓는다 */
 .acts.stack { flex-direction: column; }
-.note { grid-column: 1 / -1; margin: 0; color: #ff9c8f; font-size: 0.93rem; font-weight: 600; }
+.notes { grid-area: note; display: flex; flex-wrap: wrap; gap: 2px 16px; margin-top: 10px; }
+.note { margin: 0; color: #ff9c8f; font-size: 0.93rem; font-weight: 600; }
 .note.muted { color: #b0b4ba; font-weight: 500; }
 .stage { box-shadow: 0 0 0 2px var(--ink); }
 .stage > :first-child { margin-top: 0; }
-.stage h3 { font-size: 1.13rem; font-weight: 700; }
-.late { order: 2; }
+.sec h3 { font-size: 1.13rem; font-weight: 700; }
+.late { order: 3; }
 .opening { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; list-style: none; margin: 0; padding: 0; }
 .opening li { padding: 12px; border-radius: var(--radius); background: var(--bg-soft); color: var(--muted); font-weight: 600; text-align: center; }
 .opening li.cur { background: var(--ink); color: #fff; }
@@ -716,20 +800,95 @@ h3 { font-size: 0.95rem; margin: 16px 0 6px; font-weight: 600; }
 .tbl th, .tbl td { text-align: left; padding: 5px 12px 5px 0; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
 .tbl th { color: var(--muted); font-weight: 500; font-size: 0.8rem; }
 .letter { display: inline-block; min-width: 1.4em; font-weight: 600; }
-.life-vote { margin-top: 8px; border: 1px solid var(--line); border-left: 4px solid var(--blue); border-radius: var(--radius); background: var(--bg-soft); padding: 10px 12px; }
-.war-active { border: 2px solid var(--red); border-left-width: 6px; border-radius: var(--radius); background: var(--red-bg); padding: 10px 12px; }
-.war-active strong { color: var(--red); }
+.war-active { display: flex; flex-direction: column; gap: 6px; }
+/* 전쟁 중이면 카드 자체를 빨간 카드로 */
+.sec.war-on { background: var(--red-bg); box-shadow: 0 0 0 2px var(--red); }
+.sec.war-on h3 { color: var(--red); }
+.war-active p { margin: 0; }
+.war-pick { gap: 10px; margin-top: 8px; }
+.war-pick button { min-width: 180px; min-height: 44px; }
 .war-cost { gap: 8px; align-items: center; margin-top: 6px; }
-.war-cost input { width: 5em; padding: 3px 6px; }
+.war-cost input { width: 5em; }
 .blocker { color: var(--red); font-size: 0.88rem; }
 .trade { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
-.trade-form { display: flex; flex-direction: column; gap: 8px; }
-.trade-form input[type="number"] { padding: 3px 6px; }
-.offer-row { padding: 6px 10px; border: 1px solid var(--line-soft); border-left: 4px solid var(--team, var(--line)); border-radius: var(--radius); }
-.offer-row .who { font-weight: 600; min-width: 9em; color: var(--team, var(--ink)); }
+.trade-form { display: flex; flex-direction: column; gap: 10px; }
+.trade-sides { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 10px; align-items: stretch; }
+.swap { align-self: center; font-size: 1.4rem; color: var(--muted); }
+.side-box { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 12px; border-radius: var(--radius); box-shadow: inset 0 0 0 1px var(--line-soft); border-top: 4px solid var(--team, var(--line)); }
+.side-box > .team-picker { flex: none; }
+.side-title { margin: 0; font-size: 0.8rem; font-weight: 700; color: var(--muted); }
+.gives { margin: 2px 0 0; font-weight: 700; color: var(--team, var(--ink)); }
+.give-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.give { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.give .k { font-size: 0.82rem; color: var(--ink-2); white-space: nowrap; }
+.give input { width: 100%; min-width: 0; }
+.give .have { min-height: 1.1em; font-size: 0.78rem; color: var(--muted); }
+.trade-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.trade-foot .sp { flex: 1; }
+@media (max-width: 1100px) {
+  .trade-sides { grid-template-columns: minmax(0, 1fr); }
+  .swap { justify-self: center; transform: rotate(90deg); }
+}
+.team-apply { background: var(--surface); color: var(--team, var(--ink)); font-weight: 700; box-shadow: inset 0 0 0 2px var(--team, var(--ink)); }
+.sec h3 .muted { font-weight: 400; font-size: 0.8rem; }
+.seg { display: inline-flex; border-radius: var(--radius); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
+.seg button { min-height: 34px; padding: 0 12px; background: var(--bg-soft); color: var(--ink); border-radius: 0; font-size: 0.88rem; display: inline-flex; align-items: center; gap: 4px; }
+.seg button + button { box-shadow: inset 1px 0 0 var(--line); }
+.seg button:hover { background: #e6e4dd; }
+.seg button[aria-pressed='true'] { background: var(--ink); color: #fff; font-weight: 700; }
+.sec > h3:first-child, .sec > .row:first-child h3 { margin-top: 0; }
+.sec.pick { order: -1; }
+.leader-select { width: 240px; }
+.sec.info { order: 1; }
+.sec > p { margin: 4px 0 0; }
+.acts-row { gap: 8px; margin-top: 8px; align-items: center; }
+.decide { gap: 12px; margin-top: 10px; }
+.decide button { min-width: 180px; }
+.decide button.chosen { box-shadow: inset 0 0 0 2px var(--ink); font-weight: 700; }
+.decide button.chosen::before { content: '✓ '; }
+.decide + .muted { margin-top: 8px; }
+.sanction-row { gap: 8px 14px; align-items: center; justify-content: space-between; }
+.sanction-row h3 { margin: 0; }
+.num { display: inline-flex; align-items: center; gap: 4px; }
 .team-select.picked { border: 2px solid var(--team); color: var(--team); font-weight: 700; background: color-mix(in srgb, var(--team) 12%, var(--surface)); }
 button.small { padding: 4px 10px; font-size: 0.85rem; }
 .reset-done { line-height: 1.6; }
+.head-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.head-row h3 { margin: 0; }
+.big-count { margin: 0; font-size: 1.05rem; color: var(--muted); }
+.big-count strong { font-size: 2.4rem; color: var(--ink); }
+.lobby { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; list-style: none; margin: 12px 0 0; padding: 0; }
+.lobby li { padding: 12px 14px; border-radius: var(--radius); background: var(--bg-soft); }
+.lobby li.full { background: var(--surface); box-shadow: inset 0 0 0 2px var(--ink); }
+.lobby p { margin: 0; }
+.lobby .t { display: flex; align-items: center; gap: 4px; font-weight: 700; }
+.lobby .n { margin-top: 6px; color: var(--muted); }
+.lobby .n strong { font-size: 1.9rem; color: var(--ink); }
+.mini-bar { height: 6px; margin-top: 8px; border-radius: 999px; background: rgba(8, 8, 8, 0.08); overflow: hidden; }
+.mini-bar span { display: block; height: 100%; border-radius: 999px; }
+.lobby .s { margin-top: 6px; font-size: 0.8rem; color: var(--muted); }
+.foot { margin: 10px 0 0 !important; font-size: 0.85rem; }
+.cands { list-style: none; margin: 10px 0 0; padding: 0; border-top: 1px solid var(--line-soft); }
+.cands li { border-bottom: 1px solid var(--line-soft); }
+.cands label { display: flex; align-items: center; gap: 10px; padding: 10px 4px; cursor: pointer; }
+.cands label.on .nm { color: var(--red); }
+.cands .nm { font-weight: 700; min-width: 0; }
+.cands .nm .muted { font-weight: 400; font-size: 0.8rem; }
+.cands .tm { margin-left: auto; min-width: 7em; display: inline-flex; align-items: center; gap: 2px; font-size: 0.85rem; color: var(--ink-2); }
+.spy-act { gap: 10px; margin-top: 12px; align-items: center; }
+.issue-rows { list-style: none; margin: 10px 0 0; padding: 0; }
+.issue-rows li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
+.issue-rows .who { display: inline-flex; align-items: center; gap: 4px; min-width: 12em; font-weight: 600; }
+.migr { list-style: none; margin: 4px 0 0; padding: 0; }
+.migr li { padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
+.migr .m1, .migr .m2 { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; }
+.migr .m2 { justify-content: space-between; margin-top: 6px; }
+.migr .path { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }
+.settings { list-style: none; margin: 8px 0 0; padding: 0; border-top: 1px solid var(--line-soft); }
+.settings li { display: flex; align-items: center; gap: 12px; padding: 12px 2px; border-bottom: 1px solid var(--line-soft); }
+.settings .txt { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.settings .txt .muted { font-size: 0.85rem; }
+.settings button { flex: none; }
 .reset-done button { margin-left: 8px; }
 .clear-opt { gap: 8px; align-items: flex-start; flex-wrap: nowrap; font-size: 0.92rem; cursor: pointer; }
 .clear-opt input { flex: none; margin-top: 3px; }

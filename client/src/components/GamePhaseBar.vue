@@ -32,7 +32,7 @@ const finalFlow = computed(() => (s.value?.final?.step === 'spy' ? FINAL_FLOW : 
       <div class="now">
         <span class="day mono">{{ s.day }}라운드 <span class="muted">/ 총 {{ s.totalDays }}라운드</span></span>
         <strong>{{ warLabel ?? `${phaseLabel(s.phase, s.day)} 중` }}</strong>
-        <span v-if="timer && !large" class="time mono" :class="{ warn: timer.warn || timer.over }">{{ timer.over ? '종료' : timer.text }}</span>
+        <span v-if="timer && !large" class="time mono" :class="{ warn: timer.warn, over: timer.over }" :title="timer.over ? '이 단계의 안내 시간이 지났습니다. 다음 단계로 넘기면 됩니다' : '이 단계의 안내 시간'">{{ timer.over ? '시간 끝' : timer.text }}</span>
       </div>
       <ol class="steps">
         <li v-for="(p, i) in phases" :key="p" :class="{ cur: p === s.phase, past: phases.indexOf(s.phase) > i }">
@@ -69,6 +69,7 @@ const finalFlow = computed(() => (s.value?.final?.step === 'spy' ? FINAL_FLOW : 
 .now { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; padding-bottom: 10px; width: 100%; }
 .time { margin-left: auto; font-size: 1.2rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .time.warn { color: var(--red); }
+.time.over { font-size: 0.95rem; font-weight: 600; color: var(--muted); }
 .now strong { font-size: 1.2rem; font-weight: 700; letter-spacing: -0.01em; }
 .day { font-size: 0.93rem; font-family: var(--font-body); color: var(--ink-2); font-variant-numeric: tabular-nums; }
 /* TDS Tab: 글자 15px, 현재는 진한 글자 + 2px 밑줄, 나머지 회색. 선택 전까지 밑줄 자리는 비워 둔다 */

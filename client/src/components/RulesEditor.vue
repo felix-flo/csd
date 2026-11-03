@@ -123,34 +123,44 @@ const hasContent = (teamId: number) => !!docs.rules?.teams?.find((t) => t.teamId
 
 <template>
   <div class="card">
-    <h2>룰 편집 <span class="muted">(마크다운)</span></h2>
-    <p class="muted">
-      <strong>전체 룰</strong>은 모든 참가자·진행자·프레젠테이션 화면에, <strong>팀 룰</strong>은 그 팀 팀원에게만(게임 시작 후) 보입니다.
-      팀원 화면에서는 전체 룰 아래 가로줄 다음에 팀 룰이 붙습니다. 상단 "룰" 버튼으로 볼 수 있습니다.
-      제목은 # , 소제목은 ## , 목록은 - , 표는 | 로 작성합니다. 줄 하나에 <code>=== 탭 이름 ===</code> 을 쓰면 거기서부터 새 탭이 됩니다.
-      "기본 룰 불러오기" 는 시스템에 들어 있는 기본 룰 파일을 전체·팀 룰에 한 번에 넣습니다 (현재 내용은 직전 버전으로 보관).
-    </p>
-    <div class="tabs row">
-      <button type="button" class="tab" :class="{ on: tab === null }" @click="selectTab(null)">전체 룰</button>
-      <button v-for="(t, i) in teams.teams" :key="t.id" type="button" class="tab" :class="{ on: tab === t.id }" @click="selectTab(t.id)">
-        <span class="mono">{{ teamLetter(i) }}</span> <TeamMark :color="t.color" />{{ t.name }}
-        <span v-if="!hasContent(t.id)" class="muted">(비어 있음)</span>
+    <h2>룰 편집 <span class="muted">마크다운</span></h2>
+    <details class="help">
+      <summary>작성법</summary>
+      <p class="muted">
+        <strong>전체 룰</strong>은 모든 참가자·진행자·프레젠테이션 화면에, <strong>팀 룰</strong>은 그 팀 팀원에게만(게임 시작 후) 보입니다.
+        팀원 화면에서는 전체 룰 아래 가로줄 다음에 팀 룰이 붙습니다.
+        제목은 # , 소제목은 ## , 목록은 - , 표는 | 로 작성합니다. 줄 하나에 <code>=== 탭 이름 ===</code> 을 쓰면 거기서부터 새 탭이 됩니다.
+        "룰 불러오기"는 시스템에 들어 있는 룰 파일을 전체·팀 룰에 한 번에 넣습니다 (현재 내용은 직전 버전으로 보관).
+      </p>
+    </details>
+
+    <div class="tabs" role="tablist">
+      <button type="button" class="tab" :class="{ on: tab === null }" @click="selectTab(null)">전체</button>
+      <button v-for="(t, i) in teams.teams" :key="t.id" type="button" class="tab" :class="{ on: tab === t.id, empty: !hasContent(t.id) }" :title="hasContent(t.id) ? t.name : `${t.name} (비어 있음)`" @click="selectTab(t.id)">
+        <span class="mono">{{ teamLetter(i) }}</span><TeamMark :color="t.color" />{{ t.name.replace(/ 팀$/, '') }}
       </button>
     </div>
-    <div class="row" style="margin-bottom: 8px">
-      <input v-if="!isTeam" v-model="title" maxlength="50" placeholder="문서 제목" style="width: 14em" />
-      <strong v-else>{{ saved?.title }}</strong>
-      <button :disabled="busy || !dirty" @click="save">저장</button>
-      <button class="secondary" :disabled="busy || !saved?.hasPrevious" @click="restore">직전 버전으로</button>
-      <button class="secondary" @click="preview = !preview">{{ preview ? '미리보기 숨김' : '미리보기' }}</button>
-      <span class="muted">{{ dirty ? '저장되지 않은 변경 있음' : status }}</span>
+
+    <div class="bar">
+      <input v-if="!isTeam" v-model="title" maxlength="50" placeholder="문서 제목" class="title" />
+      <strong v-else class="title">{{ saved?.title }}</strong>
+      <button class="small" :disabled="busy || !dirty" @click="save">저장</button>
     </div>
-    <div class="row" style="margin-bottom: 8px">
-      <button class="secondary" :disabled="busy" title="server/rules 의 공통·팀별 마크다운 파일을 전체·팀 룰에 한 번에 넣습니다" @click="loadDefaults()">기본 룰 불러오기</button>
-      <button class="secondary" :disabled="busy" title="기본 룰에 4라운드 공개 룰을 합쳐서 넣습니다" @click="loadDefaults(4)">4라운드 룰 불러오기</button>
-      <button class="secondary" :disabled="busy" title="기본 룰에 4·6라운드 공개 룰을 합쳐서 넣습니다" @click="loadDefaults(6)">6라운드 룰 불러오기</button>
+    <div class="bar sub">
+      <span :class="dirty ? 'warn-text' : 'muted'">{{ dirty ? '저장되지 않은 변경 있음' : status || (isTeam && !hasContent(tab!) ? '비어 있음 · 팀원 화면에 전체 룰만 보입니다' : '') }}</span>
+      <span class="sp" />
+      <button class="link" :disabled="busy || !saved?.hasPrevious" @click="restore">직전 버전으로</button>
+      <button class="link" @click="preview = !preview">{{ preview ? '미리보기 숨김' : '미리보기' }}</button>
     </div>
-    <p v-if="isTeam" class="muted" style="margin-top: 0">제목은 팀 이름으로 자동으로 붙습니다. 비워 두면 팀원 화면에 전체 룰만 보입니다.</p>
+    <div class="bar sub">
+      <span class="muted">룰 불러오기</span>
+      <div class="seg" role="group">
+        <button type="button" :disabled="busy" title="server/rules 의 공통·팀별 마크다운 파일을 전체·팀 룰에 한 번에 넣습니다" @click="loadDefaults()">기본</button>
+        <button type="button" :disabled="busy" title="기본 룰에 4라운드 공개 룰을 합쳐서 넣습니다" @click="loadDefaults(4)">4라운드</button>
+        <button type="button" :disabled="busy" title="기본 룰에 4·6라운드 공개 룰을 합쳐서 넣습니다" @click="loadDefaults(6)">6라운드</button>
+      </div>
+    </div>
+
     <div class="editor" :class="{ split: preview }">
       <textarea v-model="markdown" spellcheck="false" :placeholder="placeholder" />
       <div v-if="preview" class="preview"><RuleBook :markdown="markdown" /></div>
@@ -159,12 +169,28 @@ const hasContent = (teamId: number) => !!docs.rules?.teams?.find((t) => t.teamId
 </template>
 
 <style scoped>
-.tabs { gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
-.tab { background: var(--surface); color: var(--ink); border: 1px solid var(--line); padding: 5px 12px; font-size: 0.9rem; }
-.tab.on { background: var(--ink); color: var(--surface); border-color: var(--ink); }
-.tab.on .muted { color: inherit; opacity: 0.7; }
-.editor { display: grid; gap: 12px; }
-@container (min-width: 820px) { .editor.split { grid-template-columns: 1fr 1fr; } }
-textarea { width: 100%; min-height: 360px; font-family: var(--font-mono); font-size: 0.92rem; line-height: 1.5; resize: vertical; }
+.help { margin: 0 0 10px; }
+.help summary { cursor: pointer; color: var(--muted); font-size: 0.88rem; }
+.help p { margin: 6px 0 0; font-size: 0.85rem; }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+.tab { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 10px; background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); font-size: 0.88rem; }
+.tab.on { background: var(--ink); color: var(--surface); box-shadow: none; }
+.tab.empty:not(.on) { color: var(--muted); }
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-bottom: 6px; }
+.bar .title { flex: 1 1 10em; min-width: 0; }
+.bar.sub { font-size: 0.88rem; }
+.sp { flex: 1; }
+.warn-text { color: var(--red); font-weight: 600; }
+.seg { display: inline-flex; border-radius: var(--radius); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
+.seg button { min-height: 30px; padding: 0 10px; background: var(--bg-soft); color: var(--ink); border-radius: 0; font-size: 0.85rem; }
+.seg button + button { box-shadow: inset 1px 0 0 var(--line); }
+.seg button:hover { background: #e6e4dd; }
+button.small { padding: 4px 14px; font-size: 0.88rem; }
+button.link { min-height: 0; padding: 2px 6px; background: none; color: var(--ink-2); font-size: 0.85rem; text-decoration: underline; text-underline-offset: 2px; }
+button.link:hover { color: var(--ink); background: none; }
+button.link:disabled { color: var(--muted); text-decoration: none; }
+.editor { display: grid; gap: 12px; margin-top: 4px; }
+@container (min-width: 620px) { .editor.split { grid-template-columns: 1fr 1fr; } .editor.split textarea, .editor.split .preview { height: calc(100vh - 300px); min-height: 420px; } }
+textarea { width: 100%; min-height: 420px; font-family: var(--font-mono); font-size: 0.9rem; line-height: 1.5; resize: vertical; }
 .preview { border: 1px solid var(--line-soft); border-radius: var(--radius); background: var(--surface); padding: 12px; min-height: 360px; overflow: auto; }
 </style>

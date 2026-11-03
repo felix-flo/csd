@@ -169,6 +169,8 @@ export interface GameState {
   results: GameResults | null
   /** 마지막 라운드 필수 안건 "남은 라이프를 최종 투표권으로" 결과. null = 아직 입력 안 함 (docs/100 N2) */
   lifeVote: boolean
+  /** 라이프 투표권 협의 결과를 관리자가 확정했는지 (false = 아직 미정, 기본 반영으로 처리) */
+  lifeVoteSet: boolean
   /** 최종장 (final·ended 일 때만) */
   final: FinalState | null
   /** 팀 선택 현황 (준비 상태에서만) */
@@ -201,6 +203,35 @@ export const DEFAULT_TEAM_SETUP: Record<string, { capacity: number; initial: Res
   red: { capacity: 4, initial: { gem: 0, gold: 50, life: 6, credit: 15 } },
 }
 export const DEFAULT_TOTAL_DAYS = 6
+// ---- 생산게임 (룰북 server/rules/team-*.md "생산게임 보상"과 같은 값이어야 한다) ----
+
+export const PRODUCTION_BASE_PLAYS = 10
+/** 재도전(추가판) 최대 판수. 1판마다 크레딧 1 */
+export const PRODUCTION_MAX_EXTRA = 3
+export type ProductionMode = 'life' | 'credit'
+/** 팀별 보상: [몇 승마다, 몇 개]. 팀은 code 기준 */
+export const PRODUCTION_RATES: Record<string, Record<ProductionMode, [number, number]>> = {
+  white: { life: [2, 1], credit: [2, 1] },
+  yellow: { life: [2, 1], credit: [2, 1] },
+  blue: { life: [1, 2], credit: [3, 1] },
+  red: { life: [2, 1], credit: [1, 3] },
+}
+
+/**
+ * 생산게임 결과 → 재화 증감. 참가비 1 + 재도전 판수만큼 크레딧을 내고, 승수에 따라 고른 재화를 받는다.
+ * 보상 규칙이 없는 팀이거나 승수가 판수를 넘으면 null
+ */
+export function productionResult(code: string | undefined, mode: ProductionMode, extra: number, wins: number) {
+  const rate = code ? PRODUCTION_RATES[code]?.[mode] : undefined
+  const plays = PRODUCTION_BASE_PLAYS + extra
+  if (!rate || wins > plays) return null
+  const cost = 1 + extra
+  const reward = Math.floor(wins / rate[0]) * rate[1]
+  const deltas: Partial<Resources> = { credit: -cost }
+  deltas[mode] = (deltas[mode] ?? 0) + reward
+  return { plays, cost, reward, deltas }
+}
+
 /** 1라운드 전쟁 선포 비용 기본값 */
 export const DEFAULT_WAR_COST: WarCost = { gem: 0, gold: 0, credit: 3 }
 /** declared = 전쟁 중 (선포 즉시 시작, 2026-10-30 승인 단계 폐지 docs/103 §4). 결과는 관리자가 지정 */

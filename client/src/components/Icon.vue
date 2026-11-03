@@ -8,6 +8,7 @@ export type IconName =
   | 'gem' | 'gold' | 'life' | 'credit'
   | 'timer' | 'council' | 'aid' | 'war' | 'scroll' | 'vote' | 'migration' | 'lock'
   | 'bell' | 'bell-off' | 'mute' | 'spy' | 'angel' | 'devil' | 'flask' | 'warning' | 'refresh' | 'megaphone' | 'film' | 'trophy' | 'close' | 'book' | 'logout'
+  | 'sliders' | 'users' | 'edit' | 'key'
 
 const PATHS: Record<IconName, string> = {
   gem: 'M7 3h10l4 6-9 12L3 9zM3 9h18M10 3 8 9l4 12M14 3l2 6-4 12',
@@ -37,6 +38,10 @@ const PATHS: Record<IconName, string> = {
   close: 'M6 6l12 12M18 6 6 18',
   book: 'M12 7c-2-1.8-5-2.2-9-2v14c4-.2 7 .2 9 2 2-1.8 5-2.2 9-2V5c-4-.2-7 .2-9 2zM12 7v14',
   logout: 'M10 4H5v16h5M15 8l4 4-4 4M19 12H9',
+  sliders: 'M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4',
+  users: 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 6.5M18 14a6 6 0 0 1 3.5 6',
+  edit: 'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',
+  key: 'M8 15a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM11 12l9 0M17 12v3M20 12v2',
 }
 
 const props = defineProps<{ name: IconName; label?: string }>()

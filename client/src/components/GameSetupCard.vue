@@ -159,37 +159,49 @@ async function prepare() {
       입장이 끝나면 맨 위 "세팅 완료" 버튼을 누릅니다.
     </p>
 
-    <div class="row" style="margin-bottom: 10px">
-      <label>총 라운드 수 <input v-model.number="totalDays" type="number" min="1" max="30" placeholder="6" style="width: 5em" :class="{ missing: !totalDays }" /></label>
-      <label class="row" style="gap: 6px"><input v-model="includeTest" type="checkbox" /> 팀별 테스트 계정(리더 1·팀원 1) 포함 <span class="muted">— 최대 인원에 포함</span></label>
-    </div>
-    <div class="row" style="margin-bottom: 10px">
-      <TabLoginToggle />
-    </div>
-    <div class="row" style="margin-bottom: 10px">
-      <label><Icon name="gem" /> 보석 발행 한도 <input v-model.number="issueLimit.gem" type="number" min="0" style="width: 6em" /> /라운드</label>
-      <label><Icon name="gold" /> 골드 발행 한도 <input v-model.number="issueLimit.gold" type="number" min="0" style="width: 6em" /> /라운드 (이월)</label>
-    </div>
-    <div class="row" style="margin-bottom: 10px">
-      <label><Icon name="migration" /> 이주 시작 라운드 <input v-model.number="migrationStartDay" type="number" min="1" max="30" style="width: 5em" /></label>
-      <span class="muted" style="font-size: 0.85rem">
-        <template v-if="totalDays && migrationStartDay > totalDays">총 {{ totalDays }}라운드라 이주가 열리지 않습니다</template>
-        <template v-else>이 라운드부터 마지막 라운드까지 (라이프 제출 단계 제외)</template>
-      </span>
-    </div>
-    <div class="row" style="margin-bottom: 10px">
-      <span><Icon name="war" /> 1라운드 전쟁 선포 비용</span>
-      <label>보석 <input v-model.number="warCost.gem" type="number" min="0" style="width: 5em" /></label>
-      <label>골드 <input v-model.number="warCost.gold" type="number" min="0" style="width: 5em" /></label>
-      <label>크레딧 <input v-model.number="warCost.credit" type="number" min="0" style="width: 5em" /></label>
-      <span v-if="!settings?.warCost" class="error" style="font-size: 0.85rem">저장해야 게임을 시작할 수 있습니다</span>
-    </div>
-    <p class="muted" style="margin-top: 0">
-      테스트 계정은 팀·리더가 미리 정해져 있고 최대 인원에 들어갑니다 (팀마다 리더 → 팀원 순으로 최대 인원까지만 활성, 최대 인원 1이면 리더만). 빼면 탈락(로그인 차단) 처리됩니다.
-      전쟁 선포 비용: 2라운드부터는 게임 진행 카드에서 전 라운드가 끝나기 전에 정합니다(0 이면 무료).
-      발행 한도: 화이트팀 리더는 보석을 라운드마다 한도까지(이월 없음), 골드팀 리더는 골드를 라운드마다 한도씩 쌓아서(안 쓴 만큼 이월) 발행 요청할 수 있습니다.
-    </p>
+    <div class="sets">
+      <section class="set">
+        <p class="lbl">진행</p>
+        <div class="fields">
+          <label class="f"><span>총 라운드 수</span><input v-model.number="totalDays" type="number" min="1" max="30" placeholder="6" :class="{ missing: !totalDays }" /></label>
+          <label class="f"><span><Icon name="migration" /> 이주 시작</span><input v-model.number="migrationStartDay" type="number" min="1" max="30" /></label>
+        </div>
+        <p class="hint">
+          <template v-if="totalDays && migrationStartDay > totalDays">총 {{ totalDays }}라운드라 이주가 열리지 않습니다.</template>
+          <template v-else>이주는 이 라운드부터 마지막 라운드까지 열립니다 (라이프 제출 단계 제외).</template>
+        </p>
+      </section>
 
+      <section class="set">
+        <p class="lbl">발행 한도 <span class="muted">라운드마다</span></p>
+        <div class="fields">
+          <label class="f"><span><Icon name="gem" /> 보석 (화이트)</span><input v-model.number="issueLimit.gem" type="number" min="0" /></label>
+          <label class="f"><span><Icon name="gold" /> 골드 (골드 팀)</span><input v-model.number="issueLimit.gold" type="number" min="0" /></label>
+        </div>
+        <p class="hint">보석은 안 쓴 한도가 사라지고, 골드는 안 쓴 만큼 다음 라운드로 쌓입니다.</p>
+      </section>
+
+      <section class="set">
+        <p class="lbl"><Icon name="war" /> 1라운드 전쟁 선포 비용</p>
+        <div class="fields">
+          <label class="f"><span>보석</span><input v-model.number="warCost.gem" type="number" min="0" /></label>
+          <label class="f"><span>골드</span><input v-model.number="warCost.gold" type="number" min="0" /></label>
+          <label class="f"><span>크레딧</span><input v-model.number="warCost.credit" type="number" min="0" /></label>
+        </div>
+        <p v-if="!settings?.warCost" class="hint error">저장해야 게임을 시작할 수 있습니다.</p>
+        <p v-else class="hint">2라운드부터는 진행 중에 전 라운드가 끝나기 전에 정합니다 (0 이면 무료).</p>
+      </section>
+
+      <section class="set">
+        <p class="lbl">테스트</p>
+        <label class="check"><input v-model="includeTest" type="checkbox" /> 팀별 테스트 계정(리더 1 · 팀원 1) 포함</label>
+        <p class="hint">테스트 계정은 최대 인원에 들어갑니다. 빼면 탈락(로그인 차단) 처리됩니다.</p>
+        <TabLoginToggle class="tab-toggle" />
+      </section>
+    </div>
+
+    <p class="lbl table-lbl">팀별 최대 인원 · 초기 재화</p>
+    <div class="table-wrap">
     <table class="res-table">
       <thead>
         <tr>
@@ -202,7 +214,7 @@ async function prepare() {
       <tbody>
         <tr class="bulk">
           <td class="muted">전 팀 동일</td>
-          <td><input v-model.number="bulkCapacity" type="number" min="0" max="50" /> <button class="secondary small" type="button" @click="applyBulkCapacity">적용</button></td>
+          <td><span class="inline"><input v-model.number="bulkCapacity" type="number" min="0" max="50" /><button class="secondary small" type="button" @click="applyBulkCapacity">적용</button></span></td>
           <td v-for="k in RESOURCE_KINDS" :key="k"><input v-model.number="bulk[k]" type="number" min="0" /></td>
           <td><button class="secondary small" type="button" @click="applyBulk">일괄 적용</button></td>
         </tr>
@@ -216,6 +228,7 @@ async function prepare() {
         </tr>
       </tbody>
     </table>
+    </div>
     <p class="muted" style="margin: 6px 0 0">참가자 PIN {{ totalCapacity }}개<template v-if="testSeats"> (테스트 계정 {{ testSeats }}명 제외)</template> · 참가자에게는 팀 이름 대신 A, B, C… 로 보입니다.</p>
 
     <div class="row" style="margin-top: 12px">
@@ -243,12 +256,31 @@ async function prepare() {
 /* 초기셋팅완료 전에 비어 있는 입력란 */
 .missing { border-color: var(--red); box-shadow: 0 0 0 2px color-mix(in srgb, var(--red) 25%, transparent); }
 .blocker { color: var(--red); font-size: 0.88rem; }
-.res-table { border-collapse: collapse; font-size: 0.9rem; }
+.res-table { width: 100%; max-width: 960px; border-collapse: collapse; font-size: 0.9rem; }
 .res-table th, .res-table td { text-align: left; padding: 4px 8px 4px 0; border-bottom: 1px solid var(--line-soft); }
 .res-table th { color: var(--muted); font-weight: 500; font-size: 0.8rem; white-space: nowrap; }
-.res-table input[type='number'] { width: 5em; padding: 4px 6px; }
+.res-table input[type='number'] { width: 100%; min-width: 4.5em; max-width: 8em; }
 .res-table tr.bulk td { background: var(--bg-soft); }
+.res-table tr.bulk button { white-space: nowrap; }
 button.small { padding: 4px 10px; font-size: 0.85rem; }
 .nowrap { white-space: nowrap; }
+.sets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 20px; margin: 14px 0 18px; }
+.set { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: var(--radius); box-shadow: inset 0 0 0 1px var(--line-soft); }
+.lbl { margin: 0; font-size: 0.9rem; font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 4px; }
+.lbl .muted { font-weight: 400; font-size: 0.8rem; }
+.fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(5em, 1fr)); gap: 10px 12px; }
+.f { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--ink-2); }
+.f > span { white-space: nowrap; }
+.f input { width: 100%; min-width: 0; }
+.hint { margin: 0; font-size: 0.82rem; color: var(--muted); }
+.hint.error { color: var(--red); }
+.check { display: flex; align-items: center; gap: 8px; font-size: 0.92rem; }
+.tab-toggle { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
+.table-lbl { margin-bottom: 6px; }
+.res-table tr.bulk input { background: var(--surface); }
+.table-wrap { overflow-x: auto; }
+@media (max-width: 1100px) { .sets { grid-template-columns: minmax(0, 1fr); } }
+.inline { display: inline-flex; align-items: center; gap: 4px; }
+.inline input[type='number'] { width: 4.5em; min-width: 0; }
 .letter { display: inline-block; min-width: 1.4em; font-weight: 600; }
 </style>

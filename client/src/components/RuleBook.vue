@@ -35,11 +35,12 @@ function pick(title: string, e: Event) {
 </template>
 
 <style scoped>
-.rule-tabs { position: sticky; top: 0; z-index: 1; display: flex; gap: 20px; overflow-x: auto; scrollbar-width: none; margin: -6px -2px 8px; padding: 0 2px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.rule-tabs { position: sticky; top: 0; z-index: 1; display: flex; gap: 20px; overflow-x: auto; scrollbar-width: none; margin: -6px -2px 40px; padding: 0 2px; background: var(--surface); border-bottom: 1px solid var(--line); }
 .rule-tabs::-webkit-scrollbar { display: none; }
 .rule-tabs button { flex: none; min-height: 44px; padding: 0 2px; border-radius: 0; background: none; color: var(--muted); }
 .rule-tabs button:hover { background: none; color: var(--ink); }
 .rule-tabs button.on { color: var(--ink); font-weight: 700; box-shadow: inset 0 -2px 0 var(--ink); }
 .rule-tabs.large button { font-size: 1.4rem; min-height: 60px; }
-.rule-body :deep(h2:first-child) { margin-top: 0.4em; }
+.rule-body :deep(h2:first-child) { margin-top: 0.6em; }
+.rule-tabs.large { margin-bottom: 48px; }
 </style>

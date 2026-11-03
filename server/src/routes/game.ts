@@ -47,7 +47,7 @@ import { schedulePhaseTimer } from '../phaseTimer.js'
 import { insertEvent } from '../db/events.js'
 import { disconnectUsers, moveUserRooms, publishEvent, signalLobby } from '../realtime/index.js'
 import { revokeUserRefreshTokens } from '../auth/tokens.js'
-import { emptyResources, FINAL_STEPS, josa, LAST_ROUND_PHASES, MIGRATION_CANCEL_LABELS, PHASE_LABELS, phaseLabel, RESOURCE_KINDS, RESOURCE_LABELS, shareText, warWinner } from '../../../shared/game.js'
+import { emptyResources, FINAL_STEPS, josa, LAST_ROUND_PHASES, MIGRATION_CANCEL_LABELS, PHASE_LABELS, phaseLabel, PRODUCTION_BASE_PLAYS, PRODUCTION_MAX_EXTRA, PRODUCTION_RATES, productionResult, RESOURCE_KINDS, RESOURCE_LABELS, shareText, warWinner } from '../../../shared/game.js'
 import type { AdminGameView, GameResults, IssueRequestView, LifeSubmissionView, MigrationView, Phase, Resources, SpyStatus, TeamGameView, TradeView } from '../../../shared/game.js'
 import type { EventScope, GameKind } from '../../../shared/types.js'
 
@@ -551,6 +551,35 @@ gameRouter.post('/admin/game/resources', requireRole('admin'), handle(adjustSche
   applyDeltas(body.teamId, body.deltas, { reason: body.reason, day: g.day, by })
   const label = body.reason === 'production' ? '생산' : '정정'
   emit('game', 'group', body.teamId, 'resources.updated', `${label}: ${text}`, by)
+  res.json(adminView())
+}))
+
+const productionSchema = z.object({
+  teamId: z.number().int().positive(),
+  mode: z.enum(['life', 'credit']),
+  extra: z.number().int().min(0).max(PRODUCTION_MAX_EXTRA),
+  wins: z.number().int().min(0),
+})
+
+/** 생산게임 결과: 팀 · 선택(라이프/크레딧) · 재도전 판수 · 이긴 횟수 → 팀별 보상 규칙으로 계산해 크레딧 차감과 보상을 한 번에 반영. 라운드마다 팀당 1번 */
+gameRouter.post('/admin/game/production', requireRole('admin'), handle(productionSchema, (req, res, body) => {
+  const by = req.auth!.sub
+  const g = requireRunning('production')
+  const team = findGroupById(body.teamId)
+  if (!team) throw new GameError('not_found', '', 404)
+  const result = productionResult(team.code, body.mode, body.extra, body.wins)
+  if (!result) {
+    if (!PRODUCTION_RATES[team.code]) throw new GameError('no_rate', `${team.name}의 생산게임 보상 규칙이 없습니다. 정정으로 입력하세요`)
+    throw new GameError('too_many_wins', `이긴 횟수가 판수(${PRODUCTION_BASE_PLAYS + body.extra}판)보다 많습니다`, 400)
+  }
+  const done = db.prepare(`SELECT 1 FROM resource_ledger WHERE group_id = ? AND day = ? AND reason = 'production' LIMIT 1`).get(team.id, g.day)
+  if (done) throw new GameError('already_done', `${team.name}의 이번 라운드 생산은 이미 입력했습니다. 고치려면 정정으로 입력하세요`)
+  const credit = getTeamResources(team.id).credit
+  if (credit < result.cost) throw new GameError('insufficient', `크레딧 부족: 참가비 1${body.extra ? ` + 재도전 ${body.extra}` : ''} = ${result.cost}개 필요, 보유 ${credit}개`)
+  applyDeltas(team.id, result.deltas, { reason: 'production', day: g.day, by })
+  const label = RESOURCE_LABELS[body.mode]
+  emit('game', 'group', team.id, 'resources.updated',
+    `생산게임: ${label} 선택 · ${result.plays}판 ${body.wins}승 → ${label} +${result.reward} (크레딧 −${result.cost})`, by)
   res.json(adminView())
 }))
 
