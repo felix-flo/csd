@@ -10,7 +10,7 @@ import { useAuthStore } from './auth'
 import { useDocumentsStore } from './documents'
 import { useTeamsStore } from './teams'
 import { useGameStore } from './game'
-import { useToastStore } from './toasts'
+import { isStageChange, useNoticeStore } from './notices'
 import { api } from '../lib/api'
 
 type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>
@@ -30,9 +30,9 @@ export const useRealtimeStore = defineStore('realtime', {
     connected: false,
     events: [] as GameEvent[],
     lastEventId: 0,
-    /** 재접속 replay 진행 중이면 토스트를 모아 두었다가 replay:done 에 최근 것만 띄운다 */
+    /** 재접속 replay 진행 중이면 알림을 모아 두었다가 replay:done 에 가장 최근 것만 띄운다 */
     replaying: false,
-    pendingToasts: [] as GameEvent[],
+    pendingNotices: [] as GameEvent[],
     /** 팀원 구성이 바뀌었을 때(팀 이동·탈락·복귀) 올라가는 카운터. 팀 화면이 보고 팀원 목록을 다시 받는다 */
     groupVersion: 0,
     /** 서버가 서빙 중인 클라이언트 빌드와 내 번들이 다르면 true → "새 버전" 배너 */
@@ -46,7 +46,7 @@ export const useRealtimeStore = defineStore('realtime', {
       if (socket || !auth.accessToken || !auth.user) return
       this.lastEventId = loadLastId(auth.user.id)
       this.events = []
-      useToastStore().configure(auth.user.role)
+      useNoticeStore().configure(auth.user.role)
 
       socket = io({
         auth: (cb) => cb({ token: useAuthStore().accessToken }),
@@ -56,26 +56,27 @@ export const useRealtimeStore = defineStore('realtime', {
         this.connected = true
         // 0) 배포로 서버가 재시작돼 재연결된 경우를 잡기 위해 버전 확인
         this.checkVersion()
-        // 1) 최근 기록으로 피드를 채운다 (팝업 없음). 새로고침·재로그인 후에도 지난 알림이 보이도록
+        // 1) 최근 기록으로 피드를 채운다. 새로고침·재로그인 후에도 지난 알림이 보이도록
         await this.loadRecent()
         void useTeamsStore().load()
         void useGameStore().load()
-        // 2) 마지막으로 본 id 이후 것만 replay → 놓친 공지는 팝업
+        // 2) 마지막으로 본 id 이후 것만 replay → 놓친 알림 중 가장 최근 것을 띄운다
         this.replaying = true
-        this.pendingToasts = []
+        this.pendingNotices = []
         socket?.emit('replay', this.lastEventId)
       })
       socket.on('replay:done', () => {
         this.replaying = false
-        // 밀린 공지는 최근 3건만 팝업, 나머지는 피드에서 확인
-        for (const ev of this.pendingToasts.slice(-3)) useToastStore().show(ev)
-        this.pendingToasts = []
+        // 나머지는 알림 화면에서 확인
+        const last = this.pendingNotices.at(-1)
+        if (last) useNoticeStore().show(last)
+        this.pendingNotices = []
       })
       socket.on('disconnect', async (reason) => {
         this.connected = false
         // 서버가 끊은 경우(탈락·PIN 리셋·게임 리셋으로 계정 삭제): 세션이 살아 있으면 다시 연결, 아니면 로그인 화면으로
         if (reason !== 'io server disconnect') return
-        // 탈락: 탈락 화면(5초)이 끝나면 auth.eliminate() 가 로그아웃한다
+        // 탈락: 탈락 화면에서 확인을 누르면 로그아웃한다 (auth.leaveEliminated)
         if (auth.eliminated) return
         if (await auth.refresh()) {
           socket?.connect()
@@ -92,7 +93,7 @@ export const useRealtimeStore = defineStore('realtime', {
           if (!ok) auth.clear()
         }
       })
-      // 서버가 끊기 직전에 보내는 사유. 탈락이면 "탈락되었어요" 5초 후 로그아웃
+      // 서버가 끊기 직전에 보내는 사유. 탈락이면 "탈락되었어요" 화면
       socket.on('session:ended', (reason) => {
         if (reason === 'eliminated') auth.eliminate()
       })
@@ -105,7 +106,7 @@ export const useRealtimeStore = defineStore('realtime', {
       })
     },
     /**
-     * 최근 50건을 받아 피드에 넣는다. 토스트는 띄우지 않고 lastEventId 도 올리지 않는다 (replay 가 판단).
+     * 최근 50건을 받아 피드에 넣는다. 새 알림으로 치지 않고 lastEventId 도 올리지 않는다 (replay 가 판단). 고정 알림 자리가 비어 있으면 채운다.
      * replace=true 면 피드를 서버 기준으로 통째로 교체한다 (수동 "다시 불러오기")
      */
     async loadRecent(replace = false): Promise<boolean> {
@@ -118,6 +119,8 @@ export const useRealtimeStore = defineStore('realtime', {
           const fresh = res.events.filter((e) => !known.has(e.id))
           this.events = [...fresh, ...this.events].sort((a, b) => a.id - b.id)
         }
+        const last = [...this.events].reverse().find((e) => this.shouldNotify(e))
+        if (last) useNoticeStore().restore(last)
         return true
       } catch { return false } // 피드 기록은 보조 기능이라 실패해도 연결은 유지
     },
@@ -164,9 +167,11 @@ export const useRealtimeStore = defineStore('realtime', {
       if (ev.type === 'document.updated' && typeof ev.payload.slug === 'string') {
         useDocumentsStore().onUpdated(ev.payload.slug)
       }
-      if (this.shouldToast(ev)) {
-        if (this.replaying) this.pendingToasts.push(ev)
-        else useToastStore().show(ev)
+      // 다시 연결할 때: 그 사이 단계가 바뀌었으면 그 전 공지는 띄우지 않는다 (소리 없는 단계 알림 포함)
+      if (this.replaying && isStageChange(ev)) this.pendingNotices = []
+      if (this.shouldNotify(ev)) {
+        if (this.replaying) this.pendingNotices.push(ev)
+        else useNoticeStore().show(ev)
       }
       this.lastEventId = ev.id
       const uid = useAuthStore().user?.id
@@ -197,22 +202,25 @@ export const useRealtimeStore = defineStore('realtime', {
       }
     },
     /**
-     * 플로팅 팝업을 띄울지. 서버가 본인 수신분만 보내므로 범위는 따로 거르지 않는다.
-     * - 공지(notice), 팀 이동·탈락/복귀·리더 지정 시스템 알림, 게임 진행·거래 알림. 룰 갱신은 배너가 있고, 그 외 시스템 메시지는 피드로 충분
+     * 알림으로 띄울지. 서버가 본인 수신분만 보내므로 범위는 따로 거르지 않는다.
+     * - 공지(notice), 룰 갱신, 팀 이동·탈락/복귀·리더 지정 시스템 알림, 게임 진행·거래 알림. 그 외 시스템 메시지는 피드로 충분
      * - 본인이 만든 이벤트(진행자가 직접 보낸 공지·처리)는 제외. 단 payload.notifySelf(참가자 행동의 결과 알림)는 본인에게도
      */
-    shouldToast(ev: GameEvent): boolean {
+    shouldNotify(ev: GameEvent): boolean {
       const popup =
         ev.type === 'notice' ||
+        ev.type === 'document.updated' ||
         // (이주 수락의 팀 이동 신호는 silent — 전체 이주 공지가 따로 뜬다)
         (ev.type === 'system' && !ev.payload.silent && (ev.payload.kind === 'member.moved' || ev.payload.kind === 'members.active' || ev.payload.kind === 'leader.set')) ||
         // 게임 진행·거래 알림. silent(투표 진행 상황, 설정 변경 등)는 피드에만
         ((ev.type === 'game' || ev.type === 'trade') && !ev.payload.silent)
       if (!popup) return false
-      // 발행 요청은 관리자 화면이 요청 창(IssueAdminCard)으로 띄우므로 토스트는 겹치지 않게 뺀다
+      // 발행 요청은 관리자 화면이 요청 창(IssueAdminCard)으로 띄우므로 겹치지 않게 뺀다
       if (ev.payload.kind === 'issue.requested' && useAuthStore().user?.role === 'admin') return false
       // 결과 알림(모든 팀 완료·리더 선출 결과·거래 완료)은 마지막으로 행동한 본인에게도 띄운다 (서버가 notifySelf 로 표시)
       if (ev.payload.notifySelf) return true
+      // 관리자는 본인이 처리한 진행 결과도 고정 알림 줄에 남긴다 (게임이 끝나도 옛 알림이 남지 않게)
+      if (useAuthStore().user?.role === 'admin') return true
       const me = useAuthStore().user?.id
       return ev.createdBy == null || ev.createdBy !== me
     },
@@ -222,8 +230,8 @@ export const useRealtimeStore = defineStore('realtime', {
       this.connected = false
       this.events = []
       this.replaying = false
-      this.pendingToasts = []
-      useToastStore().clear()
+      this.pendingNotices = []
+      useNoticeStore().clear()
       useDocumentsStore().clear()
       useTeamsStore().clear()
       useGameStore().clear()

@@ -1,8 +1,8 @@
 /**
  * 전쟁 (docs/99.전쟁.md, 2026-10-30 docs/103 §4·§12 로 승인 단계 폐지).
  *   거래 단계에서 리더가 상대 팀 선택 → 즉시 declared (비용 차감·소멸, 진행 중 거래 취소, 모든 팀 거래 금지)
- *   관리자가 오프라인 결과로 지정 → attacker_won / defender_won (패배팀 재화 4종의 절반(내림)을 승리팀이 가져감) / draw / cancelled
- *   승·패·무승부면 라우터가 거래 단계를 끝내고 리더 협의로 자동 전환한다 (취소는 거래 단계 유지)
+ *   관리자가 오프라인 결과로 지정 → attacker_won / defender_won (패배팀 재화 4종의 절반(내림)을 승리팀이 가져감)
+ *   전쟁이 나면 그 라운드 거래는 끝이다. 결과가 나오면 전쟁 종료 화면에서 재화가 넘어가고, 관리자가 다음 단계로 리더 협의로 넘긴다
  *
  * 규칙:
  * - 라운드(일차)에 게임 전체 1회: idx_wars_one_per_day (먼저 넣은 선포만 유효, 나중 것은 war_used)
@@ -14,7 +14,6 @@
 import { db } from './index.js'
 import { findGroupById, listGroupMembers } from './users.js'
 import { applyDeltas, getTeamResources, negate } from './resources.js'
-import { cancelActiveTrade } from './trades.js'
 import { GameError } from './gameError.js'
 import { RESOURCE_LABELS, WAR_COST_KINDS, warSpoils } from '../../../shared/game.js'
 import type { PublicWarState, Resources, TradeView, WarCost, WarResult, WarStatus, WarView } from '../../../shared/game.js'
@@ -112,23 +111,23 @@ export function describeCost(cost: Partial<Resources>): string {
 function requireAffordable(attacker: number, cost: WarCost) {
   const own = getTeamResources(attacker)
   const short = WAR_COST_KINDS.find((k) => own[k] < cost[k])
-  if (short) throw new GameError('insufficient', `${RESOURCE_LABELS[short]}이(가) 부족해요 (필요 ${cost[short]}, 보유 ${own[short]})`)
+  if (short) throw new GameError('insufficient', `${RESOURCE_LABELS[short]}이(가) 부족합니다 (필요 ${cost[short]}, 보유 ${own[short]})`)
 }
 
 /**
  * 선포 = 즉시 전쟁 시작. 비용 차감(소멸), 진행 중 거래 취소. 라우터가 거래 단계·리더 여부를 확인한다.
  * 두 팀이 동시에 선포하면 먼저 INSERT 된 쪽만 유효 (idx_wars_one_per_day)
  */
-export function declareWar(day: number, attacker: number, defender: number, by: number): { war: WarView; cancelledTrade: TradeView | null } {
+export function declareWar(day: number, attacker: number, defender: number, by: number): { war: WarView } {
   return db.transaction(() => {
-    if (attacker === defender) throw new GameError('same_team', '자기 팀에는 선포할 수 없어요', 400)
+    if (attacker === defender) throw new GameError('same_team', '자기 팀에는 선포할 수 없습니다', 400)
     if (!findGroupById(defender)) throw new GameError('not_found', '', 404)
-    if (listGroupMembers(defender).length === 0) throw new GameError('no_members', '활성 팀원이 없는 팀이에요')
-    if (!isWarAllowed(day)) throw new GameError('war_banned', '이번 라운드는 리더 협의로 전쟁이 금지되었어요')
-    if (getActiveWar()) throw new GameError('war_active', '이미 전쟁 중이에요')
-    if (getWarOfDay(day)) throw new GameError('war_used', '이번 라운드에는 이미 전쟁이 선포되었어요 (라운드당 1회)')
+    if (listGroupMembers(defender).length === 0) throw new GameError('no_members', '활성 팀원이 없는 팀입니다')
+    if (!isWarAllowed(day)) throw new GameError('war_banned', '이번 라운드는 리더 협의로 전쟁이 금지되었습니다')
+    if (getActiveWar()) throw new GameError('war_active', '이미 전쟁 중입니다')
+    if (getWarOfDay(day)) throw new GameError('war_used', '이번 라운드에는 이미 전쟁이 선포되었습니다 (라운드당 1회)')
     const cost = getWarCost(day)
-    if (!cost) throw new GameError('no_war_cost', '이번 라운드 전쟁 선포 비용이 정해지지 않았어요')
+    if (!cost) throw new GameError('no_war_cost', '이번 라운드 전쟁 선포 비용이 정해지지 않았습니다')
     requireAffordable(attacker, cost)
     let id: number
     try {
@@ -136,38 +135,36 @@ export function declareWar(day: number, attacker: number, defender: number, by: 
         .run(day, attacker, defender, JSON.stringify(cost), by).lastInsertRowid)
     } catch (e) {
       // 다른 팀이 먼저 선포 (라운드 1건 / 진행 중 1건 index)
-      if ((e as { code?: string }).code === 'SQLITE_CONSTRAINT_UNIQUE') throw new GameError('war_used', '다른 팀이 먼저 전쟁을 선포했어요')
+      if ((e as { code?: string }).code === 'SQLITE_CONSTRAINT_UNIQUE') throw new GameError('war_used', '다른 팀이 먼저 전쟁을 선포했습니다')
       throw e
     }
     // 비용은 소멸 (관리자에게 반납 = 게임에서 사라짐)
     applyDeltas(attacker, negate(cost), { reason: 'war_cost', day, refId: id, by })
     // 선포 시점부터 어떤 거래도 할 수 없다 → 진행 중 거래 취소
-    const cancelledTrade = cancelActiveTrade()
-    return { war: toView(db.prepare('SELECT * FROM wars WHERE id = ?').get(id) as WarRow), cancelledTrade }
+    return { war: toView(db.prepare('SELECT * FROM wars WHERE id = ?').get(id) as WarRow) }
   })()
 }
 
 export interface ResolveOutcome {
   war: WarView
-  winner: number | null
-  loser: number | null
-  spoils: Resources | null
+  winner: number
+  loser: number
+  spoils: Resources
 }
 
-/** 관리자 결과 지정. 승패면 패배팀 재화 4종의 절반(내림)을 승리팀으로 옮긴다 */
+/** 관리자 결과 지정. 패배팀 재화 4종의 절반(내림)을 승리팀으로 옮긴다 */
 export function resolveWar(id: number, result: WarResult, day: number, by: number): ResolveOutcome {
   return db.transaction(() => {
     const status: WarStatus =
-      result === 'attacker' ? 'attacker_won' : result === 'defender' ? 'defender_won' : result === 'draw' ? 'draw' : 'cancelled'
+      result === 'attacker' ? 'attacker_won' : 'defender_won'
     const ok = db
       .prepare(`UPDATE wars SET status = ?, decided_by = ?, decided_at = datetime('now') WHERE id = ? AND status = 'declared'`)
       .run(status, by, id).changes === 1
     if (!ok) {
       if (!db.prepare('SELECT 1 FROM wars WHERE id = ?').get(id)) throw new GameError('not_found', '', 404)
-      throw new GameError('already_decided', '이미 결과가 정해진 전쟁이에요')
+      throw new GameError('already_decided', '이미 결과가 정해진 전쟁입니다')
     }
     const war = toView(db.prepare('SELECT * FROM wars WHERE id = ?').get(id) as WarRow)
-    if (result !== 'attacker' && result !== 'defender') return { war, winner: null, loser: null, spoils: null }
     const winner = result === 'attacker' ? war.attacker : war.defender
     const loser = result === 'attacker' ? war.defender : war.attacker
     const spoils = warSpoils(getTeamResources(loser))

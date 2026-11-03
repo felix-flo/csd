@@ -4,16 +4,15 @@ import Icon from './Icon.vue'
  * 게임 설정 (시작 전: 설정·준비 상태): 총 일수, 팀별 최대 인원, 테스트 계정 포함 여부, 발행 한도, 마지막 라운드 발행 단계, 이주 시작 라운드, 팀별 초기 재화. (라이프 매장량은 2026-10-30 폐지)
  * - 설정 상태: "초기셋팅완료" → 준비 상태 (최대 인원 합계만큼 팀 없는 PIN 생성, 참가자가 로그인해 팀 선택)
  * - 준비 상태: 계속 수정 가능. 최대 인원을 늘리면 PIN 이 추가되고, 줄이면 쓰지 않은 PIN 이 지워진다. 게임 시작은 "게임 진행" 카드
- * 리셋하면 총 일수만 비워지고 나머지 설정은 유지된다.
+ * 리셋하면 총 라운드는 기본값(6)으로, 나머지 설정은 유지된다. "기본값 불러오기"는 확정한 기본 설정을 입력칸에 채운다.
  */
 import { computed, reactive, ref, watch } from 'vue'
 import type { GroupInfo } from '../../../shared/types'
-import { DEFAULT_ISSUE_LIMITS, DEFAULT_LAST_ISSUE_PHASES, DEFAULT_MIGRATION_START_DAY, RESOURCE_KINDS, emptyResources, isBeforeStart, teamLetter, type AdminGameView, type Phase, type Resources } from '../../../shared/game'
+import { DEFAULT_ISSUE_LIMITS, DEFAULT_TEAM_SETUP, DEFAULT_TOTAL_DAYS, DEFAULT_WAR_COST, DEFAULT_MIGRATION_START_DAY, RESOURCE_KINDS, emptyResources, isBeforeStart, teamLetter, type AdminGameView, type Phase, type Resources } from '../../../shared/game'
 import { RESOURCES } from '../lib/resources'
 import { api } from '../lib/api'
 import { useGameStore } from '../stores/game'
 import TeamMark from './TeamMark.vue'
-import PhaseChecks from './PhaseChecks.vue'
 import TabLoginToggle from './TabLoginToggle.vue'
 import ModalDialog from './ModalDialog.vue'
 
@@ -29,7 +28,6 @@ const capacity = reactive<Record<number, number>>({})
 const includeTest = ref(true)
 const issueLimit = reactive({ ...DEFAULT_ISSUE_LIMITS })
 /** 마지막 라운드 발행 허용 단계 (진행 중에는 게임 진행 카드에서 마지막 라운드 전날까지 바꿀 수 있다) */
-const lastIssuePhases = ref<Phase[]>([...DEFAULT_LAST_ISSUE_PHASES])
 /** 이주가 열리는 라운드 (docs/100 N3). 총 라운드보다 크면 이주 없음 */
 const migrationStartDay = ref(DEFAULT_MIGRATION_START_DAY)
 /** 1일차 전쟁 선포 비용 (저장해야 게임 시작 가능. 2일차부터는 게임 진행 카드에서 전날 정한다) */
@@ -47,7 +45,6 @@ function resetInputs() {
   totalDays.value = s.totalDays
   includeTest.value = s.includeTest
   Object.assign(issueLimit, s.issueLimit)
-  lastIssuePhases.value = [...s.lastIssuePhases]
   migrationStartDay.value = s.migrationStartDay
   Object.assign(warCost, s.warCost ?? { gem: 0, gold: 0, credit: 0 })
   for (const g of props.groups) {
@@ -56,6 +53,21 @@ function resetInputs() {
   }
 }
 watch([settings, () => props.groups], resetInputs, { immediate: true })
+
+/** 기본값 불러오기: 확정한 기본 설정을 입력칸에 채운다 (저장은 "설정 저장"을 눌러야) */
+function loadDefaults() {
+  totalDays.value = DEFAULT_TOTAL_DAYS
+  includeTest.value = false
+  Object.assign(issueLimit, DEFAULT_ISSUE_LIMITS)
+  migrationStartDay.value = DEFAULT_MIGRATION_START_DAY
+  Object.assign(warCost, DEFAULT_WAR_COST)
+  for (const g of props.groups) {
+    const d = DEFAULT_TEAM_SETUP[g.code]
+    capacity[g.id] = d?.capacity ?? 0
+    initial[g.id] = { ...(d?.initial ?? emptyResources()) }
+  }
+  message.value = '기본값을 채웠습니다. "설정 저장"을 눌러야 반영됩니다'
+}
 
 function applyBulk() {
   for (const g of props.groups) initial[g.id] = { ...bulk }
@@ -85,7 +97,6 @@ const dirty = computed(() => {
     includeTest.value !== s.includeTest ||
     issueLimit.gem !== s.issueLimit.gem ||
     issueLimit.gold !== s.issueLimit.gold ||
-    lastIssuePhases.value.join() !== s.lastIssuePhases.join() ||
     migrationStartDay.value !== s.migrationStartDay ||
     !s.warCost ||
     (['gem', 'gold', 'credit'] as const).some((k) => warCost[k] !== s.warCost![k]) ||
@@ -103,7 +114,6 @@ async function save(): Promise<boolean> {
       capacity: Object.fromEntries(props.groups.map((g) => [String(g.id), Math.max(0, capacity[g.id] || 0)])),
       includeTest: includeTest.value,
       issueLimit: { gem: Math.max(0, issueLimit.gem || 0), gold: Math.max(0, issueLimit.gold || 0) },
-      lastIssuePhases: lastIssuePhases.value,
       migrationStartDay: Math.min(30, Math.max(1, Math.floor(migrationStartDay.value || DEFAULT_MIGRATION_START_DAY))),
       warCost: { gem: Math.max(0, warCost.gem || 0), gold: Math.max(0, warCost.gold || 0), credit: Math.max(0, warCost.credit || 0) },
       initial: Object.fromEntries(props.groups.map((g) => [String(g.id), initial[g.id]])),
@@ -142,11 +152,11 @@ async function prepare() {
     <h2>게임 설정 <span v-if="status === 'ready'" class="badge on">준비 중</span></h2>
     <p v-if="status === 'setup'" class="muted">
       총 라운드 수와 팀별 최대 인원, 초기 재화를 정한 뒤 <strong>초기셋팅완료</strong>를 누르세요. 최대 인원 합계만큼 팀 없는 PIN 이 만들어지고,
-      참가자가 로그인해 이름을 입력하고 팀(A, B, C…)을 직접 골라요. 진행자 계정은 "팀 · 진행자 구성" 카드에서 만들어요.
+      참가자가 로그인해 닉네임을 입력하고 팀(A, B, C…)을 직접 고릅니다. 진행자 계정은 "팀 · 진행자 구성" 카드에서 만듭니다.
     </p>
     <p v-else class="muted">
-      준비 중에도 설정을 바꿀 수 있어요. 최대 인원을 늘리면 PIN 이 추가되고, 줄이면 아직 쓰지 않은 PIN 이 지워져요 (이미 들어온 인원 아래로는 줄일 수 없어요).
-      게임 시작은 위 "게임 진행" 카드에서 해요.
+      준비 중에도 설정을 바꿀 수 있습니다. 최대 인원을 늘리면 PIN 이 추가되고, 줄이면 아직 쓰지 않은 PIN 이 지워집니다 (이미 들어온 인원 아래로는 줄일 수 없습니다).
+      입장이 끝나면 맨 위 "세팅 완료" 버튼을 누릅니다.
     </p>
 
     <div class="row" style="margin-bottom: 10px">
@@ -161,14 +171,9 @@ async function prepare() {
       <label><Icon name="gold" /> 골드 발행 한도 <input v-model.number="issueLimit.gold" type="number" min="0" style="width: 6em" /> /라운드 (이월)</label>
     </div>
     <div class="row" style="margin-bottom: 10px">
-      <span>마지막 라운드 발행 단계</span>
-      <PhaseChecks v-model="lastIssuePhases" :disabled="busy" />
-      <span v-if="!lastIssuePhases.length" class="error" style="font-size: 0.85rem">1개 이상 고르세요</span>
-    </div>
-    <div class="row" style="margin-bottom: 10px">
       <label><Icon name="migration" /> 이주 시작 라운드 <input v-model.number="migrationStartDay" type="number" min="1" max="30" style="width: 5em" /></label>
       <span class="muted" style="font-size: 0.85rem">
-        <template v-if="totalDays && migrationStartDay > totalDays">총 {{ totalDays }}라운드라 이주가 열리지 않아요</template>
+        <template v-if="totalDays && migrationStartDay > totalDays">총 {{ totalDays }}라운드라 이주가 열리지 않습니다</template>
         <template v-else>이 라운드부터 마지막 라운드까지 (라이프 제출 단계 제외)</template>
       </span>
     </div>
@@ -177,12 +182,12 @@ async function prepare() {
       <label>보석 <input v-model.number="warCost.gem" type="number" min="0" style="width: 5em" /></label>
       <label>골드 <input v-model.number="warCost.gold" type="number" min="0" style="width: 5em" /></label>
       <label>크레딧 <input v-model.number="warCost.credit" type="number" min="0" style="width: 5em" /></label>
-      <span v-if="!settings?.warCost" class="error" style="font-size: 0.85rem">저장해야 게임을 시작할 수 있어요</span>
+      <span v-if="!settings?.warCost" class="error" style="font-size: 0.85rem">저장해야 게임을 시작할 수 있습니다</span>
     </div>
     <p class="muted" style="margin-top: 0">
-      테스트 계정은 팀·리더가 미리 정해져 있고 최대 인원에 들어가요 (팀마다 리더 → 팀원 순으로 최대 인원까지만 활성, 최대 인원 1이면 리더만). 빼면 탈락(로그인 차단) 처리돼요.
-      전쟁 선포 비용: 2라운드부터는 게임 진행 카드에서 전 라운드가 끝나기 전에 정해요(0 이면 무료).
-      발행 한도: 화이트팀 리더는 보석을 라운드마다 한도까지(이월 없음), 옐로우팀 리더는 골드를 라운드마다 한도씩 쌓아서(안 쓴 만큼 이월) 발행 요청할 수 있어요.
+      테스트 계정은 팀·리더가 미리 정해져 있고 최대 인원에 들어갑니다 (팀마다 리더 → 팀원 순으로 최대 인원까지만 활성, 최대 인원 1이면 리더만). 빼면 탈락(로그인 차단) 처리됩니다.
+      전쟁 선포 비용: 2라운드부터는 게임 진행 카드에서 전 라운드가 끝나기 전에 정합니다(0 이면 무료).
+      발행 한도: 화이트팀 리더는 보석을 라운드마다 한도까지(이월 없음), 골드팀 리더는 골드를 라운드마다 한도씩 쌓아서(안 쓴 만큼 이월) 발행 요청할 수 있습니다.
     </p>
 
     <table class="res-table">
@@ -211,10 +216,11 @@ async function prepare() {
         </tr>
       </tbody>
     </table>
-    <p class="muted" style="margin: 6px 0 0">참가자 PIN {{ totalCapacity }}개<template v-if="testSeats"> (테스트 계정 {{ testSeats }}명 제외)</template> · 참가자에게는 팀 이름 대신 A, B, C… 로 보여요.</p>
+    <p class="muted" style="margin: 6px 0 0">참가자 PIN {{ totalCapacity }}개<template v-if="testSeats"> (테스트 계정 {{ testSeats }}명 제외)</template> · 참가자에게는 팀 이름 대신 A, B, C… 로 보입니다.</p>
 
     <div class="row" style="margin-top: 12px">
-      <button :class="status === 'setup' ? 'secondary' : ''" :disabled="busy || !dirty || !lastIssuePhases.length" @click="save">설정 저장</button>
+      <button class="secondary" type="button" :disabled="busy" @click="loadDefaults">기본값 불러오기</button>
+      <button :class="status === 'setup' ? 'secondary' : ''" :disabled="busy || !dirty" @click="save">설정 저장</button>
       <button v-if="status === 'setup'" :disabled="busy || !canPrepare" @click="confirmPrepare = true">초기셋팅완료</button>
       <span v-if="status === 'setup' && prepareMissing.length" class="blocker">먼저 정하세요: {{ prepareMissing.join(' · ') }}</span>
       <span class="muted">{{ message }}<template v-if="dirty"> · 저장하지 않은 변경 있음</template></span>
@@ -223,7 +229,7 @@ async function prepare() {
     <ModalDialog
       :open="confirmPrepare"
       title="초기셋팅을 완료할까요?"
-      :message="`참가자 PIN ${totalCapacity}개를 만들고 게임 준비 상태로 바꿉니다. 참가자는 로그인해 이름을 입력하고 팀을 고를 수 있어요.\n준비 중에도 설정은 바꿀 수 있어요.`"
+      :message="`참가자 PIN ${totalCapacity}개를 만들고 게임 준비 상태로 바꿉니다. 참가자는 로그인해 닉네임을 입력하고 팀을 고를 수 있습니다.\n준비 중에도 설정은 바꿀 수 있습니다.`"
       confirm-label="초기셋팅완료"
       cancel-label="닫기"
       :busy="busy"

@@ -1,84 +1,65 @@
 <script setup lang="ts">
-import Icon from './Icon.vue'
 /**
- * 최종장 결과 (docs/100 N2 + D7, 룰 04 결과·보상). 프레젠테이션에서는 큰 글씨.
- * - 투표 마감 뒤: 득표 "보석 N표 · 골드 N표" (동점이면 가위바위보 결과)
- * - 결과 발표부터: 상금 화폐 + 마지막 라운드 발행량 (화이트 보석 · 옐로우 골드)
- * - 정산부터: 팀 · 살아남은 인원 · 채택 화폐 · 보상 %. 상대 발행팀은 "보상 없음"
+ * 최종장 결과 (휴대폰, docs/100 N2 + D7). 프레젠테이션은 FinalStage.
+ * - 투표 마감 뒤: 득표 (동점이면 가위바위보 결과)
+ * - 결과 발표부터: 상금 화폐 + 마지막 라운드 발행량
+ * - 정산부터: 팀별 생존 인원 · 채택 화폐 · 보상. 상대 발행팀은 "보상 없음". 우리 팀은 강조
  * - 테러리스트 공개부터: 테러리스트 이름 · 팀 · 보상 (docs/100 N4)
  */
 import { computed } from 'vue'
 import { ISSUE_TEAM_CODE, RESOURCE_LABELS, shareText, type FinalState, type GameResults } from '../../../shared/game'
 import { useTeamsStore } from '../stores/teams'
+import Icon from './Icon.vue'
 import TeamMark from './TeamMark.vue'
 
-const props = defineProps<{ final: FinalState; results: GameResults | null; large?: boolean }>()
+const props = defineProps<{ final: FinalState; results: GameResults | null; myTeamId?: number | null }>()
 const teams = useTeamsStore()
-const issuer = (kind: 'gem' | 'gold') => teams.teams.find((t) => t.code === ISSUE_TEAM_CODE[kind])?.name ?? (kind === 'gem' ? '화이트' : '옐로우')
-const revealed = computed(() => !!props.final.lastIssue)
+const issuer = (kind: 'gem' | 'gold') => (teams.teams.find((t) => t.code === ISSUE_TEAM_CODE[kind])?.name ?? '').replace(/ 팀$/, '')
 const adopted = computed(() => props.results?.adopted ?? props.final.adopted)
 const teamOf = (id: number | null) => (id == null ? undefined : teams.byId(id))
 const won = (n: number) => `${n.toLocaleString('ko-KR')}원`
-const tiebreakText = computed(() => (props.final.tiebreak ? `동점 · 가위바위보 ${issuer(props.final.tiebreak === 'white' ? 'gem' : 'gold')} 승` : ''))
+const tieText = computed(() => {
+  if (props.final.tiebreak) return `동점 · 가위바위보 ${issuer(props.final.tiebreak === 'white' ? 'gem' : 'gold')} 승`
+  return props.final.tieUnresolved ? '동점 · 화이트와 골드 리더가 가위바위보로 정합니다' : ''
+})
 </script>
 
 <template>
-  <div v-if="final.closed" class="card results" :class="{ large }">
-    <h2>최종 결과</h2>
-    <p class="votes mono">
-      <Icon name="gem" /> 보석 <strong>{{ final.tally?.gem }}</strong>표 · <Icon name="gold" /> 골드 <strong>{{ final.tally?.gold }}</strong>표
-      <span v-if="tiebreakText" class="muted">· {{ tiebreakText }}</span>
-      <span v-else-if="final.tieUnresolved" class="muted">· 동점 — 화이트·옐로우 리더 가위바위보</span>
-    </p>
-    <template v-if="revealed && adopted">
-      <p class="adopted">상금 화폐는 <strong><Icon :name="adopted" /> {{ RESOURCE_LABELS[adopted] }}</strong></p>
-      <p class="issued muted">
-        마지막 라운드 발행: {{ issuer('gem') }} 보석 <strong class="mono">{{ final.lastIssue?.gem }}</strong>개 ·
-        {{ issuer('gold') }} 골드 <strong class="mono">{{ final.lastIssue?.gold }}</strong>개
-      </p>
-    </template>
-    <table v-if="results" class="shares">
-      <thead><tr><th>팀</th><th>살아남은 인원</th><th>{{ RESOURCE_LABELS[results.adopted] }}</th><th>보상</th></tr></thead>
-      <tbody>
-        <tr v-for="t in results.teams" :key="t.teamId" :class="{ excluded: t.excluded }">
-          <td class="team"><TeamMark :color="t.color" :size="large ? 'lg' : undefined" />{{ t.name }}</td>
-          <td class="mono">{{ t.alive }}명</td>
-          <td class="mono">{{ t.excluded ? '—' : t.holding.toLocaleString('ko-KR') }}</td>
-          <td class="mono share">{{ t.excluded ? '보상 없음' : shareText(t.share) }}</td>
-        </tr>
-      </tbody>
-    </table>
+  <div v-if="final.closed" class="card results">
+    <p class="label">최종 결과</p>
+    <h2 v-if="final.lastIssue && adopted" class="adopted">상금 화폐는 <Icon :name="adopted" /> {{ RESOURCE_LABELS[adopted] }}</h2>
+    <p class="votes">보석 <strong class="mono">{{ final.tally?.gem }}</strong>표 · 골드 <strong class="mono">{{ final.tally?.gold }}</strong>표<span v-if="tieText" class="muted"> · {{ tieText }}</span></p>
+    <p v-if="final.lastIssue" class="muted issued">마지막 발행: 보석 {{ final.lastIssue.gem }}개 · 골드 {{ final.lastIssue.gold }}개</p>
+    <ul v-if="results" class="shares">
+      <li v-for="t in results.teams" :key="t.teamId" :class="{ excluded: t.excluded, mine: t.teamId === myTeamId }">
+        <span class="team"><TeamMark :color="t.color" />{{ t.name }}</span>
+        <span class="muted">생존 {{ t.alive }}명<template v-if="!t.excluded"> · {{ RESOURCE_LABELS[results.adopted] }} {{ t.holding.toLocaleString('ko-KR') }}</template></span>
+        <strong class="share mono">{{ t.excluded ? '보상 없음' : shareText(t.share) }}</strong>
+      </li>
+    </ul>
     <div v-if="final.spies" class="spies">
-      <p v-if="!final.spies.length" class="spy-line"><Icon name="spy" /> 테러리스트는 없었어요</p>
-      <p v-for="x in final.spies" :key="x.userId" class="spy-line">
-        <Icon name="spy" /> 테러리스트는 <strong>{{ x.name }}</strong>님<span v-if="teamOf(x.teamId)" class="muted"> (<TeamMark :color="teamOf(x.teamId)!.color" />{{ teamOf(x.teamId)!.name }})</span>이었어요
-        · 테러리스트 보상 <strong class="mono">{{ x.alive ? won(x.reward) : '0원 (탈락)' }}</strong>
+      <p v-if="!final.spies.length"><Icon name="spy" /> 테러리스트는 없었습니다</p>
+      <p v-for="x in final.spies" :key="x.userId">
+        <Icon name="spy" /> 테러리스트는 <strong>{{ x.name }}</strong>님<span v-if="teamOf(x.teamId)" class="muted"> ({{ teamOf(x.teamId)!.name }})</span>
+        · 보상 <strong class="mono">{{ x.alive ? won(x.reward) : '0원 (탈락)' }}</strong>
       </p>
     </div>
   </div>
 </template>
 
 <style scoped>
-.votes { margin: 0; font-size: 1.1rem; }
-.votes strong { font-size: 1.4rem; }
-.adopted { margin: 12px 0 0; font-size: 1.3rem; }
-.adopted strong { color: var(--blue); }
-.issued { margin: 6px 0 0; }
-.shares { width: 100%; border-collapse: collapse; margin-top: 14px; }
-.shares th, .shares td { text-align: left; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line-soft); }
-.shares th { color: var(--muted); font-weight: 500; font-size: 0.8rem; }
-.shares tr:last-child td { border-bottom: none; }
-.shares .share { font-weight: 700; }
-.shares tr.excluded td { color: var(--muted); }
-.team { font-weight: 600; }
-.spies { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
-.spy-line { margin: 4px 0; font-size: 1.15rem; }
-.large .spy-line { font-size: 1.9rem; }
-.large h2 { font-size: 2.4rem; }
-.large .votes { font-size: 1.8rem; }
-.large .votes strong { font-size: 2.6rem; }
-.large .adopted { font-size: 2.4rem; }
-.large .issued { font-size: 1.3rem; }
-.large .shares td { font-size: 1.7rem; padding: 14px 16px 14px 0; }
-.large .shares th { font-size: 1rem; }
+.results .label { margin: 0 0 6px; }
+.adopted { margin: 0 0 6px; font-size: 1.6rem; }
+.votes { margin: 0; }
+.issued { margin: 4px 0 0; font-size: 0.9rem; }
+.shares { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.shares li { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto; column-gap: 12px; padding: 10px 12px; border-radius: var(--radius); background: var(--bg-soft); }
+.shares li .muted { grid-column: 1; font-size: 0.85rem; }
+.shares .share { grid-column: 2; grid-row: 1 / 3; align-self: center; font-size: 1.3rem; }
+.shares li.excluded { opacity: 0.6; }
+.shares li.excluded .share { font-size: 0.95rem; }
+.shares li.mine { box-shadow: inset 0 0 0 2px var(--ink); }
+.team { font-weight: 700; display: flex; align-items: center; gap: 6px; }
+.spies { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
+.spies p { margin: 4px 0; }
 </style>

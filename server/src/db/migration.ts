@@ -36,9 +36,9 @@ export function migrationOpenNow(): boolean {
 
 function requireOpen() {
   const g = getGameRow()
-  if (g.status !== 'running') throw new GameError('not_running', '게임이 진행 중이 아니에요')
-  if (g.day < g.migration_start_day) throw new GameError('migration_closed', `이주는 ${g.migration_start_day}라운드부터 할 수 있어요`)
-  if (g.phase === 'life') throw new GameError('migration_closed', '라이프 제출 단계에는 이주할 수 없어요')
+  if (g.status !== 'running') throw new GameError('not_running', '게임이 진행 중이 아닙니다')
+  if (g.day < g.migration_start_day) throw new GameError('migration_closed', `이주는 ${g.migration_start_day}라운드부터 할 수 있습니다`)
+  if (g.phase === 'life') throw new GameError('migration_closed', '라이프 제출 단계에는 이주할 수 없습니다')
   return g
 }
 
@@ -90,12 +90,11 @@ export function requestMigration(userId: number, toTeamId: number): MigrationVie
       | { group_id: number | null; is_leader: number }
       | undefined
     if (!u?.group_id) throw new GameError('no_group', '', 404)
-    if (u.is_leader === 1) throw new GameError('leader', '리더는 이주를 신청할 수 없어요', 403)
+    if (u.is_leader === 1) throw new GameError('leader', '리더는 이주를 신청할 수 없습니다', 403)
     if (!listGroups().some((t) => t.id === toTeamId)) throw new GameError('not_found', '', 404)
-    if (toTeamId === u.group_id) throw new GameError('same_team', '지금 팀으로는 이주할 수 없어요', 400)
-    if (acceptedMigration(userId)) throw new GameError('already_migrated', '이미 이주했어요. 이주는 한 번만 할 수 있어요')
+    if (toTeamId === u.group_id) throw new GameError('same_team', '지금 팀으로는 이주할 수 없습니다', 400)
     const r = db.prepare(`INSERT OR IGNORE INTO migrations (day, user_id, from_group, to_group) VALUES (?, ?, ?, ?)`).run(g.day, userId, u.group_id, toTeamId)
-    if (r.changes !== 1) throw new GameError('migration_pending', '이미 대기 중인 이주 신청이 있어요. 취소한 뒤 다시 신청하세요')
+    if (r.changes !== 1) throw new GameError('migration_pending', '이미 대기 중인 이주 신청이 있습니다. 취소한 뒤 다시 신청하세요')
     return getMigration(Number(r.lastInsertRowid))!
   })()
 }
@@ -105,10 +104,10 @@ export function cancelMigration(id: number, reason: MigrationCancelReason, by: n
   return db.transaction(() => {
     const m = getMigration(id)
     if (!m) throw new GameError('not_found', '', 404)
-    if (reason === 'self' && m.userId !== by) throw new GameError('not_yours', '본인 신청만 취소할 수 있어요', 403)
+    if (reason === 'self' && m.userId !== by) throw new GameError('not_yours', '본인 신청만 취소할 수 있습니다', 403)
     const ok = db.prepare(`UPDATE migrations SET status = 'cancelled', cancel_reason = ?, decided_at = datetime('now'), decided_by = ? WHERE id = ? AND status = 'pending'`)
       .run(reason, by, id).changes === 1
-    if (!ok) throw new GameError('already_decided', '이미 처리된 신청이에요')
+    if (!ok) throw new GameError('already_decided', '이미 처리된 신청입니다')
     return getMigration(id)!
   })()
 }
@@ -126,8 +125,8 @@ export function decideMigration(id: number, leaderId: number, accept: boolean): 
     const m = getMigration(id)
     if (!m) throw new GameError('not_found', '', 404)
     const leader = db.prepare(`SELECT group_id, is_leader FROM users WHERE id = ? AND active = 1`).get(leaderId) as { group_id: number | null; is_leader: number } | undefined
-    if (!leader || leader.is_leader !== 1 || leader.group_id !== m.toTeamId) throw new GameError('not_leader', '받는 팀 리더만 처리할 수 있어요', 403)
-    if (m.status !== 'pending') throw new GameError('already_decided', '이미 처리된 신청이에요')
+    if (!leader || leader.is_leader !== 1 || leader.group_id !== m.toTeamId) throw new GameError('not_leader', '받는 팀 리더만 처리할 수 있습니다', 403)
+    if (m.status !== 'pending') throw new GameError('already_decided', '이미 처리된 신청입니다')
     if (!accept) {
       db.prepare(`UPDATE migrations SET status = 'rejected', decided_at = datetime('now'), decided_by = ? WHERE id = ? AND status = 'pending'`).run(leaderId, id)
       return { migration: getMigration(id)!, electionTeam: null }
@@ -135,7 +134,7 @@ export function decideMigration(id: number, leaderId: number, accept: boolean): 
     const u = db.prepare(`SELECT group_id, is_leader, active FROM users WHERE id = ?`).get(m.userId) as { group_id: number | null; is_leader: number; active: number }
     // 자동 취소 대상은 라우터가 결정 전에 sweepMigrations() 로 정리한다. 여기는 안전장치 (throw 하면 트랜잭션이 롤백되므로 상태는 바꾸지 않는다)
     if (u.active !== 1 || u.is_leader === 1 || u.group_id !== m.fromTeamId) {
-      throw new GameError('migration_stale', '신청자가 리더가 되었거나 탈락·팀 이동되어 수락할 수 없어요')
+      throw new GameError('migration_stale', '신청자가 리더가 되었거나 탈락·팀 이동되어 수락할 수 없습니다')
     }
     db.prepare(`UPDATE migrations SET status = 'accepted', decided_at = datetime('now'), decided_by = ? WHERE id = ? AND status = 'pending'`).run(leaderId, id)
     const moved = moveMember(m.userId, m.toTeamId)
@@ -174,12 +173,6 @@ export function cancelAllPendingMigrations(): MigrationView[] {
 }
 
 /** 참가자 화면용 */
-/** 이미 수락된(완료된) 이주. 1인 1회라 최대 1건 */
-function acceptedMigration(userId: number): MigrationView | null {
-  const r = db.prepare(`${SELECT} WHERE m.user_id = ? AND m.status = 'accepted' ORDER BY m.id DESC`).get(userId) as MigrationRow | undefined
-  return r ? toView(r) : null
-}
-
 export function getTeamMigrationView(userId: number, teamId: number, isLeader: boolean): TeamMigrationView {
   const g = getGameRow()
   const mine = db.prepare(`${SELECT} WHERE m.user_id = ? AND m.status = 'pending'`).get(userId) as MigrationRow | undefined
@@ -188,7 +181,6 @@ export function getTeamMigrationView(userId: number, teamId: number, isLeader: b
     open: isMigrationOpen(g.status, g.day, g.phase, g.migration_start_day),
     startDay: g.migration_start_day,
     mine: mine ? toView(mine) : null,
-    done: acceptedMigration(userId),
     incoming,
   }
 }

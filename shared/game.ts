@@ -16,21 +16,49 @@ export function emptyResources(): Resources {
 }
 
 export const PHASES = ['leader', 'production', 'trade', 'council', 'life'] as const
-export type Phase = (typeof PHASES)[number]
+/** 마지막 라운드는 리더 협의와 라이프 제출 사이에 마지막 발행 단계가 들어간다 */
+export const LAST_ROUND_PHASES = ['leader', 'production', 'trade', 'council', 'last_issue', 'life'] as const
+export type Phase = (typeof LAST_ROUND_PHASES)[number]
+
+/** 그 라운드의 단계 순서 */
+export function phasesOf(day: number, totalDays: number | null | undefined): readonly Phase[] {
+  return day >= (totalDays ?? Infinity) ? LAST_ROUND_PHASES : PHASES
+}
 
 export const PHASE_LABELS: Record<Phase, string> = {
   leader: '리더 선출',
   production: '생산게임',
   trade: '거래',
   council: '리더 협의',
+  last_issue: '마지막 발행',
   life: '라이프 제출',
+}
+
+/** 라운드에 맞는 단계 이름. 2라운드부터 첫 단계는 리더 재신임 논의다 */
+export function phaseLabel(phase: Phase, day: number): string {
+  return phase === 'leader' && day > 1 ? '리더 재신임 논의' : PHASE_LABELS[phase]
 }
 
 export type GameStatus = 'setup' | 'ready' | 'running' | 'final' | 'ended'
 
+/** 오프닝: 게임 시작 뒤 1라운드 전까지 진행자가 한 장씩 넘긴다. film 은 영상 후 로고, lunch 는 점심 */
+export const OPENING_STEPS = ['film', 'world', 'blue', 'red', 'money', 'vote', 'round', 'stock', 'lunch'] as const
+export type OpeningStep = (typeof OPENING_STEPS)[number]
+export const OPENING_LABELS: Record<OpeningStep, string> = {
+  film: '오프닝 영상 · 로고',
+  world: '게임 소개',
+  blue: '블루: 생존',
+  red: '레드: 진행',
+  money: '화이트·골드: 상금',
+  vote: '최종 투표',
+  round: '한 라운드',
+  stock: '초기 재화',
+  lunch: '점심시간',
+}
+
 /** 단계 타이머(초, docs/103 §14): 거래 15분 · 리더 협의 5분. 강제는 없고 0이 되면 전체에 "시간 종료" 알림 1회 */
 export const PHASE_TIMER_SECONDS: Partial<Record<Phase, number>> = { trade: 15 * 60, council: 5 * 60 }
-export const PHASE_TIMEOUT_MESSAGES: Partial<Record<Phase, string>> = { trade: '거래 시간이 종료되었어요.', council: '리더간 협의가 종료되었어요.' }
+export const PHASE_TIMEOUT_MESSAGES: Partial<Record<Phase, string>> = { trade: '거래 시간이 종료되었습니다.', council: '리더간 협의가 종료되었습니다.' }
 
 /** 진행 중 단계 타이머 (프레젠테이션 카운트다운용). 클라이언트는 serverNow 와 자기 시계의 차이로 보정한다 */
 export interface PhaseTimer {
@@ -127,6 +155,8 @@ export interface GameState {
   /** 현재 일차 (1부터). setup 이면 0 */
   day: number
   phase: Phase | null
+  /** 오프닝 단계. 1라운드가 시작되면 null */
+  opening: OpeningStep | null
   /** 모든 팀 리더 선출 완료 (현재 일차) */
   leadersDone: boolean
   /** 모든 팀 라이프 제출 완료 (현재 일차) */
@@ -138,7 +168,7 @@ export interface GameState {
   /** 정산 결과 (최종장 정산 단계부터) */
   results: GameResults | null
   /** 마지막 라운드 필수 안건 "남은 라이프를 최종 투표권으로" 결과. null = 아직 입력 안 함 (docs/100 N2) */
-  lifeVote: boolean | null
+  lifeVote: boolean
   /** 최종장 (final·ended 일 때만) */
   final: FinalState | null
   /** 팀 선택 현황 (준비 상태에서만) */
@@ -159,17 +189,37 @@ export interface GameState {
 /** 선포 비용으로 낼 수 있는 재화 (보석·골드·크레딧). 일차마다 관리자가 정한다 */
 export const WAR_COST_KINDS = ['gem', 'gold', 'credit'] as const
 export type WarCost = Record<(typeof WAR_COST_KINDS)[number], number>
+
+/**
+ * 기본 게임 설정 (2026-11-03 시뮬레이션으로 확정, 23명 7/8/4/4. docs/ideation/16-sim-7844.md).
+ * 운영진이 값을 기억하지 못해도 "기본값 불러오기"·설정 초기화·새 DB 에서 이 값이 들어간다. 팀은 code 기준
+ */
+export const DEFAULT_TEAM_SETUP: Record<string, { capacity: number; initial: Resources }> = {
+  white: { capacity: 7, initial: { gem: 200, gold: 0, life: 22, credit: 3 } },
+  yellow: { capacity: 8, initial: { gem: 0, gold: 200, life: 22, credit: 3 } },
+  blue: { capacity: 4, initial: { gem: 0, gold: 0, life: 20, credit: 3 } },
+  red: { capacity: 4, initial: { gem: 0, gold: 0, life: 6, credit: 15 } },
+}
+export const DEFAULT_TOTAL_DAYS = 6
+/** 1라운드 전쟁 선포 비용 기본값 */
+export const DEFAULT_WAR_COST: WarCost = { gem: 0, gold: 0, credit: 3 }
 /** declared = 전쟁 중 (선포 즉시 시작, 2026-10-30 승인 단계 폐지 docs/103 §4). 결과는 관리자가 지정 */
 export type WarStatus = 'declared' | 'attacker_won' | 'defender_won' | 'draw' | 'cancelled'
-/** 관리자 결과 지정: 공격팀 승 / 방어팀 승 / 무승부 / 전쟁 취소 */
-export type WarResult = 'attacker' | 'defender' | 'draw' | 'cancel'
+/** 관리자 결과 지정: 공격팀 승 / 방어팀 승 */
+export type WarResult = 'attacker' | 'defender'
 
-export const WAR_STATUS_LABELS: Record<WarStatus, string> = {
-  declared: '전쟁 중',
-  attacker_won: '공격팀 승리',
-  defender_won: '방어팀 승리',
-  draw: '무승부',
-  cancelled: '취소',
+/** 전쟁에서 이긴 팀 */
+export function warWinner(w: { attacker: number; defender: number; status: WarStatus }): number {
+  return w.status === 'defender_won' ? w.defender : w.attacker
+}
+
+/**
+ * 거래 단계의 전쟁 상황. 전쟁이 나면 그 라운드 거래는 끝이다.
+ * 'war' 결과를 기다리는 중, 'over' 결과가 나와 재화가 넘어갔고 관리자가 리더 협의로 넘기기를 기다리는 중
+ */
+export function warStage(st: GameState | null | undefined): 'war' | 'over' | null {
+  if (st?.status !== 'running' || st.phase !== 'trade' || !st.war?.today) return null
+  return st.war.today.status === 'declared' ? 'war' : 'over'
 }
 
 /** 모든 역할 공개 */
@@ -222,7 +272,6 @@ export interface GameSettings {
   /** 1일차 전쟁 선포 비용 (설정 전이면 null — 시작 조건) */
   warCost: WarCost | null
   /** 마지막 라운드에 발행을 허용할 단계 (docs/100 D4). 마지막 라운드가 시작되면 고정 */
-  lastIssuePhases: Phase[]
   /** 테스트 모드(탭 로그인, docs/101). 켜면 리프레시 쿠키 없이 탭마다 로그인. 언제든 전환 */
   tabLogin: boolean
   /** 이주가 열리는 라운드 (docs/100 N3, 기본 4). 총 라운드보다 크면 이주 없음 */
@@ -299,8 +348,6 @@ export interface TeamMigrationView {
   startDay: number
   /** 내 대기 신청 (일반 팀원) */
   mine: MigrationView | null
-  /** 이미 끝난 내 이주 (수락됨). 이주는 1인 1회라 있으면 다시 신청할 수 없다 */
-  done: MigrationView | null
   /** 우리 팀으로 온 대기 신청 (리더에게만) */
   incoming: MigrationView[]
 }
@@ -348,27 +395,20 @@ export interface ElectionView {
  * 거래 (2026-10-30 docs/103 §10): 오프라인 협의 → 진행자가 내용을 입력해 "거래 진행" (proposed) → 두 팀 리더가 각각 수락하면 completed
  * (크레딧 1개 차감 + 재화 교환). 한쪽이라도 거부하면 rejected. 관리자 강제 취소·단계 종료는 cancelled
  */
-export type TradeStatus = 'proposed' | 'completed' | 'rejected' | 'cancelled'
-export const ACTIVE_TRADE_STATUSES: readonly TradeStatus[] = ['proposed']
-
 export interface TradeSide {
   teamId: number
   /** 이 팀이 상대에게 주는 재화 (진행자가 입력) */
   offer: Resources
-  /** 이 팀 리더가 수락했는지 */
-  accepted: boolean
 }
 
+/** 진행자가 입력해서 끝난 거래 */
 export interface TradeView {
   id: number
   day: number
-  status: TradeStatus
   from: TradeSide
   to: TradeSide
   /** 크레딧(수수료 1개)을 내는 팀 */
   creditPayer: number
-  /** 거부한 팀 (rejected 일 때) */
-  closedBy: number | null
   updatedAt: string
 }
 
@@ -402,6 +442,8 @@ export interface LifeSubmissionView {
   livesUsed: number
   /** 리더 자진 탈락 (리더 외 팀원 중 무작위로 생존자를 정함) */
   selfEliminated: boolean
+  /** 모든 팀 제출 뒤 발표됐는지. 발표 전에는 팀 화면에 생존자·탈락자를 보내지 않는다 */
+  revealed: boolean
   createdAt: string
 }
 
@@ -420,19 +462,11 @@ export function issueKindOfTeam(code: string | null | undefined): IssueKind | nu
   return null
 }
 
-/** 마지막 라운드 발행 허용 단계 기본값: 룰의 "리더 협의 뒤" = 라이프 제출 */
-export const DEFAULT_LAST_ISSUE_PHASES: readonly Phase[] = ['life']
-
-/** 단계 목록을 PHASES 순서로 정리 (중복 제거) */
-export function sortPhases(phases: readonly Phase[]): Phase[] {
-  return PHASES.filter((p) => phases.includes(p))
-}
-
 export type IssueStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
 
 export const ISSUE_STATUS_LABELS: Record<IssueStatus, string> = {
   pending: '수락 대기',
-  approved: '수락됨',
+  approved: '발행됨',
   rejected: '거절됨',
   cancelled: '취소됨',
 }
@@ -463,10 +497,10 @@ export function issueRemaining(kind: IssueKind, limit: number, day: number, used
 /** 화이트·옐로우팀 화면의 발행 정보 (그 팀만) */
 export interface TeamIssueView {
   kind: IssueKind
-  /** 지금 단계에서 요청할 수 있는지. 진행 중이면 모든 단계, 마지막 라운드는 관리자가 정한 단계만 (리더 여부·대기 요청·이번 라운드 발행은 따로) */
+  /** 지금 단계에서 요청할 수 있는지. 평소에는 모든 단계, 마지막 라운드는 마지막 발행 단계만 */
   open: boolean
-  /** 마지막 라운드일 때만: 발행 허용 단계 (안내용). 마지막 라운드 발행량은 공개되지 않는다 */
-  lastRoundPhases: Phase[] | null
+  /** 마지막 라운드인지 (안내용). 마지막 라운드 발행량은 공개되지 않는다 */
+  lastRound: boolean
   /** 이번 라운드(일차)에 발행했는지. 라운드당 1회라 있으면 더 요청할 수 없다 */
   issuedToday: boolean
   /** 이번 일차 남은 발행 가능량 */
@@ -480,13 +514,16 @@ export interface TeamGameView {
   resources: Resources
   election: ElectionView | null
   lifeSubmission: LifeSubmissionView | null
+  /** 이번 라운드 전쟁의 승패 팀에게만: 오간 재화 (수량은 두 팀과 진행자만 안다, docs/100 D6-a) */
+  warResult: { won: boolean; spoils: Resources } | null
   /** 내 팀이 참여한 진행 중 거래 */
-  trade: TradeView | null
   /** 화이트(보석)·옐로우(골드)팀만 */
   issue: TeamIssueView | null
   /** 내 최종 투표 (최종장, 본인만) */
   /** weight = 득표 (리더 기본 1 + 라이프 투표권 1). 팀원은 라이프 투표권으로만 투표하므로 1 */
   myFinalVote: { choice: 'gem' | 'gold'; extra: boolean; weight: number } | null
+  /** 라이프 투표권에 뽑혔는지 (본인만 안다) */
+  lifeGrant: boolean
   /** 이주 (진행 중에만) */
   migration: TeamMigrationView | null
   /** 내가 테러리스트면 현황 (본인에게만. 아니면 null) */
@@ -544,7 +581,6 @@ export interface AdminGameView {
   teams: AdminTeamRow[]
   /** 이번 라운드 원조 (게임 전체 라운드당 1회, docs/103 §11). 진행 중이 아니면 빈 배열 */
   aidsToday: CouncilAidView[]
-  trade: TradeView | null
   ledger: LedgerEntry[]
   /** 시작 전 점검 (준비 상태) */
   prep: {

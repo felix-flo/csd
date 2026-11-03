@@ -2,7 +2,7 @@
  * 리더 선정 (진행자 수동 지정. 2026-10-30 결정, docs/100 §7-6 — 팀원 투표를 대체).
  * - 라운드마다 '리더 선출' 단계에서 팀이 오프라인으로 협의해 진행자에게 알리면, 진행자가 관리자 화면에서 팀별로 지정한다.
  * - 활성 팀원이 1명뿐이면 지정 없이 그 사람이 자동 리더 (단계 시작 때, 또는 이주로 1명이 된 때). 0명이면 바로 완료.
- * - 지정 전에 단계를 넘기면 현재 리더를 유지한다 (완료 처리).
+ * - 모든 팀의 리더가 지정되어야 다음 단계로 넘어갈 수 있다. 연임도 진행자가 지정해서 확정한다.
  * - 지정은 단계 중 몇 번이든 바꿀 수 있다 (마지막 지정이 유효).
  */
 import { db } from './index.js'
@@ -23,8 +23,8 @@ export interface FinalizeResult {
   leaderId: number | null
   /** 리더가 바뀌었는지 (재신임이면 false) */
   changed: boolean
-  /** auto: 팀원 1명 자동 · keep: 단계 넘김으로 현 리더 유지 · set: 진행자 지정 */
-  how: 'auto' | 'keep' | 'set'
+  /** auto: 팀원 1명 자동 · set: 진행자 지정 */
+  how: 'auto' | 'set'
 }
 
 function activeMemberIds(teamId: number): number[] {
@@ -64,11 +64,8 @@ function markDone(day: number, teamId: number, leaderId: number | null) {
   db.prepare(`UPDATE leader_elections SET status = 'done', leader_id = ? WHERE day = ? AND group_id = ?`).run(leaderId, day, teamId)
 }
 
-/**
- * 지정 없이 완료 처리. force=false 면 활성 팀원이 1명뿐일 때만(자동 리더), force=true(단계 전환) 면 현재 리더 유지로 완료.
- * 반환 null = 아직 완료하지 않음 (지정 대기)
- */
-export function finalizeElection(day: number, teamId: number, force = false): FinalizeResult | null {
+/** 활성 팀원이 1명뿐이면 자동 리더로 완료. 반환 null = 아직 완료하지 않음 (지정 대기) */
+export function finalizeElection(day: number, teamId: number): FinalizeResult | null {
   const row = getRow(day, teamId)
   if (!row || row.status === 'done') return null
   const active = activeMemberIds(teamId)
@@ -79,16 +76,13 @@ export function finalizeElection(day: number, teamId: number, force = false): Fi
     markDone(day, teamId, only)
     return { status: 'done', leaderId: only, changed, how: 'auto' }
   }
-  if (!force) return null
-  const current = currentLeaderId(teamId)
-  markDone(day, teamId, current)
-  return { status: 'done', leaderId: current, changed: false, how: 'keep' }
+  return null
 }
 
 /** 진행자 지정. 리더 선출 단계가 아니어도(수동 교체) 쓸 수 있고, 그 일차 행이 있으면 완료로 표시한다 */
 export function designateLeader(day: number, teamId: number, userId: number): FinalizeResult {
   return db.transaction(() => {
-    if (!activeMemberIds(teamId).includes(userId)) throw new GameError('bad_candidate', '이 팀의 활성 팀원만 리더로 지정할 수 있어요', 400)
+    if (!activeMemberIds(teamId).includes(userId)) throw new GameError('bad_candidate', '이 팀의 활성 팀원만 리더로 지정할 수 있습니다', 400)
     const changed = userId !== currentLeaderId(teamId)
     if (changed) setTeamLeader(teamId, userId)
     if (getRow(day, teamId)) markDone(day, teamId, userId)

@@ -27,7 +27,8 @@ const emit = defineEmits<{ 'update:modelValue': [hex: string] }>()
 <style scoped>
 .palette { display: inline-flex; gap: 5px; flex-wrap: wrap; vertical-align: middle; }
 .swatch {
-  width: 20px; height: 20px; padding: 0; min-width: 0;
+  flex: none;
+  width: 20px; height: 20px; padding: 0; min-width: 0; min-height: 0;
   border-radius: 50%;
   background: var(--team);
   border: 1px solid var(--line);

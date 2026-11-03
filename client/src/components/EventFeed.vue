@@ -8,8 +8,9 @@ import { eventMessage, scopeLabel } from '../lib/eventLabel'
  * collapsible: 참가자 화면용 — 최신 3건만 보이고 나머지는 "펼치기" 로 (docs/103 §7)
  * plain: 참가자·프레젠테이션용 — 이벤트 id·type 같은 진단용 메타는 숨기고 시각(HH:MM)만 (docs/104). 관리자 화면은 전부 보인다
  * limit: 최신 N건만, 펼치기 없음 (프레젠테이션, docs/105)
+ * bare: 제목 없이 (알림 화면은 화면 제목이 이미 알림이다)
  */
-const props = defineProps<{ collapsible?: boolean; plain?: boolean; limit?: number }>()
+const props = defineProps<{ collapsible?: boolean; plain?: boolean; limit?: number; bare?: boolean }>()
 /** 서버 시각은 sqlite UTC 'YYYY-MM-DD HH:MM:SS' → 이 기기 시간대의 HH:MM */
 const timeOf = (s: string) => {
   const d = new Date(s.replace(' ', 'T') + 'Z')
@@ -42,13 +43,13 @@ async function reload() {
 <template>
   <div class="card">
     <div class="row" style="justify-content: space-between; margin-bottom: 8px">
-      <h2 style="margin: 0">알림 <span v-if="!plain" class="muted">(마지막 id: {{ rt.lastEventId }})</span></h2>
+      <h2 style="margin: 0" :style="{ visibility: bare ? 'hidden' : undefined }">알림 <span v-if="!plain" class="muted">(마지막 id: {{ rt.lastEventId }})</span></h2>
       <span class="row">
         <span class="muted">{{ status }}</span>
         <button class="secondary small" :disabled="busy" @click="reload">다시 불러오기</button>
       </span>
     </div>
-    <p v-if="all.length === 0" class="muted">받은 알림이 없어요.</p>
+    <p v-if="all.length === 0" class="muted">받은 알림이 없습니다.</p>
     <ul v-else class="feed">
       <li v-for="ev in items" :key="ev.id">
         <span class="badge" :class="ev.scope" :style="ev.scope === 'group' ? { '--team': teams.colorOf(ev.targetId) } : undefined">{{ scopeLabel(ev) }}</span>
@@ -65,6 +66,6 @@ async function reload() {
 
 <style scoped>
 button.small { padding: 4px 10px; font-size: 0.85rem; }
-.msg { margin-top: 2px; line-height: 1.45; }
+.msg { margin-top: 2px; line-height: 1.45; white-space: pre-line; }
 /* 범위 뱃지의 색 점은 style.css .badge.group / .badge.user 에서 정의. 팀 범위는 --team 으로 팀 색을 넣는다 */
 </style>

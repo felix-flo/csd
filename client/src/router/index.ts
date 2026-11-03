@@ -3,7 +3,7 @@ import type { Role } from '../../../shared/types'
 import { useAuthStore } from '../stores/auth'
 
 declare module 'vue-router' {
-  interface RouteMeta { roles?: Role[]; public?: boolean }
+  interface RouteMeta { roles?: Role[]; public?: boolean; sample?: boolean }
 }
 
 export const router = createRouter({
@@ -15,7 +15,10 @@ export const router = createRouter({
     { path: '/present', component: () => import('../views/PresentView.vue'), meta: { roles: ['presenter', 'admin'] } },
     { path: '/group', component: () => import('../views/GroupView.vue'), meta: { roles: ['member'] } },
     { path: '/rules', component: () => import('../views/RulesView.vue') },
+    { path: '/notices', component: () => import('../views/NoticesView.vue') },
     { path: '/sound', component: () => import('../views/SoundView.vue') },
+    // 개발 서버 전용: 알림 디자인 모아 보기
+    ...(import.meta.env.DEV ? [{ path: '/dev/notice', component: () => import('../views/NoticeSample.vue'), meta: { sample: true } }] : []),
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })
@@ -24,6 +27,7 @@ router.beforeEach(async (to) => {
   const auth = useAuthStore()
   // 새로고침 직후에는 refresh 쿠키로 재로그인이 끝날 때까지 기다린다 (안 기다리면 항상 /login 으로 튕김)
   if (!auth.ready) await auth.bootstrap()
+  if (to.meta.sample) return true
   if (to.meta.public) return auth.isLoggedIn ? auth.homePath : true
   if (!auth.isLoggedIn) return { path: '/login', query: { redirect: to.fullPath } }
   if (to.meta.roles && !to.meta.roles.includes(auth.user!.role)) return auth.homePath

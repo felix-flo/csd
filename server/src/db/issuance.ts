@@ -3,7 +3,7 @@
  *   리더 요청 ──즉시──▶ approved (팀 재화 증가). 관리자 수락 단계 없음 (2026-10-30 docs/103 §9. pending/rejected/cancelled 는 옛 기록용)
  *
  * 횟수 (docs/100 D3): 팀당 라운드(일차)당 발행 1회. 진행 중이면 단계와 관계없이 요청할 수 있다.
- * 마지막 라운드 (docs/100 D4): 관리자가 정한 단계(game.last_issue_phases)에서만 요청할 수 있다. 골드 발행량도 공개하지 않는다 (라우터).
+ * 마지막 라운드 (docs/100 D4): 마지막 발행 단계에서만 요청할 수 있다. 골드 발행량도 공개하지 않는다 (라우터).
  *   허용 단계를 벗어나거나 게임을 종료할 때 대기 요청이 있으면 막는다 (game.ts)
  *
  * 한도 (일차 = 턴): 대기 중·수락된 수량이 요청한 일차의 한도를 차지한다.
@@ -25,22 +25,20 @@ import type { IssueKind, IssueRequestView, IssueStatus, Phase, TeamIssueView } f
 
 /** game.ts 가 이 모듈을 불러 쓰므로(종료·리셋) 순환 import 를 피해 필요한 열만 직접 읽는다 */
 function getGameRow() {
-  return db.prepare('SELECT status, day, phase, total_days, gem_issue_limit, gold_issue_limit, last_issue_phases FROM game WHERE id = 1').get() as {
-    status: string; day: number; phase: Phase | null; total_days: number | null; gem_issue_limit: number; gold_issue_limit: number; last_issue_phases: string
+  return db.prepare('SELECT status, day, phase, total_days, gem_issue_limit, gold_issue_limit FROM game WHERE id = 1').get() as {
+    status: string; day: number; phase: Phase | null; total_days: number | null; gem_issue_limit: number; gold_issue_limit: number
   }
 }
 
-/** 진행 중 마지막 라운드면 발행 허용 단계, 아니면 null */
-function lastRoundPhases(g: ReturnType<typeof getGameRow>): Phase[] | null {
-  if (g.status !== 'running' || g.day < (g.total_days ?? Infinity)) return null
-  return JSON.parse(g.last_issue_phases) as Phase[]
+/** 진행 중 마지막 라운드인지 */
+function isLastRound(g: ReturnType<typeof getGameRow>): boolean {
+  return g.status === 'running' && g.day >= (g.total_days ?? Infinity)
 }
 
 /** 지금 단계에서 발행을 요청할 수 있는지 */
 function phaseOpen(g: ReturnType<typeof getGameRow>): boolean {
   if (g.status !== 'running') return false
-  const last = lastRoundPhases(g)
-  return !last || (!!g.phase && last.includes(g.phase))
+  return !isLastRound(g) || g.phase === 'last_issue'
 }
 
 
@@ -124,7 +122,7 @@ export function getTeamIssue(teamId: number): TeamIssueView | null {
   return {
     kind,
     open: phaseOpen(g),
-    lastRoundPhases: lastRoundPhases(g),
+    lastRound: isLastRound(g),
     issuedToday: g.status === 'running' && issuedOn(teamId, g.day),
     remaining: g.status === 'running' ? remainingFor(teamId, kind) : 0,
     recent,
@@ -161,7 +159,7 @@ export function getAdminIssues() {
     recent: listFor('1 = 1', [], 20),
     remaining: { gem: remaining('gem'), gold: remaining('gold') },
     issuedToday: { gem: issued('gem'), gold: issued('gold') },
-    lastRound: lastRoundPhases(g) ? lastRoundAmounts(g.day) : null,
+    lastRound: isLastRound(g) ? lastRoundAmounts(g.day) : null,
   }
 }
 
@@ -169,16 +167,13 @@ export function getAdminIssues() {
 export function requestIssue(teamId: number, amount: number, by: number): IssueRequestView {
   return db.transaction(() => {
     const g = getGameRow()
-    if (g.status !== 'running') throw new GameError('not_running', '게임이 진행 중이 아니에요')
+    if (g.status !== 'running') throw new GameError('not_running', '게임이 진행 중이 아닙니다')
     const kind = teamKind(teamId)
-    if (!kind) throw new GameError('not_issuer', '발행 요청을 할 수 없는 팀이에요', 403)
-    const last = lastRoundPhases(g)
-    if (last && !phaseOpen(g)) {
-      throw new GameError('wrong_phase', `마지막 라운드에는 ${last.map((p) => PHASE_LABELS[p]).join(', ')} 단계에서만 발행할 수 있어요`)
-    }
-    if (issuedOn(teamId, g.day)) throw new GameError('issued_today', '이번 라운드에는 이미 발행했어요 (라운드당 1회)')
+    if (!kind) throw new GameError('not_issuer', '발행 요청을 할 수 없는 팀입니다', 403)
+    if (!phaseOpen(g)) throw new GameError('wrong_phase', '마지막 라운드에는 마지막 발행 단계에서만 발행할 수 있습니다')
+    if (issuedOn(teamId, g.day)) throw new GameError('issued_today', '이번 라운드에는 이미 발행했습니다 (라운드당 1회)')
     const left = remainingFor(teamId, kind)
-    if (amount > left) throw new GameError('limit_exceeded', `이번 라운드 남은 ${RESOURCE_LABELS[kind]} 발행 가능량은 ${left}개예요`)
+    if (amount > left) throw new GameError('limit_exceeded', `이번 라운드 남은 ${RESOURCE_LABELS[kind]} 발행 가능량은 ${left}개입니다`)
     const info = db
       .prepare(`INSERT INTO issue_requests (day, phase, group_id, kind, amount, status, requested_by, decided_by, decided_at) VALUES (?, ?, ?, ?, ?, 'approved', ?, NULL, datetime('now'))`)
       .run(g.day, g.phase, teamId, kind, amount, by)

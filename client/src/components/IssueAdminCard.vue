@@ -33,12 +33,12 @@ const remainingText = (kind: 'gem' | 'gold') => {
     <p class="muted">
       이번 라운드 남은 발행 가능량 — <Icon name="gem" /> 보석 <strong>{{ remainingText('gem') }}</strong> (라운드마다 한도, 이월 없음) ·
       <Icon name="gold" /> 골드 <strong>{{ remainingText('gold') }}</strong> (안 쓴 만큼 이월).
-      리더가 요청하면 <strong>즉시 발행</strong>돼요 (팀마다 라운드당 1회, 진행자 수락 없음).
+      리더가 요청하면 <strong>즉시 발행</strong>됩니다 (팀마다 라운드당 1회, 진행자 수락 없음).
     </p>
     <p v-if="issues.lastRound" class="last-round">
       <Icon name="lock" /> 마지막 라운드 발행 (비공개) — <Icon name="gem" /> 보석 <strong>{{ issues.lastRound.gem }}</strong>개 · <Icon name="gold" /> 골드 <strong>{{ issues.lastRound.gold }}</strong>개
     </p>
-    <p v-if="!issues.recent.length" class="muted" style="margin: 0">아직 발행이 없어요.</p>
+    <p v-if="!issues.recent.length" class="muted" style="margin: 0">아직 발행이 없습니다.</p>
     <table v-else class="list">
       <tbody>
         <tr v-for="r in issues.recent" :key="r.id">

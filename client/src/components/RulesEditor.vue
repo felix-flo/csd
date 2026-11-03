@@ -11,9 +11,10 @@ import { computed, onMounted, ref, watch } from 'vue'
 import type { DocumentInfo, LoadDefaultRulesResponse } from '../../../shared/types'
 import { teamLetter } from '../../../shared/game'
 import { api } from '../lib/api'
+import { askConfirm } from '../lib/confirm'
 import { GLOBAL_RULES_SLUG, useDocumentsStore } from '../stores/documents'
 import { useTeamsStore } from '../stores/teams'
-import MarkdownView from './MarkdownView.vue'
+import RuleBook from './RuleBook.vue'
 import TeamMark from './TeamMark.vue'
 
 const docs = useDocumentsStore()
@@ -51,16 +52,16 @@ watch(saved, (doc) => {
   if (doc && !dirty.value) loadInto(doc)
 })
 
-function selectTab(next: number | null) {
+async function selectTab(next: number | null) {
   if (next === tab.value) return
-  if (dirty.value && !confirm('저장하지 않은 변경이 있어요. 버리고 다른 룰로 넘어갈까요?')) return
+  if (dirty.value && !(await askConfirm('저장하지 않은 변경이 있습니다. 버리고 다른 룰로 넘어갈까요?'))) return
   tab.value = next
   status.value = ''
   loadInto(saved.value)
 }
 
 const teamName = (id: number | null) => teams.teams.find((t) => t.id === id)?.name ?? ''
-const savedMessage = computed(() => (isTeam.value ? `저장됨. ${teamName(tab.value)} 팀원에게만 갱신 알림을 보냈어요.` : '저장됨. 모든 참가자에게 갱신 알림을 보냈어요.'))
+const savedMessage = computed(() => (isTeam.value ? `저장됨. ${teamName(tab.value)} 팀원에게만 갱신 알림을 보냈습니다.` : '저장됨. 모든 참가자에게 갱신 알림을 보냈습니다.'))
 
 async function save() {
   busy.value = true
@@ -70,7 +71,6 @@ async function save() {
       ? await api.put<{ document: DocumentInfo }>(`/api/admin/rules/team/${tab.value}`, { markdown: markdown.value })
       : await api.put<{ document: DocumentInfo }>(`/api/admin/documents/${GLOBAL_RULES_SLUG}`, { title: title.value, markdown: markdown.value })
     docs.set(res.document)
-    docs.dismiss(res.document.slug)
     loadInto(res.document)
     status.value = savedMessage.value
   } catch (e) {
@@ -81,16 +81,15 @@ async function save() {
 }
 
 async function restore() {
-  if (!confirm('직전 버전으로 되돌릴까요? 현재 내용은 "직전 버전" 으로 보관돼요.')) return
+  if (!(await askConfirm('직전 버전으로 되돌릴까요? 현재 내용은 "직전 버전" 으로 보관됩니다.'))) return
   busy.value = true
   status.value = ''
   try {
     const path = isTeam.value ? `/api/admin/rules/team/${tab.value}/restore` : `/api/admin/documents/${GLOBAL_RULES_SLUG}/restore`
     const res = await api.post<{ document: DocumentInfo }>(path)
     docs.set(res.document)
-    docs.dismiss(res.document.slug)
     loadInto(res.document)
-    status.value = '직전 버전으로 되돌렸어요.'
+    status.value = '직전 버전으로 되돌렸습니다.'
   } catch (e) {
     status.value = `실패: ${(e as Error).message}`
   } finally {
@@ -98,18 +97,19 @@ async function restore() {
   }
 }
 
-async function loadDefaults() {
-  const note = dirty.value ? '저장하지 않은 변경은 사라져요. ' : ''
-  if (!confirm(`전체 룰과 모든 팀 룰을 기본 룰 파일 내용으로 바꿉니다. ${note}현재 내용은 각 문서의 "직전 버전" 으로 보관돼요. 계속할까요?`)) return
+/** round 를 주면 그 라운드까지 공개되는 룰을 합쳐서 넣는다 */
+async function loadDefaults(round?: 4 | 6) {
+  const note = dirty.value ? '저장하지 않은 변경은 사라집니다. ' : ''
+  const what = round ? `${round}라운드 룰까지 합친 내용` : '기본 룰'
+  if (!(await askConfirm(`전체 룰과 모든 팀 룰을 ${what}으로 바꿉니다. ${note}직접 고친 내용도 덮어씁니다. 현재 내용은 각 문서의 "직전 버전" 으로 보관됩니다. 계속할까요?`))) return
   busy.value = true
   status.value = ''
   try {
-    const res = await api.post<LoadDefaultRulesResponse>('/api/admin/rules/load-defaults')
+    const res = await api.post<LoadDefaultRulesResponse>('/api/admin/rules/load-defaults', { round })
     docs.rules = { global: res.global, team: null, teams: res.teams }
-    docs.dismissRules()
     loadInto(saved.value)
     const skipped = res.skipped.length ? ` 파일이 없어 그대로 둔 팀: ${res.skipped.join(', ')}.` : ''
-    status.value = `기본 룰을 불러왔어요 (${res.loaded.join(', ')}).${skipped}`
+    status.value = `${round ? `${round}라운드 룰` : '기본 룰'}을 불러왔습니다 (${res.loaded.join(', ')}).${skipped}`
   } catch (e) {
     status.value = `실패: ${(e as Error).message}`
   } finally {
@@ -125,10 +125,10 @@ const hasContent = (teamId: number) => !!docs.rules?.teams?.find((t) => t.teamId
   <div class="card">
     <h2>룰 편집 <span class="muted">(마크다운)</span></h2>
     <p class="muted">
-      <strong>전체 룰</strong>은 모든 참가자·진행자·프레젠테이션 화면에, <strong>팀 룰</strong>은 그 팀 팀원에게만(게임 시작 후) 보여요.
-      팀원 화면에서는 전체 룰 아래 가로줄 다음에 팀 룰이 붙어요. 상단 "룰" 버튼으로 볼 수 있어요.
-      제목은 # , 소제목은 ## , 목록은 - , 표는 | 로 작성해요.
-      "기본 룰 불러오기" 는 시스템에 들어 있는 기본 룰 파일을 전체·팀 룰에 한 번에 넣어요 (현재 내용은 직전 버전으로 보관).
+      <strong>전체 룰</strong>은 모든 참가자·진행자·프레젠테이션 화면에, <strong>팀 룰</strong>은 그 팀 팀원에게만(게임 시작 후) 보입니다.
+      팀원 화면에서는 전체 룰 아래 가로줄 다음에 팀 룰이 붙습니다. 상단 "룰" 버튼으로 볼 수 있습니다.
+      제목은 # , 소제목은 ## , 목록은 - , 표는 | 로 작성합니다. 줄 하나에 <code>=== 탭 이름 ===</code> 을 쓰면 거기서부터 새 탭이 됩니다.
+      "기본 룰 불러오기" 는 시스템에 들어 있는 기본 룰 파일을 전체·팀 룰에 한 번에 넣습니다 (현재 내용은 직전 버전으로 보관).
     </p>
     <div class="tabs row">
       <button type="button" class="tab" :class="{ on: tab === null }" @click="selectTab(null)">전체 룰</button>
@@ -143,13 +143,17 @@ const hasContent = (teamId: number) => !!docs.rules?.teams?.find((t) => t.teamId
       <button :disabled="busy || !dirty" @click="save">저장</button>
       <button class="secondary" :disabled="busy || !saved?.hasPrevious" @click="restore">직전 버전으로</button>
       <button class="secondary" @click="preview = !preview">{{ preview ? '미리보기 숨김' : '미리보기' }}</button>
-      <button class="secondary" :disabled="busy" title="server/rules 의 공통·팀별 마크다운 파일을 전체·팀 룰에 한 번에 넣어요" @click="loadDefaults">기본 룰 불러오기</button>
       <span class="muted">{{ dirty ? '저장되지 않은 변경 있음' : status }}</span>
     </div>
-    <p v-if="isTeam" class="muted" style="margin-top: 0">제목은 팀 이름으로 자동으로 붙어요. 비워 두면 팀원 화면에 전체 룰만 보여요.</p>
+    <div class="row" style="margin-bottom: 8px">
+      <button class="secondary" :disabled="busy" title="server/rules 의 공통·팀별 마크다운 파일을 전체·팀 룰에 한 번에 넣습니다" @click="loadDefaults()">기본 룰 불러오기</button>
+      <button class="secondary" :disabled="busy" title="기본 룰에 4라운드 공개 룰을 합쳐서 넣습니다" @click="loadDefaults(4)">4라운드 룰 불러오기</button>
+      <button class="secondary" :disabled="busy" title="기본 룰에 4·6라운드 공개 룰을 합쳐서 넣습니다" @click="loadDefaults(6)">6라운드 룰 불러오기</button>
+    </div>
+    <p v-if="isTeam" class="muted" style="margin-top: 0">제목은 팀 이름으로 자동으로 붙습니다. 비워 두면 팀원 화면에 전체 룰만 보입니다.</p>
     <div class="editor" :class="{ split: preview }">
       <textarea v-model="markdown" spellcheck="false" :placeholder="placeholder" />
-      <div v-if="preview" class="preview"><MarkdownView :markdown="markdown" /></div>
+      <div v-if="preview" class="preview"><RuleBook :markdown="markdown" /></div>
     </div>
   </div>
 </template>
@@ -160,8 +164,7 @@ const hasContent = (teamId: number) => !!docs.rules?.teams?.find((t) => t.teamId
 .tab.on { background: var(--ink); color: var(--surface); border-color: var(--ink); }
 .tab.on .muted { color: inherit; opacity: 0.7; }
 .editor { display: grid; gap: 12px; }
-.editor.split { grid-template-columns: 1fr 1fr; }
-@media (max-width: 800px) { .editor.split { grid-template-columns: 1fr; } }
+@container (min-width: 820px) { .editor.split { grid-template-columns: 1fr 1fr; } }
 textarea { width: 100%; min-height: 360px; font-family: var(--font-mono); font-size: 0.92rem; line-height: 1.5; resize: vertical; }
 .preview { border: 1px solid var(--line-soft); border-radius: var(--radius); background: var(--surface); padding: 12px; min-height: 360px; overflow: auto; }
 </style>

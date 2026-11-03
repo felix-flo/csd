@@ -9,6 +9,7 @@ import { computed, ref, watch } from 'vue'
 import type { AdminUser, GroupInfo } from '../../../shared/types'
 import { TEAM_PALETTE } from '../../../shared/teams'
 import { api } from '../lib/api'
+import { askConfirm } from '../lib/confirm'
 import TeamMark from './TeamMark.vue'
 import TeamPalette from './TeamPalette.vue'
 
@@ -22,6 +23,12 @@ const status = ref('')
 const countOf = computed(() => {
   const m = new Map<number, number>()
   for (const u of props.users) if (u.role === 'member' && u.groupId != null) m.set(u.groupId, (m.get(u.groupId) ?? 0) + 1)
+  return (id: number) => m.get(id) ?? 0
+})
+/** 팀별 활성 인원 (테스트 계정이 꺼져 있거나 탈락한 사람은 빼고 센다) */
+const activeOf = computed(() => {
+  const m = new Map<number, number>()
+  for (const u of props.users) if (u.role === 'member' && u.groupId != null && u.active) m.set(u.groupId, (m.get(u.groupId) ?? 0) + 1)
   return (id: number) => m.get(id) ?? 0
 })
 const currentStaff = computed(() => props.users.filter((u) => u.role === 'admin').length)
@@ -81,7 +88,7 @@ async function saveEdit(g: GroupInfo) {
   editingId.value = null
 }
 async function removeTeam(g: GroupInfo) {
-  if (!confirm(`${g.name} 을(를) 삭제할까요?`)) return
+  if (!(await askConfirm(`${g.name} 을(를) 삭제할까요?`))) return
   await run(`${g.name} 삭제됨`, () => api.delete<{ users: AdminUser[]; teams: GroupInfo[] }>(`/api/admin/teams/${g.id}`))
 }
 </script>
@@ -90,8 +97,8 @@ async function removeTeam(g: GroupInfo) {
   <div class="card">
     <h2>팀 · 진행자 구성</h2>
     <p class="muted">
-      팀 이름을 클릭하면 이름과 색을 바꿀 수 있어요. 팀별 최대 인원은 "게임 설정" 카드에서 정하고, 참가자는 게임 준비 상태에서 직접 팀을 골라요.
-      진행자는 <strong>늘리기만</strong> 할 수 있고, 게임 리셋 때 삭제되므로 게임마다 다시 만들어요.
+      팀 이름을 클릭하면 이름과 색을 바꿀 수 있습니다. 팀별 최대 인원은 "게임 설정" 카드에서 정하고, 참가자는 게임 준비 상태에서 직접 팀을 고릅니다.
+      진행자는 <strong>늘리기만</strong> 할 수 있고, 게임 리셋 때 삭제되므로 게임마다 다시 만듭니다.
     </p>
 
     <table class="teams">
@@ -114,9 +121,9 @@ async function removeTeam(g: GroupInfo) {
               <a href="#" @click.prevent="startEdit(g)">{{ g.name }}</a>
             </template>
           </td>
-          <td class="muted">{{ countOf(g.id) }}명</td>
+          <td class="muted">{{ activeOf(g.id) }}명</td>
           <td>
-            <button class="secondary small" :disabled="busy || countOf(g.id) > 0" :title="countOf(g.id) > 0 ? '소속 참가자가 있는 팀은 삭제할 수 없어요' : ''" @click="removeTeam(g)">삭제</button>
+            <button class="secondary small" :disabled="busy || countOf(g.id) > 0" :title="countOf(g.id) > 0 ? '소속 참가자가 있는 팀은 삭제할 수 없습니다' : ''" @click="removeTeam(g)">삭제</button>
           </td>
         </tr>
       </tbody>
