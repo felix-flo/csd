@@ -178,7 +178,7 @@ async function prepare() {
           <label class="f"><span><Icon name="gem" /> 보석 (화이트)</span><input v-model.number="issueLimit.gem" type="number" min="0" /></label>
           <label class="f"><span><Icon name="gold" /> 골드 (골드 팀)</span><input v-model.number="issueLimit.gold" type="number" min="0" /></label>
         </div>
-        <p class="hint">보석은 안 쓴 한도가 사라지고, 골드는 안 쓴 만큼 다음 라운드로 쌓입니다.</p>
+        <p class="hint">보석은 안 쓴 한도가 사라지고, 골드는 안 쓴 만큼 다음 라운드로 쌓입니다. 마지막 라운드는 보석은 그때까지 풀린 보석의 절반까지, 골드는 한도의 2배까지.</p>
       </section>
 
       <section class="set">
