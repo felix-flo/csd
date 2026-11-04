@@ -30,7 +30,7 @@ const amounts = (spoils: Resources) => RESOURCE_KINDS.filter((k) => spoils[k] > 
 /** 어떤 재화가 넘어갔는지. 수량은 승패 팀에게만 */
 const spoilsText = computed(() => {
   const mine = !props.large ? game.team?.warResult : null
-  if (!mine) return `${teamName(loser.value)} 재화의 절반이 ${teamName(winner.value)}으로 넘어갔습니다`
+  if (!mine) return `${teamName(loser.value)} 보석·라이프·크레딧 절반이 ${teamName(winner.value)}으로 넘어갔습니다`
   const text = amounts(mine.spoils)
   if (mine.won) return text ? `가져온 재화: ${text}` : '가져온 재화가 없습니다'
   return text ? `빼앗긴 재화: ${text}` : '빼앗긴 재화가 없습니다'

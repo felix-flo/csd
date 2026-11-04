@@ -1,7 +1,7 @@
 /**
  * 전쟁 (docs/99.전쟁.md, 2026-10-30 docs/103 §4·§12 로 승인 단계 폐지).
  *   거래 단계에서 리더가 상대 팀 선택 → 즉시 declared (비용 차감·소멸, 진행 중 거래 취소, 모든 팀 거래 금지)
- *   관리자가 오프라인 결과로 지정 → attacker_won / defender_won (패배팀 재화 4종의 절반(내림)을 승리팀이 가져감)
+ *   관리자가 오프라인 결과로 지정 → attacker_won / defender_won (패배팀 재화의 절반(내림)을 승리팀이 가져감. 골드는 빼고)
  *   전쟁이 나면 그 라운드 거래는 끝이다. 결과가 나오면 전쟁 종료 화면에서 재화가 넘어가고, 관리자가 다음 단계로 리더 협의로 넘긴다
  *
  * 규칙:
@@ -164,7 +164,7 @@ export interface ResolveOutcome {
   spoils: Resources
 }
 
-/** 관리자 결과 지정. 패배팀 재화 4종의 절반(내림)을 승리팀으로 옮긴다 */
+/** 관리자 결과 지정. 패배팀 재화의 절반(내림)을 승리팀으로 옮긴다 (골드는 빼고, warSpoils) */
 export function resolveWar(id: number, result: WarResult, day: number, by: number): ResolveOutcome {
   return db.transaction(() => {
     const status: WarStatus =
